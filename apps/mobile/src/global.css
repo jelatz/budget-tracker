@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --css-interop-darkMode: class dark;
+
+  /* Stitch Light Surfaces */
+  --stitch-bg: #f8fafc;
+  --stitch-surface: #ffffff;
+  --stitch-border: #e2e8f0;
+  --stitch-text: #0f172a;
+}
+
+:root.dark,
+.dark {
+  /* Stitch Dark Surfaces */
+  --stitch-bg: #0b1326;
+  --stitch-surface: #171f33;
+  --stitch-border: #404753;
+  --stitch-text: #dae2fd;
+}
+
+html,
+body {
+  background-color: var(--stitch-bg);
+  color: var(--stitch-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Subtle custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.6);
+}
