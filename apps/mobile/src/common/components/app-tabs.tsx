@@ -169,9 +169,10 @@ export default function AppTabs() {
           <TabTrigger name="reconciliation" href="/reconciliation" asChild>
             <MobileTabButton>Reconcile</MobileTabButton>
           </TabTrigger>
-          <TabTrigger name="portability" href="/portability" asChild>
-            <MobileTabButton>Backup</MobileTabButton>
+          <TabTrigger name="settings" href="/settings" asChild>
+            <MobileTabButton>Settings</MobileTabButton>
           </TabTrigger>
+          <TabTrigger name="portability" href="/portability" style={{ display: 'none' }} />
           <TabTrigger name="index" href="/" style={{ display: 'none' }} />
           <TabTrigger name="register" href="/register" style={{ display: 'none' }} />
         </CustomMobileTabList>

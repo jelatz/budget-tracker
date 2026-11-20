@@ -49,9 +49,11 @@ Execute this audit whenever:
 - [ ] **Design Tokens from `@/constants/theme`**:
   - Colors, typography, and spacing must adhere to `@/constants/theme` (`Colors`, `Fonts`, `Spacing`, `MaxContentWidth`).
   - Access colors dynamically via `useTheme()` hook from `@/common/hooks/use-theme`.
-- [ ] **Dark & Light Mode Support**:
+- [ ] **Dark & Light Mode Support (Including Active/Selected States)**:
   - Never hardcode raw hex values (e.g. `#ffffff`, `#000000`, `#111827`) directly in style objects or Tailwind classes without theme awareness.
-  - Test that every UI element has sufficient contrast in both light mode and dark mode.
+  - **Verify Custom Shades Exist in `tailwind.config.js`**: Every custom palette token used in `className` (e.g. `brand-200`, `brand-400`, `brand-900`, `brand-950`) must be explicitly defined in `apps/mobile/tailwind.config.js`; missing `dark:*` shades silently emit no CSS and leave light-mode backgrounds (such as `bg-brand-50`) rendered in Dark mode.
+  - Test that every UI element—especially **selected/active cards, tabs, pills, and segmented controls**—maintains crisp contrast in both Light mode and Dark mode, including immediately after switching themes dynamically.
+  - When toggling `isSelected` on `<Text>` / `<ThemedText>` across theme switches, prefer driving text color via `useTheme()` / `StitchTokens` if dynamic Tailwind class swaps could retain stale color specificity, and include `accessibilityState={{ selected: isSelected }}`.
   - Dynamic backgrounds must use `background`, `backgroundElement`, or `backgroundSelected`; dynamic text must use `text` or `textSecondary`.
 - [ ] **NativeWind / Tailwind Styling Compliance**:
   - Keep class names consistent with project Tailwind presets.
@@ -62,6 +64,11 @@ Execute this audit whenever:
 - [ ] **Touch Target Sizing (Minimum 44x44 pt/px)**:
   - All interactive controls (buttons, icon buttons, list row items, chip filters, toggles) must meet the minimum 44x44 point touch target standard.
   - When visual dimensions are smaller than 44x44 (e.g., small 24x24 icons), apply `hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}`.
+- [ ] **Responsive Proportions & Button Sizing (Desktop Web vs. Mobile)**:
+  - **Container Max-Width by Layout Type**: Single-column settings, forms, and detail screens must cap container width at `NarrowContentWidth` (`720px`) or `MaxContentWidth` (`800px`) on desktop web. Reserve `WebMaxContentWidth` (`1360px`) for multi-column dashboards and dense data tables.
+  - **Content-Fitted Controls on Wide Viewports (`>= 640px`)**: Action buttons, segmented controls, and destructive buttons must fit their content proportionally (`self-start`, compact horizontal padding, no unconstrained `flex-1` or full-width stretching across wide desktop cards). Cap segmented controls (e.g. theme toggles) to a comfortable width (~`280px–360px`) instead of spanning the entire card.
+  - **Mobile Ergonomics (`< 640px`)**: Full-width or stacked buttons are appropriate on narrow mobile viewports so controls remain easy to tap without horizontal overflow.
+  - **Clear Destructive & Semantic Hierarchy**: Every destructive or data-overwriting action must use distinct semantic warning/danger styling (e.g. rose for deletion, amber for overwrite/reset) rather than neutral styling, and avoid oversized button banners that overpower surrounding content.
 - [ ] **Complete State Coverage (Async & Data UI)**:
   - **Loading State**: Provide skeleton placeholders or an `ActivityIndicator` styled with theme colors during data fetching.
   - **Empty State**: When lists or queries return no data, render an informative empty state with a descriptive message and an optional action/call-to-action button.

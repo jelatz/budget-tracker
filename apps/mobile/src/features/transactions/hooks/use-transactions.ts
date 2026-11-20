@@ -7,11 +7,14 @@ import {
   type CategoryType,
   type CreateCategoryInput,
   type CreateTransactionInput,
+  type CreateWalletInput,
   type DashboardMetrics,
   type DashboardPeriod,
   type QuickPreset,
   type RecurringCommitment,
   type SinkingFund,
+  type UpdateTransactionInput,
+  type UpdateWalletInput,
 } from '@repo/contracts';
 import {
   applyReconciliation,
@@ -20,11 +23,13 @@ import {
   createCustomCategory,
   createTransaction,
   createTransactionsBatch,
+  createWallet,
   deleteCategoryBudget,
   deleteQuickPreset,
   deleteRecurringCommitment,
   deleteSinkingFund,
   deleteTransaction,
+  deleteWallet,
   exportBackupEnvelope,
   getCategories,
   getCategoryBudgets,
@@ -38,12 +43,17 @@ import {
   getWallets,
   importBackupEnvelope,
   resetLocalStore,
+  settleRecurringCommitment,
+  unmarkRecurringCommitmentPaid,
   updateMonthlyBudget,
+  updateTransaction,
+  updateWallet,
   upsertCategoryBudget,
   upsertQuickPreset,
   upsertRecurringCommitment,
   upsertSinkingFund,
 } from '../api';
+import { useAuth } from '@/features/auth/context/auth-context';
 
 export const TRANSACTION_KEYS = {
   all: ['transactions-domain'] as const,
@@ -67,16 +77,20 @@ export const TRANSACTION_KEYS = {
 // ==========================================
 
 export function useWallets() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.wallets,
     queryFn: getWallets,
+    enabled: isAuthenticated,
   });
 }
 
 export function useCategories(type: CategoryType = 'EXPENSE', pinnedLimit = 8) {
+  const { isAuthenticated } = useAuth();
   const query = useQuery({
     queryKey: TRANSACTION_KEYS.categories,
     queryFn: getCategories,
+    enabled: isAuthenticated,
   });
 
   const categories = query.data ?? [];
@@ -92,9 +106,11 @@ export function useCategories(type: CategoryType = 'EXPENSE', pinnedLimit = 8) {
 }
 
 export function useAllCategories() {
+  const { isAuthenticated } = useAuth();
   const query = useQuery({
     queryKey: TRANSACTION_KEYS.categories,
     queryFn: getCategories,
+    enabled: isAuthenticated,
   });
 
   return {
@@ -104,16 +120,20 @@ export function useAllCategories() {
 }
 
 export function useSmartDefaults() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.smartDefaults,
     queryFn: getSmartDefaults,
+    enabled: isAuthenticated,
   });
 }
 
 export function useTransactions() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.list,
     queryFn: getTransactions,
+    enabled: isAuthenticated,
   });
 }
 
@@ -133,6 +153,52 @@ export function useBatchCreateTransactions() {
 
   return useMutation({
     mutationFn: (inputs: CreateTransactionInput[]) => createTransactionsBatch(inputs),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useUpdateTransaction() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateTransactionInput }) =>
+      updateTransaction(id, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useCreateWallet() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateWalletInput) => createWallet(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useUpdateWallet() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string; input: UpdateWalletInput }) =>
+      updateWallet(id, input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useDeleteWallet() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => deleteWallet(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },
@@ -161,7 +227,10 @@ export function useCreateCustomCategory() {
   });
 }
 
-export function useDashboardMetrics(period: DashboardPeriod = 'THIS_MONTH') {
+export function useDashboardMetrics(
+  period: DashboardPeriod = 'THIS_MONTH',
+  selectedMonth?: string,
+) {
   const transactionsQuery = useTransactions();
   const walletsQuery = useWallets();
   const categoriesQuery = useAllCategories();
@@ -172,14 +241,29 @@ export function useDashboardMetrics(period: DashboardPeriod = 'THIS_MONTH') {
     wallets: walletsQuery.data ?? [],
     categories: categoriesQuery.categories,
     period,
-    monthlyBudgetMinor: smartDefaultsQuery.data?.monthlyBudgetMinor ?? 250000,
+    selectedMonth,
+    monthlyBudgetMinor: smartDefaultsQuery.data?.monthlyBudgetMinor ?? 3000000,
   });
+
+  const refetch = async () => {
+    await Promise.all([
+      transactionsQuery.refetch(),
+      walletsQuery.refetch(),
+      categoriesQuery.refetch(),
+      smartDefaultsQuery.refetch(),
+    ]);
+  };
 
   return {
     metrics,
     wallets: walletsQuery.data ?? [],
     categories: categoriesQuery.categories,
     isLoading: transactionsQuery.isLoading || walletsQuery.isLoading,
+    isError:
+      transactionsQuery.isError ||
+      walletsQuery.isError ||
+      categoriesQuery.isError,
+    refetch,
   };
 }
 
@@ -221,9 +305,11 @@ export function useClearAllTransactions() {
 // ==========================================
 
 export function useCategoryBudgets(periodMonth: string) {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.categoryBudgets(periodMonth),
     queryFn: () => getCategoryBudgets(periodMonth),
+    enabled: isAuthenticated,
   });
 }
 
@@ -255,9 +341,11 @@ export function useDeleteCategoryBudget() {
 // ==========================================
 
 export function useRecurringCommitments() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.recurringCommitments,
     queryFn: getRecurringCommitments,
+    enabled: isAuthenticated,
   });
 }
 
@@ -284,14 +372,50 @@ export function useDeleteRecurringCommitment() {
   });
 }
 
+export function useSettleRecurringCommitment() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      commitmentId,
+      periodMonth,
+      recordTransaction,
+    }: {
+      commitmentId: string;
+      periodMonth: string;
+      recordTransaction: boolean;
+    }) =>
+      settleRecurringCommitment(commitmentId, {
+        periodMonth,
+        recordTransaction,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useUnmarkRecurringCommitmentPaid() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (commitmentId: string) => unmarkRecurringCommitmentPaid(commitmentId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
 // ==========================================
 // Milestone 2: Sinking Funds Hooks
 // ==========================================
 
 export function useSinkingFunds() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.sinkingFunds,
     queryFn: getSinkingFunds,
+    enabled: isAuthenticated,
   });
 }
 
@@ -341,9 +465,11 @@ export function useDeleteSinkingFund() {
 // ==========================================
 
 export function useQuickPresets() {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: TRANSACTION_KEYS.quickPresets,
     queryFn: getQuickPresets,
+    enabled: isAuthenticated,
   });
 }
 
@@ -385,11 +511,13 @@ export function useApplyReconciliation() {
 }
 
 export function useReconciliations(walletId?: string) {
+  const { isAuthenticated } = useAuth();
   return useQuery({
     queryKey: walletId
       ? ([...TRANSACTION_KEYS.reconciliations, walletId] as const)
       : TRANSACTION_KEYS.reconciliations,
     queryFn: () => getReconciliations(walletId),
+    enabled: isAuthenticated,
   });
 }
 
@@ -398,10 +526,12 @@ export function useReconciliations(walletId?: string) {
 // ==========================================
 
 export function useSafeToSpendMetrics(currentDate?: Date) {
+  const { isAuthenticated } = useAuth();
   const dateIso = currentDate?.toISOString().slice(0, 10);
   return useQuery({
     queryKey: TRANSACTION_KEYS.safeToSpend(dateIso),
     queryFn: () => getSafeToSpendMetrics(currentDate),
+    enabled: isAuthenticated,
   });
 }
 

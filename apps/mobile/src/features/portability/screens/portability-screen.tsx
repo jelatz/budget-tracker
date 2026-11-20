@@ -23,6 +23,11 @@ import {
 import { ThemedText } from '@/common/components/themed-text';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import {
+  copyTextToClipboard,
+  exportTextFile,
+  pickTextFile,
+} from '@/common/lib/file-transfer';
+import {
   useAllCategories,
   useBatchCreateTransactions,
   useExportBackup,
@@ -64,63 +69,38 @@ export function PortabilityScreen() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // File Download Helper
-  const downloadFile = (content: string, filename: string, mimeType: string) => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setToastMessage(`Downloaded ${filename}`);
-    } else {
-      copyToClipboard(content, filename);
-    }
+  // Cross-platform File Export Helper (Web download / Native share sheet)
+  const downloadFile = async (content: string, filename: string, mimeType: string) => {
+    const status = await exportTextFile(content, filename, mimeType);
+    setToastMessage(status);
   };
 
-  // Clipboard Helper
+  // Cross-platform Clipboard Helper
   const copyToClipboard = async (text: string, label: string) => {
+    const copied = await copyTextToClipboard(text);
+    setToastMessage(copied ? `${label} copied to clipboard!` : `${label} ready`);
+  };
+
+  // Cross-platform File Picker (Web file input / Native document picker)
+  const handleSelectFile = async (format: 'json' | 'csv') => {
+    setErrorMessage(null);
     try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        setToastMessage(`${label} copied to clipboard!`);
+      const picked = await pickTextFile(format);
+      if (!picked) {
         return;
       }
-    } catch {
-      // Fallback
-    }
-    setToastMessage(`${label} ready`);
-  };
-
-  // File Upload Handler (Web)
-  const handleSelectFile = (format: 'json' | 'csv') => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = format === 'json' ? '.json,application/json' : '.csv,text/csv,text/plain';
-      input.onchange = (e: any) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const content = event.target?.result as string;
-            if (format === 'json') {
-              setJsonInput(content);
-              setValidatedBackup(null);
-            } else {
-              setCsvInput(content);
-              setCsvPreviewResult(null);
-            }
-            setToastMessage(`Loaded file: ${file.name}`);
-          };
-          reader.readAsText(file);
-        }
-      };
-      input.click();
+      if (format === 'json') {
+        setJsonInput(picked.content);
+        setValidatedBackup(null);
+      } else {
+        setCsvInput(picked.content);
+        setCsvPreviewResult(null);
+      }
+      setToastMessage(`Loaded file: ${picked.name}`);
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Failed to load selected file.',
+      );
     }
   };
 
@@ -133,7 +113,11 @@ export function PortabilityScreen() {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
       if (action === 'download') {
-        downloadFile(jsonString, `budget-tracker-backup-${timestamp}.json`, 'application/json');
+        await downloadFile(
+          jsonString,
+          `budget-tracker-backup-${timestamp}.json`,
+          'application/json',
+        );
       } else {
         await copyToClipboard(jsonString, 'Full JSON Backup');
       }
@@ -149,7 +133,7 @@ export function PortabilityScreen() {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
       if (action === 'download') {
-        downloadFile(
+        await downloadFile(
           csvString,
           `budget-tracker-transactions-${timestamp}.csv`,
           'text/csv;charset=utf-8;',
@@ -461,6 +445,7 @@ export function PortabilityScreen() {
 
           <ScrollView
             className="flex-1"
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               width: '100%',
               maxWidth: isDesktop ? 1200 : 720,
@@ -651,18 +636,16 @@ export function PortabilityScreen() {
                         </ThemedText>
                       </View>
 
-                      {Platform.OS === 'web' && (
-                        <Pressable
-                          onPress={() => handleSelectFile('json')}
-                          accessibilityRole="button"
-                          accessibilityLabel="Choose JSON backup file"
-                          className="min-h-[44px] px-3.5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700 justify-center items-center"
-                        >
-                          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            Choose File
-                          </ThemedText>
-                        </Pressable>
-                      )}
+                      <Pressable
+                        onPress={() => void handleSelectFile('json')}
+                        accessibilityRole="button"
+                        accessibilityLabel="Choose JSON backup file"
+                        className="min-h-[44px] px-3.5 py-2 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700 justify-center items-center"
+                      >
+                        <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          Choose File
+                        </ThemedText>
+                      </Pressable>
                     </View>
 
                     {/* Multiline JSON Text Area */}
@@ -891,18 +874,16 @@ export function PortabilityScreen() {
                           </ThemedText>
                         </Pressable>
 
-                        {Platform.OS === 'web' && (
-                          <Pressable
-                            onPress={() => handleSelectFile('csv')}
-                            accessibilityRole="button"
-                            accessibilityLabel="Choose CSV file"
-                            className="min-h-[44px] px-3.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700 justify-center items-center"
-                          >
-                            <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                              Choose File
-                            </ThemedText>
-                          </Pressable>
-                        )}
+                        <Pressable
+                          onPress={() => void handleSelectFile('csv')}
+                          accessibilityRole="button"
+                          accessibilityLabel="Choose CSV file"
+                          className="min-h-[44px] px-3.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700 justify-center items-center"
+                        >
+                          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                            Choose File
+                          </ThemedText>
+                        </Pressable>
                       </View>
                     </View>
 

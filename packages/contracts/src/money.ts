@@ -1,11 +1,16 @@
 import { z } from 'zod';
 
+export const SUPPORTED_CURRENCY = 'PHP' as const;
+
 export const currencyCodeSchema = z
   .string()
   .trim()
   .toUpperCase()
   .length(3)
-  .default('PHP');
+  .refine((val): boolean => val === SUPPORTED_CURRENCY, {
+    message: 'Only PHP currency is supported',
+  })
+  .default(SUPPORTED_CURRENCY);
 
 export const amountMinorSchema = z.number().int();
 

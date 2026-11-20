@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -18,6 +18,7 @@ import {
 } from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
+import { confirmAction } from '@/common/lib/confirm';
 import {
   useAllCategories,
   useDeleteQuickPreset,
@@ -201,32 +202,23 @@ export function QuickPresetBar({
   };
 
   const handleDeletePreset = async (presetId: string, presetLabel: string) => {
-    const doDelete = async () => {
-      try {
-        await deletePresetMutation.mutateAsync(presetId);
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Failed to delete preset.';
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert(msg);
-        } else {
-          Alert.alert('Error', msg);
-        }
-      }
-    };
+    const confirmed = await confirmAction({
+      title: 'Delete Preset',
+      message: `Are you sure you want to delete "${presetLabel}"?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`Delete preset "${presetLabel}"?`)) {
-        await doDelete();
-      }
-    } else {
-      Alert.alert(
-        'Delete Preset',
-        `Are you sure you want to delete "${presetLabel}"?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: doDelete },
-        ],
-      );
+    setErrorMessage(null);
+    try {
+      await deletePresetMutation.mutateAsync(presetId);
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error ? error.message : 'Failed to delete preset.';
+      setErrorMessage(msg);
     }
   };
 
@@ -313,6 +305,10 @@ export function QuickPresetBar({
         onRequestClose={() => setIsModalOpen(false)}
       >
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
           <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
             {/* Header */}
             <View className="flex-row justify-between items-center mb-3">
@@ -329,7 +325,7 @@ export function QuickPresetBar({
                 accessibilityRole="button"
                 accessibilityLabel="Close quick preset modal"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                 onPress={() => setIsModalOpen(false)}
               >
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -343,7 +339,7 @@ export function QuickPresetBar({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Create new preset tab"
-              className={`flex-1 py-1.5 rounded-lg items-center ${
+              className={`flex-1 min-h-[44px] py-1.5 rounded-lg items-center justify-center ${
                 modalTab === 'create'
                   ? 'bg-white dark:bg-slate-900 shadow-xs'
                   : 'opacity-70'
@@ -364,7 +360,7 @@ export function QuickPresetBar({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Manage existing presets tab"
-              className={`flex-1 py-1.5 rounded-lg items-center ${
+              className={`flex-1 min-h-[44px] py-1.5 rounded-lg items-center justify-center ${
                 modalTab === 'manage'
                   ? 'bg-white dark:bg-slate-900 shadow-xs'
                   : 'opacity-70'
@@ -674,7 +670,7 @@ export function QuickPresetBar({
                       accessibilityLabel={`Delete preset ${preset.label}`}
                       disabled={deletePresetMutation.isPending}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      className="px-3 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 active:opacity-75"
+                      className="min-h-[44px] px-3.5 py-1.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 items-center justify-center active:opacity-75"
                       onPress={() => handleDeletePreset(preset.id, preset.label)}
                     >
                       <ThemedText className="text-xs font-bold text-rose-500">
@@ -687,6 +683,7 @@ export function QuickPresetBar({
             </ScrollView>
           )}
         </ThemedView>
+          </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   </View>

@@ -24,10 +24,10 @@ export interface BudgetProgressCardProps {
 }
 
 const PRESETS: Array<{ label: string; minor: number }> = [
-  { label: '₱1,500', minor: 150000 },
-  { label: '₱2,500', minor: 250000 },
-  { label: '₱4,000', minor: 400000 },
-  { label: '₱5,000', minor: 500000 },
+  { label: '₱15,000', minor: 1500000 },
+  { label: '₱30,000', minor: 3000000 },
+  { label: '₱50,000', minor: 5000000 },
+  { label: '₱80,000', minor: 8000000 },
 ];
 
 export function BudgetProgressCard({
@@ -218,7 +218,7 @@ export function BudgetProgressCard({
                   if (errorMessage) setErrorMessage(null);
                 }}
                 keyboardType="decimal-pad"
-                placeholder="2500"
+                placeholder="30000"
                 placeholderTextColor="#94A3B8"
                 autoFocus
                 editable={!isBusy}

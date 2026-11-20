@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Alert,
+  ActivityIndicator,
   Platform,
   Pressable,
   ScrollView,
@@ -46,8 +46,16 @@ import {
   useDeleteTransaction,
   useQuickPresets,
   useSmartDefaults,
+  useTransactions,
+  useUpdateTransaction,
   useWallets,
 } from '../hooks/use-transactions';
+import { useWebCalculatorKeys } from '../hooks/use-web-calculator-keys';
+
+export interface CaptureScreenProps {
+  editId?: string;
+  initialType?: TransactionType;
+}
 
 interface SavedTransactionToast {
   id: string;
@@ -56,13 +64,14 @@ interface SavedTransactionToast {
   label: string;
 }
 
-export function CaptureScreen() {
+export function CaptureScreen({ editId, initialType }: CaptureScreenProps = {}) {
   const { isAuthenticated } = useRequireAuth();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 960;
+  const isEditMode = Boolean(editId);
 
   // Primary state
-  const [type, setType] = useState<TransactionType>('EXPENSE');
+  const [type, setType] = useState<TransactionType>(initialType ?? 'EXPENSE');
   const [expression, setExpression] = useState<string>('0');
   const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(undefined);
   const [selectedToWalletId, setSelectedToWalletId] = useState<string | undefined>(undefined);
@@ -70,6 +79,8 @@ export function CaptureScreen() {
   const [splits, setSplits] = useState<TransactionSplit[]>([]);
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [lastSaved, setLastSaved] = useState<SavedTransactionToast | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [hydratedEditId, setHydratedEditId] = useState<string | null>(null);
 
   const [metadata, setMetadata] = useState<TransactionMetadataState>(() => ({
     occurredAt: new Date().toISOString(),
@@ -83,6 +94,12 @@ export function CaptureScreen() {
   const walletsQuery = useWallets();
   const wallets = walletsQuery.data ?? [];
 
+  const transactionsQuery = useTransactions();
+  const editingTx = useMemo(() => {
+    if (!editId) return undefined;
+    return (transactionsQuery.data ?? []).find((tx) => tx.id === editId);
+  }, [editId, transactionsQuery.data]);
+
   const { categories, pinnedCategories } = useCategories(
     type === 'TRANSFER' ? 'EXPENSE' : type,
     8,
@@ -95,8 +112,12 @@ export function CaptureScreen() {
   const quickPresets = quickPresetsQuery.data ?? [];
 
   const createTransactionMutation = useCreateTransaction();
+  const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
   const createCategoryMutation = useCreateCustomCategory();
+
+  const isSubmitting =
+    createTransactionMutation.isPending || updateTransactionMutation.isPending;
 
   // Active wallets with fallbacks
   const activeWalletId =
@@ -144,6 +165,50 @@ export function CaptureScreen() {
       setSelectedToWalletId(defaultToWallet);
     }
   }, [selectedToWalletId, wallets, smartDefaults, activeWalletId]);
+
+  // Hydrate form when editing an existing transaction (or reset when leaving edit mode)
+  useEffect(() => {
+    if (editId && editingTx && hydratedEditId !== editingTx.id) {
+      setType(editingTx.type);
+      setExpression(minorUnitsToDecimalInput(editingTx.amountMinor));
+      setSelectedWalletId(editingTx.walletId);
+      setSelectedToWalletId(editingTx.toWalletId);
+      setSelectedCategoryId(editingTx.categoryId);
+      setSplits(editingTx.splits ? editingTx.splits.map((s) => ({ ...s })) : []);
+      setMetadata({
+        occurredAt: editingTx.occurredAt,
+        merchant: editingTx.merchant ?? '',
+        tags: [...(editingTx.tags ?? [])],
+        note: editingTx.note ?? '',
+        receiptUri: editingTx.receiptUri,
+      });
+      setSaveError(null);
+      setHydratedEditId(editingTx.id);
+    } else if (!editId && hydratedEditId !== null) {
+      setHydratedEditId(null);
+      setType(initialType ?? 'EXPENSE');
+      setExpression('0');
+      setSplits([]);
+      setMetadata({
+        occurredAt: new Date().toISOString(),
+        merchant: '',
+        tags: [],
+        note: '',
+        receiptUri: undefined,
+      });
+      setSaveError(null);
+    }
+  }, [editId, editingTx, hydratedEditId, initialType]);
+
+  // Apply initialType route param when creating a new transaction
+  useEffect(() => {
+    if (!editId && initialType) {
+      setType(initialType);
+      if (initialType === 'TRANSFER') {
+        setSplits([]);
+      }
+    }
+  }, [editId, initialType]);
 
   // Ensure selectedCategoryId matches the active type when switching
   useEffect(() => {
@@ -246,28 +311,48 @@ export function CaptureScreen() {
     return () => clearTimeout(timer);
   }, [lastSaved]);
 
-  // Handle Save
+  const handleLeaveEdit = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/transactions');
+    }
+  };
+
+  // Handle Save / Update
   const handleSave = async () => {
-    if (!canSave || createTransactionMutation.isPending) return;
+    if (!canSave || isSubmitting) return;
+    setSaveError(null);
+
+    const payload = {
+      type,
+      amountMinor: evaluation.previewMinor,
+      currency: activeCurrency,
+      walletId: activeWalletId,
+      toWalletId: type === 'TRANSFER' ? activeToWalletId : undefined,
+      categoryId:
+        type !== 'TRANSFER' && splits.length === 0
+          ? selectedCategoryId
+          : undefined,
+      splits: type !== 'TRANSFER' && splits.length >= 2 ? splits : undefined,
+      merchant: metadata.merchant.trim() || undefined,
+      tags: metadata.tags,
+      note: metadata.note.trim() || undefined,
+      receiptUri: metadata.receiptUri,
+      occurredAt: metadata.occurredAt,
+    };
 
     try {
-      const savedTx = await createTransactionMutation.mutateAsync({
-        type,
-        amountMinor: evaluation.previewMinor,
-        currency: activeCurrency,
-        walletId: activeWalletId,
-        toWalletId: type === 'TRANSFER' ? activeToWalletId : undefined,
-        categoryId:
-          type !== 'TRANSFER' && splits.length === 0
-            ? selectedCategoryId
-            : undefined,
-        splits: type !== 'TRANSFER' && splits.length >= 2 ? splits : undefined,
-        merchant: metadata.merchant.trim() || undefined,
-        tags: metadata.tags,
-        note: metadata.note.trim() || undefined,
-        receiptUri: metadata.receiptUri,
-        occurredAt: metadata.occurredAt,
-      });
+      if (isEditMode && editId) {
+        await updateTransactionMutation.mutateAsync({
+          id: editId,
+          input: payload,
+        });
+        handleLeaveEdit();
+        return;
+      }
+
+      const savedTx = await createTransactionMutation.mutateAsync(payload);
 
       // Label for toast
       let label = 'Expense';
@@ -302,11 +387,7 @@ export function CaptureScreen() {
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : 'Failed to save transaction';
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(message);
-      } else {
-        Alert.alert('Save Error', message);
-      }
+      setSaveError(message);
     }
   };
 
@@ -315,16 +396,13 @@ export function CaptureScreen() {
     if (!lastSaved) return;
     const idToDelete = lastSaved.id;
     setLastSaved(null);
+    setSaveError(null);
     try {
       await deleteTransactionMutation.mutateAsync(idToDelete);
     } catch (error: unknown) {
       const message =
         error instanceof Error ? error.message : 'Failed to undo transaction';
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert(message);
-      } else {
-        Alert.alert('Undo Error', message);
-      }
+      setSaveError(message);
     }
   };
 
@@ -335,13 +413,88 @@ export function CaptureScreen() {
     return await createCategoryMutation.mutateAsync(input);
   };
 
+  // Desktop Web hardware keyboard support (no-op on native iOS/Android)
+  useWebCalculatorKeys({
+    enabled: isAuthenticated && !isSplitModalOpen,
+    needsCalculation: evaluation.hasOperator || evaluation.endsWithOperator,
+    canSave,
+    isSaving: isSubmitting,
+    onKeyPress: handleKeyPress,
+    onSave: () => {
+      void handleSave();
+    },
+  });
+
   if (!isAuthenticated) {
     return null;
+  }
+
+  if (isEditMode && transactionsQuery.isLoading) {
+    return (
+      <ThemedView className="flex-1 bg-slate-50 dark:bg-[#0b1326]">
+        <SafeAreaView className="flex-1 items-center justify-center gap-3">
+          <ActivityIndicator size="large" color="#208AEF" />
+          <ThemedText className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            Loading transaction...
+          </ThemedText>
+        </SafeAreaView>
+      </ThemedView>
+    );
+  }
+
+  if (isEditMode && !transactionsQuery.isLoading && !editingTx) {
+    return (
+      <ThemedView className="flex-1 bg-slate-50 dark:bg-[#0b1326]">
+        <SafeAreaView className="flex-1 items-center justify-center p-6">
+          <View className="w-full max-w-[400px] p-6 rounded-3xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 items-center gap-3 shadow-sm">
+            <ThemedText className="text-lg font-bold text-slate-900 dark:text-white text-center">
+              Transaction Not Found
+            </ThemedText>
+            <ThemedText className="text-xs text-slate-500 dark:text-slate-400 text-center leading-5">
+              This transaction may have been deleted or no longer exists.
+            </ThemedText>
+            <Pressable
+              onPress={() => router.replace('/transactions')}
+              accessibilityRole="button"
+              accessibilityLabel="Back to Ledger"
+              className="min-h-[44px] px-6 py-3 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center mt-1"
+            >
+              <ThemedText className="text-xs font-bold text-white">
+                Back to Ledger
+              </ThemedText>
+            </Pressable>
+          </View>
+        </SafeAreaView>
+      </ThemedView>
+    );
   }
 
   return (
     <ThemedView className="flex-1 bg-slate-50 dark:bg-[#0b1326]">
       <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
+        {/* Inline Error Banner */}
+        {saveError && (
+          <View
+            style={{ maxWidth: isDesktop ? 1200 : 600 }}
+            className="mx-4 mt-2 px-4 py-3 rounded-2xl bg-rose-50/95 dark:bg-rose-950/90 border border-rose-300 dark:border-rose-800 flex-row items-center justify-between shadow-lg z-50 self-center w-full"
+          >
+            <ThemedText className="flex-1 mr-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
+              {saveError}
+            </ThemedText>
+            <Pressable
+              onPress={() => setSaveError(null)}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss error message"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              className="min-h-[44px] min-w-[44px] items-center justify-center active:opacity-75"
+            >
+              <ThemedText className="text-xs font-bold text-rose-600 dark:text-rose-300">
+                ✕
+              </ThemedText>
+            </Pressable>
+          </View>
+        )}
+
         {/* Non-blocking confirmation toast banner */}
         {lastSaved && (
           <View
@@ -359,7 +512,7 @@ export function CaptureScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Undo saved transaction"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-2.5 py-1.5 rounded-lg bg-rose-500/10 active:opacity-75"
+                className="min-h-[44px] px-3 py-1.5 rounded-lg bg-rose-500/10 active:opacity-75 items-center justify-center"
               >
                 <ThemedText className="text-xs font-bold text-rose-500">Undo</ThemedText>
               </Pressable>
@@ -369,7 +522,7 @@ export function CaptureScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="View history"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-2.5 py-1.5 rounded-lg bg-brand-500/10 active:opacity-75"
+                className="min-h-[44px] px-3 py-1.5 rounded-lg bg-brand-500/10 active:opacity-75 items-center justify-center"
               >
                 <ThemedText className="text-xs font-bold text-brand-500">History →</ThemedText>
               </Pressable>
@@ -379,7 +532,7 @@ export function CaptureScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Dismiss confirmation toast"
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                className="p-1 active:opacity-75"
+                className="min-h-[44px] min-w-[44px] items-center justify-center active:opacity-75"
               >
                 <ThemedText className="text-xs font-bold text-slate-400 dark:text-slate-500">
                   ✕
@@ -408,22 +561,38 @@ export function CaptureScreen() {
             <View>
               <View className="flex-row items-center gap-2">
                 <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-                  Fast Entry
+                  {isEditMode ? 'Edit Transaction' : 'Fast Entry'}
                 </ThemedText>
               </View>
               <ThemedText className="text-xs font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-                Sub-3-second transaction capture studio
+                {isEditMode
+                  ? 'Adjust amount, wallet, category, or details'
+                  : 'Sub-3-second transaction capture studio'}
               </ThemedText>
             </View>
-            <Pressable
-              onPress={() => router.push('/transactions')}
-              accessibilityRole="button"
-              accessibilityLabel="View transaction history"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 items-center justify-center active:opacity-75"
-            >
-              <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">History</ThemedText>
-            </Pressable>
+            {isEditMode ? (
+              <Pressable
+                onPress={handleLeaveEdit}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel editing transaction"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                  Cancel
+                </ThemedText>
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={() => router.push('/transactions')}
+                accessibilityRole="button"
+                accessibilityLabel="View transaction history"
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">History</ThemedText>
+              </Pressable>
+            )}
           </View>
 
           {/* Desktop 2-Pane Split Studio vs Mobile Stacked Layout */}
@@ -431,20 +600,22 @@ export function CaptureScreen() {
             <View className="flex-row gap-6 items-start mt-2">
               {/* Left Pane (flex-[7] min-w-0 gap-4) */}
               <View className="flex-[7] min-w-0 gap-4">
-                {/* Card 1: QuickPresetBar + TypeToggle */}
+                {/* Card 1: QuickPresetBar (create mode only) + TypeToggle */}
                 <View className="bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 rounded-3xl p-5 gap-4">
-                  <QuickPresetBar
-                    presets={quickPresets}
-                    onSelectPreset={handleSelectPreset}
-                    currency={activeCurrency}
-                    currentType={type}
-                    currentAmountMinor={evaluation.previewMinor > 0 ? evaluation.previewMinor : undefined}
-                    currentWalletId={activeWalletId}
-                    currentToWalletId={activeToWalletId}
-                    currentCategoryId={selectedCategoryId}
-                    currentMerchant={metadata.merchant}
-                    currentTags={metadata.tags}
-                  />
+                  {!isEditMode && (
+                    <QuickPresetBar
+                      presets={quickPresets}
+                      onSelectPreset={handleSelectPreset}
+                      currency={activeCurrency}
+                      currentType={type}
+                      currentAmountMinor={evaluation.previewMinor > 0 ? evaluation.previewMinor : undefined}
+                      currentWalletId={activeWalletId}
+                      currentToWalletId={activeToWalletId}
+                      currentCategoryId={selectedCategoryId}
+                      currentMerchant={metadata.merchant}
+                      currentTags={metadata.tags}
+                    />
+                  )}
                   <TypeToggle value={type} onChange={handleTypeChange} />
                 </View>
 
@@ -577,8 +748,8 @@ export function CaptureScreen() {
                   <CalculatorKeypad
                     evaluation={evaluation}
                     canSave={canSave}
-                    isSaving={createTransactionMutation.isPending}
-                    saveLabel="Save"
+                    isSaving={isSubmitting}
+                    saveLabel={isEditMode ? 'Update' : 'Save'}
                     onKeyPress={handleKeyPress}
                     onSave={handleSave}
                   />
@@ -597,18 +768,20 @@ export function CaptureScreen() {
                   splitCount={splits.length}
                   onClear={handleClear}
                 />
-                <QuickPresetBar
-                  presets={quickPresets}
-                  onSelectPreset={handleSelectPreset}
-                  currency={activeCurrency}
-                  currentType={type}
-                  currentAmountMinor={evaluation.previewMinor > 0 ? evaluation.previewMinor : undefined}
-                  currentWalletId={activeWalletId}
-                  currentToWalletId={activeToWalletId}
-                  currentCategoryId={selectedCategoryId}
-                  currentMerchant={metadata.merchant}
-                  currentTags={metadata.tags}
-                />
+                {!isEditMode && (
+                  <QuickPresetBar
+                    presets={quickPresets}
+                    onSelectPreset={handleSelectPreset}
+                    currency={activeCurrency}
+                    currentType={type}
+                    currentAmountMinor={evaluation.previewMinor > 0 ? evaluation.previewMinor : undefined}
+                    currentWalletId={activeWalletId}
+                    currentToWalletId={activeToWalletId}
+                    currentCategoryId={selectedCategoryId}
+                    currentMerchant={metadata.merchant}
+                    currentTags={metadata.tags}
+                  />
+                )}
               </View>
 
               {/* Card 2: Context & Category Card (WalletSelector + CategoryPickerGrid + MetadataPillBar) */}
@@ -662,8 +835,8 @@ export function CaptureScreen() {
                 <CalculatorKeypad
                   evaluation={evaluation}
                   canSave={canSave}
-                  isSaving={createTransactionMutation.isPending}
-                  saveLabel="Save"
+                  isSaving={isSubmitting}
+                  saveLabel={isEditMode ? 'Update' : 'Save'}
                   onKeyPress={handleKeyPress}
                   onSave={handleSave}
                 />

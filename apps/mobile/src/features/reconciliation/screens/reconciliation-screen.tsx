@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Switch,
   TextInput,
@@ -12,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   computeReconciliationDelta,
   formatMinorUnits,
@@ -23,6 +25,7 @@ import {
 import { ThemedText } from '@/common/components/themed-text';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import {
+  TRANSACTION_KEYS,
   useApplyReconciliation,
   useReconciliations,
   useWallets,
@@ -30,8 +33,19 @@ import {
 
 export function ReconciliationScreen() {
   const { isAuthenticated } = useRequireAuth();
+  const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 960;
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handlePullRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const { data: wallets = [], isLoading: isWalletsLoading } = useWallets();
   const applyMutation = useApplyReconciliation();
@@ -189,43 +203,43 @@ export function ReconciliationScreen() {
         <View className="flex-row items-center gap-2 flex-wrap pt-1">
           <ThemedText className="text-[11px] text-slate-500 mr-1">Quick nudge:</ThemedText>
           <Pressable
-            onPress={() => handleQuickDelta(-5000)}
+            onPress={() => handleQuickDelta(-50000)}
             accessibilityRole="button"
-            accessibilityLabel="Subtract 50 pesos"
+            accessibilityLabel="Subtract 500 pesos"
             className="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75 justify-center items-center"
           >
             <ThemedText className="text-xs font-semibold font-mono text-slate-700 dark:text-slate-300">
-              -₱50
+              -₱500
             </ThemedText>
           </Pressable>
           <Pressable
-            onPress={() => handleQuickDelta(-1000)}
+            onPress={() => handleQuickDelta(-10000)}
             accessibilityRole="button"
-            accessibilityLabel="Subtract 10 pesos"
+            accessibilityLabel="Subtract 100 pesos"
             className="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75 justify-center items-center"
           >
             <ThemedText className="text-xs font-semibold font-mono text-slate-700 dark:text-slate-300">
-              -₱10
+              -₱100
             </ThemedText>
           </Pressable>
           <Pressable
-            onPress={() => handleQuickDelta(1000)}
+            onPress={() => handleQuickDelta(10000)}
             accessibilityRole="button"
-            accessibilityLabel="Add 10 pesos"
+            accessibilityLabel="Add 100 pesos"
             className="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75 justify-center items-center"
           >
             <ThemedText className="text-xs font-semibold font-mono text-slate-700 dark:text-slate-300">
-              +₱10
+              +₱100
             </ThemedText>
           </Pressable>
           <Pressable
-            onPress={() => handleQuickDelta(5000)}
+            onPress={() => handleQuickDelta(50000)}
             accessibilityRole="button"
-            accessibilityLabel="Add 50 pesos"
+            accessibilityLabel="Add 500 pesos"
             className="min-h-[44px] px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75 justify-center items-center"
           >
             <ThemedText className="text-xs font-semibold font-mono text-slate-700 dark:text-slate-300">
-              +₱50
+              +₱500
             </ThemedText>
           </Pressable>
         </View>
@@ -455,6 +469,15 @@ export function ReconciliationScreen() {
 
           <ScrollView
             className="flex-1"
+            keyboardShouldPersistTaps="handled"
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => void handlePullRefresh()}
+                tintColor="#208AEF"
+                colors={['#208AEF']}
+              />
+            }
             contentContainerStyle={{
               width: '100%',
               maxWidth: isDesktop ? 1200 : 720,
@@ -517,9 +540,10 @@ export function ReconciliationScreen() {
                         onPress={() => handleSelectWallet(wallet)}
                         accessibilityRole="button"
                         accessibilityLabel={`Select wallet ${wallet.name}`}
+                        accessibilityState={{ selected: isSelected }}
                         className={`p-3.5 rounded-2xl border min-w-[160px] flex-1 min-h-[44px] justify-center ${
                           isSelected
-                            ? 'bg-brand-50 dark:bg-brand-950/40 border-brand-500 dark:border-brand-500 shadow-sm'
+                            ? 'bg-brand-50 dark:bg-brand-900/45 border-brand-500 shadow-sm'
                             : 'bg-white dark:bg-[#131b2e] border-slate-200/80 dark:border-slate-800/90'
                         }`}
                       >
@@ -528,7 +552,7 @@ export function ReconciliationScreen() {
                           <ThemedText
                             className={`text-xs font-bold ${
                               isSelected
-                                ? 'text-brand-700 dark:text-brand-300'
+                                ? 'text-brand-700 dark:text-brand-200'
                                 : 'text-slate-700 dark:text-slate-300'
                             }`}
                             numberOfLines={1}
@@ -562,9 +586,10 @@ export function ReconciliationScreen() {
                         onPress={() => handleSelectWallet(wallet)}
                         accessibilityRole="button"
                         accessibilityLabel={`Select wallet ${wallet.name}`}
+                        accessibilityState={{ selected: isSelected }}
                         className={`p-3.5 rounded-2xl border min-w-[140px] min-h-[44px] justify-center ${
                           isSelected
-                            ? 'bg-brand-50 dark:bg-brand-950/40 border-brand-500 dark:border-brand-500 shadow-sm'
+                            ? 'bg-brand-50 dark:bg-brand-900/45 border-brand-500 shadow-sm'
                             : 'bg-white dark:bg-[#131b2e] border-slate-200/80 dark:border-slate-800/90'
                         }`}
                       >
@@ -573,7 +598,7 @@ export function ReconciliationScreen() {
                           <ThemedText
                             className={`text-xs font-bold ${
                               isSelected
-                                ? 'text-brand-700 dark:text-brand-300'
+                                ? 'text-brand-700 dark:text-brand-200'
                                 : 'text-slate-700 dark:text-slate-300'
                             }`}
                             numberOfLines={1}

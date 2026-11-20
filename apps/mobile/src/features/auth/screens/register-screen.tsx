@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -106,20 +107,26 @@ function CompactMobileBrandHeader() {
 }
 
 export function RegisterScreen() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, isHydrating, register } = useAuth();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 960;
 
-  const [registeredUser, setRegisteredUser] = useState<{
-    name: string;
-    email: string;
-  } | null>(null);
-
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isHydrating && isAuthenticated) {
       router.replace('/dashboard');
     }
-  }, [isAuthenticated]);
+  }, [isHydrating, isAuthenticated]);
+
+  if (isHydrating) {
+    return (
+      <View className="flex-1 bg-slate-50 dark:bg-[#0b1326] items-center justify-center gap-3">
+        <ActivityIndicator size="large" color="#208AEF" />
+        <Text className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          Restoring your session...
+        </Text>
+      </View>
+    );
+  }
 
   if (isAuthenticated) {
     return null;
@@ -128,82 +135,48 @@ export function RegisterScreen() {
   const registerCard = (
     <View
       className="w-full max-w-[460px] rounded-3xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 p-6 sm:p-8 shadow-xl shadow-slate-900/5"
-      style={{ width: '100%', maxWidth: 460, alignSelf: isDesktop ? 'auto' : 'center' }}>
-      {registeredUser ? (
-        <View className="items-center">
-          <View className="w-16 h-16 rounded-2xl bg-emerald-500 items-center justify-center shadow-lg shadow-emerald-500/30 mb-3">
-            <Text className="text-sm font-mono font-bold text-white">OK</Text>
-          </View>
-
-          <Text className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 text-center">
-            Welcome, {registeredUser.name}!
-          </Text>
-
-          <View className="rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 px-4 py-3 w-full items-center my-4">
-            <Text className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
-              Account Created
-            </Text>
-            <Text className="text-sm font-bold text-emerald-900 dark:text-emerald-100 mt-0.5">
-              {registeredUser.email}
-            </Text>
-          </View>
-
-          <Text className="text-sm leading-6 text-slate-500 dark:text-slate-400 text-center mb-6">
-            Your account has been successfully created. You can now sign in to start managing
-            your budgets and finances.
-          </Text>
-
-          <View className="w-full">
-            <Pressable
-              onPress={() => {
-                login(registeredUser.email, registeredUser.name);
-                router.replace('/dashboard');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Proceed to Sign In"
-              className="w-full min-h-[48px] h-12 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-md shadow-brand-500/25">
-              <Text className="text-base font-semibold text-white">Proceed to Sign In</Text>
-            </Pressable>
-          </View>
+      style={{ width: '100%', maxWidth: 460, alignSelf: isDesktop ? 'auto' : 'center' }}
+    >
+      <View className="items-center mb-6">
+        <View className="w-16 h-16 rounded-2xl bg-brand-500 items-center justify-center shadow-lg shadow-brand-500/30 mb-3">
+          <Text className="text-3xl font-extrabold text-white leading-none font-mono">₱</Text>
         </View>
-      ) : (
-        <>
-          <View className="items-center mb-6">
-            <View className="w-16 h-16 rounded-2xl bg-brand-500 items-center justify-center shadow-lg shadow-brand-500/30 mb-3">
-              <Text className="text-3xl font-extrabold text-white leading-none font-mono">₱</Text>
-            </View>
-            <View className="px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-800/50 mb-2">
-              <Text className="text-[11px] font-bold tracking-wider text-brand-600 dark:text-brand-400 uppercase">
-                GET STARTED
-              </Text>
-            </View>
-            <Text className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 text-center">
-              Create an account
-            </Text>
-            <Text className="text-sm text-slate-500 dark:text-slate-400 text-center mt-1">
-              Start tracking your budget and expenses today
-            </Text>
-          </View>
+        <View className="px-3 py-1 rounded-full bg-brand-50 dark:bg-brand-900/30 border border-brand-200 dark:border-brand-800/50 mb-2">
+          <Text className="text-[11px] font-bold tracking-wider text-brand-600 dark:text-brand-400 uppercase">
+            GET STARTED
+          </Text>
+        </View>
+        <Text className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 text-center">
+          Create an account
+        </Text>
+        <Text className="text-sm text-slate-500 dark:text-slate-400 text-center mt-1">
+          Create a synced account for phone and desktop
+        </Text>
+      </View>
 
-          <RegisterForm onSuccess={(user) => setRegisteredUser(user)} />
+      <RegisterForm
+        onSubmit={async ({ name, email, password }) => {
+          await register(name, email, password);
+          router.replace('/dashboard');
+        }}
+      />
 
-          <View className="flex-row items-center justify-center mt-6">
-            <Text className="text-sm text-slate-500 dark:text-slate-400">
-              Already have an account?{' '}
-            </Text>
-            <Pressable
-              onPress={() => router.push('/')}
-              accessibilityRole="button"
-              accessibilityLabel="Sign In"
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              className="active:opacity-75 min-h-[44px] justify-center">
-              <Text className="text-sm font-semibold text-brand-500 dark:text-brand-400">
-                Sign In
-              </Text>
-            </Pressable>
-          </View>
-        </>
-      )}
+      <View className="flex-row items-center justify-center mt-6">
+        <Text className="text-sm text-slate-500 dark:text-slate-400">
+          Already have an account?{' '}
+        </Text>
+        <Pressable
+          onPress={() => router.push('/')}
+          accessibilityRole="button"
+          accessibilityLabel="Sign In"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          className="active:opacity-75 min-h-[44px] justify-center"
+        >
+          <Text className="text-sm font-semibold text-brand-500 dark:text-brand-400">
+            Sign In
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 

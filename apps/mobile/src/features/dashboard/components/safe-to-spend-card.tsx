@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -17,14 +16,18 @@ import {
   minorUnitsToDecimalInput,
   parseDecimalToMinorUnits,
   type CommitmentFrequency,
+  type CommitmentType,
   type RecurringCommitment,
 } from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
+import { confirmAction } from '@/common/lib/confirm';
 import {
   useAllCategories,
   useDeleteRecurringCommitment,
   useRecurringCommitments,
   useSafeToSpendMetrics,
+  useSettleRecurringCommitment,
+  useUnmarkRecurringCommitmentPaid,
   useUpsertRecurringCommitment,
   useWallets,
 } from '@/features/transactions/hooks/use-transactions';
@@ -37,7 +40,7 @@ const FREQUENCY_OPTIONS: { label: string; value: CommitmentFrequency }[] = [
   { label: 'Yearly', value: 'YEARLY' },
 ];
 
-const QUICK_AMOUNT_PRESETS = [1500, 5000, 10000, 50000, 150000]; // ₱15, ₱50, ₱100, ₱500, ₱1,500 in centavos
+const QUICK_AMOUNT_PRESETS = [50000, 150000, 300000, 1000000, 2000000]; // ₱500, ₱1,500, ₱3,000, ₱10,000, ₱20,000 in centavos
 const QUICK_DAY_PRESETS = [1, 5, 10, 15, 20, 25, 30];
 
 export function SafeToSpendCard() {
@@ -51,6 +54,8 @@ export function SafeToSpendCard() {
 
   const upsertMutation = useUpsertRecurringCommitment();
   const deleteMutation = useDeleteRecurringCommitment();
+  const settleMutation = useSettleRecurringCommitment();
+  const unmarkMutation = useUnmarkRecurringCommitmentPaid();
 
   // Accordion toggle: defaults to expanded on desktop web
   const [isBreakdownExpanded, setIsBreakdownExpanded] = useState(() => Platform.OS === 'web');
@@ -61,11 +66,16 @@ export function SafeToSpendCard() {
   // Bill filter
   const [filterMode, setFilterMode] = useState<'ALL' | 'UNPAID' | 'PAID'>('ALL');
 
-  // Modal State
+  // Add/Edit Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [editingCommitment, setEditingCommitment] = useState<RecurringCommitment | null>(null);
 
+  // Settle Confirmation Modal State
+  const [settleTarget, setSettleTarget] = useState<RecurringCommitment | null>(null);
+  const [settleError, setSettleError] = useState<string | null>(null);
+
   // Form Fields
+  const [commitmentType, setCommitmentType] = useState<CommitmentType>('EXPENSE');
   const [name, setName] = useState('');
   const [amountInput, setAmountInput] = useState('');
   const [dueDay, setDueDay] = useState(1);
@@ -90,7 +100,7 @@ export function SafeToSpendCard() {
   const daysRemaining = metrics?.daysRemainingInMonth ?? 1;
 
   const isNegative = safeToSpendMinor < 0;
-  const isTight = !isNegative && dailyDiscretionaryMinor < 1000; // < $10.00/day
+  const isTight = !isNegative && dailyDiscretionaryMinor < 50000; // < ₱500.00/day
   const isPositive = !isNegative && !isTight;
 
   const heroTheme = useMemo(() => {
@@ -132,18 +142,49 @@ export function SafeToSpendCard() {
   }, [commitments, currentPeriod, filterMode]);
 
   const unpaidCount = useMemo(() => {
-    return commitments.filter((c) => c.isActive && c.lastPaidPeriod !== currentPeriod).length;
+    return commitments.filter(
+      (c) =>
+        c.isActive &&
+        (c.type ?? 'EXPENSE') === 'EXPENSE' &&
+        c.lastPaidPeriod !== currentPeriod,
+    ).length;
   }, [commitments, currentPeriod]);
 
+  const pendingFilterCount = useMemo(() => {
+    return commitments.filter((c) => c.lastPaidPeriod !== currentPeriod).length;
+  }, [commitments, currentPeriod]);
+
+  const modalCategories = useMemo(() => {
+    return categories.filter((c) => c.type === commitmentType);
+  }, [categories, commitmentType]);
+
   // Modal Handlers
+  const handleSelectCommitmentType = (nextType: CommitmentType) => {
+    setCommitmentType(nextType);
+    const matching = categories.filter((c) => c.type === nextType);
+    if (!matching.some((c) => c.id === categoryId)) {
+      const fallbackId =
+        nextType === 'INCOME'
+          ? (matching.find((c) => c.id === 'cat-salary')?.id ?? matching[0]?.id ?? 'cat-salary')
+          : (matching.find((c) => c.id === 'cat-bills')?.id ?? matching[0]?.id ?? 'cat-bills');
+      setCategoryId(fallbackId);
+    }
+  };
+
   const handleOpenAddModal = () => {
     setEditingCommitment(null);
+    setCommitmentType('EXPENSE');
     setName('');
     setAmountInput('');
     setDueDay(15);
     setFrequency('MONTHLY');
     setWalletId(wallets[0]?.id ?? 'wallet-checking');
-    setCategoryId(categories[0]?.id ?? 'cat-bills');
+    const expenseCategories = categories.filter((c) => c.type === 'EXPENSE');
+    setCategoryId(
+      expenseCategories.find((c) => c.id === 'cat-bills')?.id ??
+        expenseCategories[0]?.id ??
+        'cat-bills',
+    );
     setIsAutoPaid(false);
     setNotes('');
     setFormError(null);
@@ -152,6 +193,7 @@ export function SafeToSpendCard() {
 
   const handleOpenEditModal = (commitment: RecurringCommitment) => {
     setEditingCommitment(commitment);
+    setCommitmentType(commitment.type ?? 'EXPENSE');
     setName(commitment.name);
     setAmountInput(minorUnitsToDecimalInput(commitment.amountMinor));
     setDueDay(commitment.dueDay);
@@ -167,7 +209,7 @@ export function SafeToSpendCard() {
   const handleSaveCommitment = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) {
-      setFormError('Please enter a name for the recurring bill.');
+      setFormError('Please enter a name for the recurring entry.');
       return;
     }
 
@@ -189,10 +231,14 @@ export function SafeToSpendCard() {
       await upsertMutation.mutateAsync({
         ...(editingCommitment ? { id: editingCommitment.id } : {}),
         name: trimmedName,
+        type: commitmentType,
         amountMinor: parsedMinor,
         currency,
         walletId: walletId || (wallets[0]?.id ?? 'wallet-checking'),
-        categoryId: categoryId || (categories[0]?.id ?? 'cat-bills'),
+        categoryId:
+          categoryId ||
+          modalCategories[0]?.id ||
+          (commitmentType === 'INCOME' ? 'cat-salary' : 'cat-bills'),
         frequency,
         dueDay,
         isAutoPaid,
@@ -203,50 +249,70 @@ export function SafeToSpendCard() {
 
       setModalVisible(false);
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : 'Failed to save recurring bill.');
-    }
-  };
-
-  const handleDeleteCommitment = async (id: string) => {
-    const confirmDelete = async () => {
-      try {
-        await deleteMutation.mutateAsync(id);
-        setModalVisible(false);
-      } catch (err: unknown) {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('Failed to delete recurring commitment.');
-        } else {
-          Alert.alert('Error', 'Failed to delete recurring commitment.');
-        }
-      }
-    };
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm('Are you sure you want to delete this recurring obligation?')) {
-        await confirmDelete();
-      }
-    } else {
-      Alert.alert(
-        'Delete Recurring Bill',
-        'Are you sure you want to delete this recurring obligation?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: confirmDelete,
-          },
-        ],
+      setFormError(
+        err instanceof Error ? err.message : 'Failed to save recurring obligation.',
       );
     }
   };
 
-  const handleTogglePaid = async (commitment: RecurringCommitment) => {
-    const isPaid = commitment.lastPaidPeriod === currentPeriod;
-    await upsertMutation.mutateAsync({
-      ...commitment,
-      lastPaidPeriod: isPaid ? undefined : currentPeriod,
+  const handleDeleteCommitment = async (id: string) => {
+    const confirmed = await confirmAction({
+      title: 'Delete Recurring Entry',
+      message: 'Are you sure you want to delete this recurring item?',
+      confirmLabel: 'Delete',
+      destructive: true,
     });
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      await deleteMutation.mutateAsync(id);
+      setModalVisible(false);
+    } catch (err: unknown) {
+      setFormError(
+        err instanceof Error ? err.message : 'Failed to delete recurring commitment.',
+      );
+    }
+  };
+
+  const handlePressSettle = async (commitment: RecurringCommitment) => {
+    const isPaid = commitment.lastPaidPeriod === currentPeriod;
+    if (isPaid) {
+      const confirmed = await confirmAction({
+        title:
+          commitment.type === 'INCOME'
+            ? 'Unmark Received Income'
+            : 'Unmark Paid Bill',
+        message: `Mark "${commitment.name}" as pending for this month again? (Any previously logged transaction will stay in your ledger.)`,
+        confirmLabel: 'Mark Pending',
+      });
+      if (!confirmed) {
+        return;
+      }
+      await unmarkMutation.mutateAsync(commitment.id);
+      return;
+    }
+
+    setSettleError(null);
+    setSettleTarget(commitment);
+  };
+
+  const handleConfirmSettle = async (recordTransaction: boolean) => {
+    if (!settleTarget) return;
+    setSettleError(null);
+    try {
+      await settleMutation.mutateAsync({
+        commitmentId: settleTarget.id,
+        periodMonth: currentPeriod,
+        recordTransaction,
+      });
+      setSettleTarget(null);
+    } catch (err: unknown) {
+      setSettleError(
+        err instanceof Error ? err.message : 'Failed to update status.',
+      );
+    }
   };
 
   return (
@@ -350,8 +416,10 @@ export function SafeToSpendCard() {
                       <ThemedText className="text-xs font-semibold text-slate-800 dark:text-slate-200 mb-0.5">
                         (-) Fixed Bills
                       </ThemedText>
-                      <ThemedText className="text-[11px] text-slate-500 mb-2" numberOfLines={1}>
-                        Unpaid recurring bills
+                      <ThemedText className="text-[11px] text-slate-500 mb-2" numberOfLines={2}>
+                        {metrics.overdueFixedBillsMinor > 0
+                          ? `Includes ${formatMinorUnits(metrics.overdueFixedBillsMinor)} overdue`
+                          : 'Unpaid recurring bills'}
                       </ThemedText>
                     </View>
                     <ThemedText className="text-sm font-bold font-mono text-rose-600 dark:text-rose-400">
@@ -389,6 +457,17 @@ export function SafeToSpendCard() {
                     {formatMinorUnits(metrics.safeToSpendMinor)}
                   </ThemedText>
                 </View>
+
+                {metrics.expectedRemainingIncomeMinor > 0 && (
+                  <View className="flex-row items-center justify-between pt-2 border-t border-slate-200/60 dark:border-slate-800/60 px-1">
+                    <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400 flex-1 mr-2">
+                      Expected upcoming income (not counted in Safe-to-Spend until received)
+                    </ThemedText>
+                    <ThemedText className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                      +{formatMinorUnits(metrics.expectedRemainingIncomeMinor)}
+                    </ThemedText>
+                  </View>
+                )}
               </View>
             ) : (
               /* Mobile / Compact view */
@@ -427,10 +506,12 @@ export function SafeToSpendCard() {
                 <View className="flex-row items-center justify-between">
                   <View className="flex-1 mr-2">
                     <ThemedText className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                      (-) Upcoming Fixed Bills
+                      (-) Upcoming & Unpaid Bills
                     </ThemedText>
                     <ThemedText className="text-[11px] text-slate-500">
-                      Unpaid recurring commitments due
+                      {metrics.overdueFixedBillsMinor > 0
+                        ? `Includes ${formatMinorUnits(metrics.overdueFixedBillsMinor)} overdue`
+                        : 'Unpaid recurring commitments due'}
                     </ThemedText>
                   </View>
                   <ThemedText className="text-xs font-bold font-mono text-rose-600 dark:text-rose-400">
@@ -472,6 +553,17 @@ export function SafeToSpendCard() {
                     {formatMinorUnits(metrics.safeToSpendMinor)}
                   </ThemedText>
                 </View>
+
+                {metrics.expectedRemainingIncomeMinor > 0 && (
+                  <View className="flex-row items-center justify-between pt-1.5 border-t border-slate-200/60 dark:border-slate-800/60">
+                    <ThemedText className="text-[11px] text-slate-500 flex-1 mr-2">
+                      Expected income (not counted until received)
+                    </ThemedText>
+                    <ThemedText className="text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                      +{formatMinorUnits(metrics.expectedRemainingIncomeMinor)}
+                    </ThemedText>
+                  </View>
+                )}
               </View>
             )}
           </View>
@@ -503,11 +595,11 @@ export function SafeToSpendCard() {
           <Pressable
             onPress={handleOpenAddModal}
             accessibilityRole="button"
-            accessibilityLabel="Add new recurring bill"
+            accessibilityLabel="Add new recurring bill or income"
             className="min-h-[44px] px-4 py-2 rounded-full bg-brand-500 active:bg-brand-600 shadow-sm items-center justify-center"
           >
             <ThemedText className="text-xs font-bold text-white">
-              + Add Bill
+              + Add
             </ThemedText>
           </Pressable>
         </View>
@@ -517,18 +609,18 @@ export function SafeToSpendCard() {
           <Pressable
             onPress={() => setIsBillsExpanded(!isBillsExpanded)}
             accessibilityRole="button"
-            accessibilityLabel={isBillsExpanded ? 'Hide recurring bills' : 'Show recurring bills'}
+            accessibilityLabel={isBillsExpanded ? 'Hide recurring items' : 'Show recurring items'}
             accessibilityState={{ expanded: isBillsExpanded }}
             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             className="min-h-[44px] py-2.5 px-3.5 rounded-2xl bg-slate-100/90 dark:bg-[#171f33] border border-slate-200/80 dark:border-slate-800/80 flex-row items-center justify-between active:opacity-75"
           >
             <View className="flex-row items-center gap-2 flex-1">
               <ThemedText className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Recurring Bills
+                Recurring Bills & Paydays
               </ThemedText>
               <View className="px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-700/80">
                 <ThemedText className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">
-                  {commitments.length} total • {unpaidCount} unpaid
+                  {commitments.length} total • {pendingFilterCount} pending
                 </ThemedText>
               </View>
             </View>
@@ -540,14 +632,14 @@ export function SafeToSpendCard() {
 
         {(isDesktop || isBillsExpanded) && (
           <>
-            {/* Filter Pills (All / Unpaid / Paid) */}
+            {/* Filter Pills (All / Pending / Settled) */}
             {commitments.length > 0 && (
               <View className="flex-row items-center gap-1.5 pt-1">
             <Pressable
               onPress={() => setFilterMode('ALL')}
               accessibilityRole="button"
-              accessibilityLabel="Show all bills"
-              className={`min-h-[36px] items-center justify-center px-3.5 py-1.5 rounded-full border ${
+              accessibilityLabel="Show all recurring items"
+              className={`min-h-[44px] items-center justify-center px-3.5 py-1.5 rounded-full border ${
                 filterMode === 'ALL'
                   ? 'bg-slate-900 dark:bg-white border-slate-900 dark:border-white'
                   : 'bg-slate-100 dark:bg-slate-800 border-transparent'
@@ -567,8 +659,8 @@ export function SafeToSpendCard() {
             <Pressable
               onPress={() => setFilterMode('UNPAID')}
               accessibilityRole="button"
-              accessibilityLabel="Show unpaid bills"
-              className={`min-h-[36px] items-center justify-center px-3.5 py-1.5 rounded-full border ${
+              accessibilityLabel="Show pending items"
+              className={`min-h-[44px] items-center justify-center px-3.5 py-1.5 rounded-full border ${
                 filterMode === 'UNPAID'
                   ? 'bg-amber-600 border-amber-600'
                   : 'bg-slate-100 dark:bg-slate-800 border-transparent'
@@ -581,15 +673,15 @@ export function SafeToSpendCard() {
                     : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                Unpaid ({unpaidCount})
+                Pending ({pendingFilterCount})
               </ThemedText>
             </Pressable>
 
             <Pressable
               onPress={() => setFilterMode('PAID')}
               accessibilityRole="button"
-              accessibilityLabel="Show paid bills"
-              className={`min-h-[36px] items-center justify-center px-3.5 py-1.5 rounded-full border ${
+              accessibilityLabel="Show settled items"
+              className={`min-h-[44px] items-center justify-center px-3.5 py-1.5 rounded-full border ${
                 filterMode === 'PAID'
                   ? 'bg-emerald-600 border-emerald-600'
                   : 'bg-slate-100 dark:bg-slate-800 border-transparent'
@@ -602,7 +694,7 @@ export function SafeToSpendCard() {
                     : 'text-slate-600 dark:text-slate-400'
                 }`}
               >
-                Paid ({commitments.length - unpaidCount})
+                Settled ({commitments.length - pendingFilterCount})
               </ThemedText>
             </Pressable>
           </View>
@@ -628,7 +720,8 @@ export function SafeToSpendCard() {
           <View className={isDesktop ? 'flex-row flex-wrap gap-3' : 'gap-2.5'}>
             {filteredCommitments.map((commitment) => {
               const isPaid = commitment.lastPaidPeriod === currentPeriod;
-              const isOverdue = !isPaid && commitment.dueDay < currentDay;
+              const isIncome = commitment.type === 'INCOME';
+              const isOverdue = !isPaid && !isIncome && commitment.dueDay < currentDay;
               const isDueToday = !isPaid && commitment.dueDay === currentDay;
 
               const wallet = wallets.find((w) => w.id === commitment.walletId);
@@ -651,6 +744,25 @@ export function SafeToSpendCard() {
                     {/* Left: Due Badge + Name + Badges */}
                     <View className="flex-1 mr-3">
                       <View className="flex-row items-center gap-2 mb-1 flex-wrap">
+                        {/* Type pill */}
+                        <View
+                          className={`px-1.5 py-0.5 rounded ${
+                            isIncome
+                              ? 'bg-emerald-100 dark:bg-emerald-900/50'
+                              : 'bg-rose-100/80 dark:bg-rose-900/40'
+                          }`}
+                        >
+                          <ThemedText
+                            className={`text-[10px] font-bold ${
+                              isIncome
+                                ? 'text-emerald-700 dark:text-emerald-300'
+                                : 'text-rose-700 dark:text-rose-300'
+                            }`}
+                          >
+                            {isIncome ? 'INCOME' : 'BILL'}
+                          </ThemedText>
+                        </View>
+
                         {/* Due Badge */}
                         <View
                           className={`px-2 py-0.5 rounded-md ${
@@ -675,12 +787,16 @@ export function SafeToSpendCard() {
                             }`}
                           >
                             {isPaid
-                              ? `Paid (${monthName})`
+                              ? isIncome
+                                ? `Received (${monthName})`
+                                : `Paid (${monthName})`
                               : isDueToday
-                                ? 'Due Today!'
+                                ? isIncome
+                                  ? 'Expected Today'
+                                  : 'Due Today!'
                                 : isOverdue
                                   ? `Overdue (${monthName} ${commitment.dueDay})`
-                                  : `Due ${monthName} ${commitment.dueDay}`}
+                                  : `${isIncome ? 'Expected' : 'Due'} ${monthName} ${commitment.dueDay}`}
                           </ThemedText>
                         </View>
 
@@ -694,7 +810,7 @@ export function SafeToSpendCard() {
                         {commitment.isAutoPaid && (
                           <View className="px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40">
                             <ThemedText className="text-[10px] font-medium text-blue-700 dark:text-blue-300">
-                              Auto-pay
+                              Auto
                             </ThemedText>
                           </View>
                         )}
@@ -722,16 +838,31 @@ export function SafeToSpendCard() {
 
                     {/* Right: Amount & Actions */}
                     <View className="items-end gap-2">
-                      <ThemedText className="text-base font-extrabold font-mono text-slate-900 dark:text-white">
+                      <ThemedText
+                        className={`text-base font-extrabold font-mono ${
+                          isIncome
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : 'text-slate-900 dark:text-white'
+                        }`}
+                      >
+                        {isIncome ? '+' : ''}
                         {formatMinorUnits(commitment.amountMinor, commitment.currency)}
                       </ThemedText>
 
                       <View className="flex-row items-center gap-1.5">
-                        {/* Quick Mark Paid / Unpaid Button */}
+                        {/* Quick Mark Paid / Received Button */}
                         <Pressable
-                          onPress={() => handleTogglePaid(commitment)}
+                          onPress={() => void handlePressSettle(commitment)}
                           accessibilityRole="button"
-                          accessibilityLabel={isPaid ? 'Mark as unpaid' : 'Mark as paid'}
+                          accessibilityLabel={
+                            isPaid
+                              ? isIncome
+                                ? 'Mark income as pending'
+                                : 'Mark bill as unpaid'
+                              : isIncome
+                                ? 'Mark income as received'
+                                : 'Mark bill as paid'
+                          }
                           className={`min-h-[44px] px-3.5 py-2 rounded-full items-center justify-center ${
                             isPaid
                               ? 'bg-emerald-600 active:bg-emerald-700'
@@ -739,7 +870,13 @@ export function SafeToSpendCard() {
                           }`}
                         >
                           <ThemedText className="text-xs font-semibold text-white">
-                            {isPaid ? 'Paid' : 'Mark Paid'}
+                            {isPaid
+                              ? isIncome
+                                ? 'Received'
+                                : 'Paid'
+                              : isIncome
+                                ? 'Mark Received'
+                                : 'Mark Paid'}
                           </ThemedText>
                         </Pressable>
 
@@ -782,12 +919,18 @@ export function SafeToSpendCard() {
             {/* Modal Header */}
             <View className="flex-row items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
               <ThemedText className="text-lg font-bold text-slate-900 dark:text-white">
-                {editingCommitment ? 'Edit Recurring Bill' : 'New Recurring Bill'}
+                {editingCommitment
+                  ? commitmentType === 'INCOME'
+                    ? 'Edit Recurring Income'
+                    : 'Edit Recurring Bill'
+                  : commitmentType === 'INCOME'
+                    ? 'New Recurring Income'
+                    : 'New Recurring Bill'}
               </ThemedText>
               <Pressable
                 onPress={() => setModalVisible(false)}
                 accessibilityRole="button"
-                accessibilityLabel="Cancel editing bill"
+                accessibilityLabel="Cancel editing recurring item"
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 className="min-h-[44px] min-w-[44px] items-center justify-center active:opacity-75"
               >
@@ -797,24 +940,79 @@ export function SafeToSpendCard() {
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} className="gap-4">
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              className="gap-4"
+            >
               {formError && (
-                <View className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800">
+                <View className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 mb-3">
                   <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
                     {formError}
                   </ThemedText>
                 </View>
               )}
 
-              {/* Bill Name */}
-              <View className="gap-1.5">
+              {/* Commitment Type Toggle */}
+              <View className="flex-row items-center bg-slate-100 dark:bg-[#171f33] p-1 rounded-2xl border border-slate-200 dark:border-slate-700 mb-3">
+                <Pressable
+                  onPress={() => handleSelectCommitmentType('EXPENSE')}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: commitmentType === 'EXPENSE' }}
+                  accessibilityLabel="Recurring Bill"
+                  className={`flex-1 min-h-[44px] rounded-xl items-center justify-center ${
+                    commitmentType === 'EXPENSE'
+                      ? 'bg-white dark:bg-[#131b2e] shadow-sm'
+                      : 'bg-transparent'
+                  }`}
+                >
+                  <ThemedText
+                    className={`text-xs ${
+                      commitmentType === 'EXPENSE'
+                        ? 'font-bold text-rose-600 dark:text-rose-400'
+                        : 'font-semibold text-slate-500'
+                    }`}
+                  >
+                    Recurring Bill
+                  </ThemedText>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => handleSelectCommitmentType('INCOME')}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: commitmentType === 'INCOME' }}
+                  accessibilityLabel="Recurring Income"
+                  className={`flex-1 min-h-[44px] rounded-xl items-center justify-center ${
+                    commitmentType === 'INCOME'
+                      ? 'bg-white dark:bg-[#131b2e] shadow-sm'
+                      : 'bg-transparent'
+                  }`}
+                >
+                  <ThemedText
+                    className={`text-xs ${
+                      commitmentType === 'INCOME'
+                        ? 'font-bold text-emerald-600 dark:text-emerald-400'
+                        : 'font-semibold text-slate-500'
+                    }`}
+                  >
+                    Recurring Income
+                  </ThemedText>
+                </Pressable>
+              </View>
+
+              {/* Name */}
+              <View className="gap-1.5 mb-3">
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Bill Name
+                  {commitmentType === 'INCOME' ? 'Income Source Name' : 'Bill Name'}
                 </ThemedText>
                 <TextInput
                   value={name}
                   onChangeText={setName}
-                  placeholder="e.g. Rent, Netflix, Electric Bill"
+                  placeholder={
+                    commitmentType === 'INCOME'
+                      ? 'e.g. Monthly Salary, Freelance Retainer'
+                      : 'e.g. Rent, Netflix, Electric Bill'
+                  }
                   placeholderTextColor="#94a3b8"
                   className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-[#171f33] text-slate-900 dark:text-white text-sm"
                 />
@@ -920,7 +1118,7 @@ export function SafeToSpendCard() {
               {/* Funding Wallet Selector */}
               <View className="gap-1.5">
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Pay From Wallet
+                  {commitmentType === 'INCOME' ? 'Deposit To Wallet' : 'Pay From Wallet'}
                 </ThemedText>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="gap-2">
                   {wallets.map((w) => (
@@ -929,7 +1127,7 @@ export function SafeToSpendCard() {
                       onPress={() => setWalletId(w.id)}
                       accessibilityRole="button"
                       accessibilityLabel={`Select wallet ${w.name}`}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 mr-2 ${
+                      className={`min-h-[44px] px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 mr-2 ${
                         walletId === w.id
                           ? 'bg-slate-900 dark:bg-white border-slate-900 dark:border-white'
                           : 'bg-slate-100 dark:bg-[#171f33] border-slate-200 dark:border-slate-700'
@@ -950,19 +1148,19 @@ export function SafeToSpendCard() {
                 </ScrollView>
               </View>
 
-              {/* Expense Category Selector */}
+              {/* Category Selector */}
               <View className="gap-1.5">
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
                   Category
                 </ThemedText>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className="gap-2">
-                  {categories.map((c) => (
+                  {modalCategories.map((c) => (
                     <Pressable
                       key={c.id}
                       onPress={() => setCategoryId(c.id)}
                       accessibilityRole="button"
                       accessibilityLabel={`Select category ${c.name}`}
-                      className={`min-h-[40px] px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 mr-2 ${
+                      className={`min-h-[44px] px-3.5 py-1.5 rounded-xl border flex-row items-center gap-1.5 mr-2 ${
                         categoryId === c.id
                           ? 'bg-brand-500 border-brand-500'
                           : 'bg-slate-100 dark:bg-[#171f33] border-slate-200 dark:border-slate-700'
@@ -1027,26 +1225,121 @@ export function SafeToSpendCard() {
                     <ActivityIndicator size="small" color="#ffffff" />
                   ) : (
                     <ThemedText className="text-white font-bold text-sm">
-                      {editingCommitment ? 'Save Changes' : 'Create Recurring Bill'}
+                      {editingCommitment
+                        ? 'Save Changes'
+                        : commitmentType === 'INCOME'
+                          ? 'Create Recurring Income'
+                          : 'Create Recurring Bill'}
                     </ThemedText>
                   )}
                 </Pressable>
 
                 {editingCommitment && (
                   <Pressable
-                    onPress={() => handleDeleteCommitment(editingCommitment.id)}
+                    onPress={() => void handleDeleteCommitment(editingCommitment.id)}
                     disabled={deleteMutation.isPending}
                     accessibilityRole="button"
-                    accessibilityLabel="Delete recurring bill"
+                    accessibilityLabel="Delete recurring entry"
                     className="min-h-[44px] w-full py-2.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 items-center justify-center active:opacity-75"
                   >
                     <ThemedText className="text-rose-600 dark:text-rose-400 font-semibold text-xs">
-                      Delete Recurring Bill
+                      {commitmentType === 'INCOME'
+                        ? 'Delete Recurring Income'
+                        : 'Delete Recurring Bill'}
                     </ThemedText>
                   </Pressable>
                 )}
               </View>
             </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* 4. SETTLE COMMITMENT CONFIRMATION MODAL */}
+      <Modal
+        visible={settleTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!settleMutation.isPending) setSettleTarget(null);
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          className="flex-1 justify-center items-center p-4 bg-black/60"
+        >
+          <Pressable
+            className="absolute inset-0"
+            onPress={() => {
+              if (!settleMutation.isPending) setSettleTarget(null);
+            }}
+          />
+
+          <View className="w-full max-w-[400px] rounded-3xl bg-white dark:bg-[#131b2e] border border-slate-200 dark:border-slate-800 p-6 shadow-2xl gap-4">
+            <View className="gap-1">
+              <ThemedText className="text-lg font-bold text-slate-900 dark:text-white">
+                {settleTarget?.type === 'INCOME'
+                  ? `Record ${settleTarget?.name}?`
+                  : `Settle ${settleTarget?.name}?`}
+              </ThemedText>
+              <ThemedText className="text-xs text-slate-500 dark:text-slate-400 leading-5">
+                {settleTarget
+                  ? `Amount: ${formatMinorUnits(settleTarget.amountMinor, settleTarget.currency)}. Choose whether to record this in your ledger and update the wallet balance.`
+                  : ''}
+              </ThemedText>
+            </View>
+
+            {settleError && (
+              <View className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800">
+                <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                  {settleError}
+                </ThemedText>
+              </View>
+            )}
+
+            <View className="gap-2.5">
+              <Pressable
+                onPress={() => void handleConfirmSettle(true)}
+                disabled={settleMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Mark and record transaction"
+                className="min-h-[44px] w-full py-3 px-4 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm"
+              >
+                {settleMutation.isPending ? (
+                  <ActivityIndicator size="small" color="#ffffff" />
+                ) : (
+                  <ThemedText className="text-white font-bold text-sm">
+                    {settleTarget?.type === 'INCOME'
+                      ? 'Mark Received & Record Income'
+                      : 'Mark Paid & Record Expense'}
+                  </ThemedText>
+                )}
+              </Pressable>
+
+              <Pressable
+                onPress={() => void handleConfirmSettle(false)}
+                disabled={settleMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Mark only without creating transaction"
+                className="min-h-[44px] w-full py-3 px-4 rounded-2xl bg-slate-100 dark:bg-[#171f33] border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-slate-700 dark:text-slate-200 font-semibold text-xs">
+                  Mark Only (Already Logged)
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={() => setSettleTarget(null)}
+                disabled={settleMutation.isPending}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                className="min-h-[44px] w-full py-2.5 rounded-2xl items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-slate-500 dark:text-slate-400 font-semibold text-xs">
+                  Cancel
+                </ThemedText>
+              </Pressable>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>

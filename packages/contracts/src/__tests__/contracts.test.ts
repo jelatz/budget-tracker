@@ -1,24 +1,38 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyCalculatorKey,
+  authResponseSchema,
+  batchCreateTransactionsInputSchema,
   computeDashboardMetrics,
   computeSplitRemainder,
   createDefaultTransactions,
   createTransactionInputSchema,
+  createWalletInputSchema,
+  currencyCodeSchema,
   DEFAULT_CATEGORIES,
   DEFAULT_TRANSACTIONS,
   DEFAULT_WALLETS,
   evaluateCalculatorExpression,
   formatMinorUnits,
+  importBackupInputSchema,
   isTransactionInPeriod,
+  isWalletLiquidForSafeToSpend,
+  loginInputSchema,
   minorUnitsToDecimalInput,
   parseDecimalToMinorUnits,
   rankCategoriesByFrequency,
   rebalanceTwoWaySplit,
+  registerInputSchema,
+  settleRecurringCommitmentInputSchema,
   splitEvenly,
   smartDefaultsSchema,
   transactionSchema,
+  updateMonthlyBudgetInputSchema,
+  updateWalletInputSchema,
+  walletSchema,
   type Category,
+  type Transaction,
+  type Wallet,
 } from '../index';
 
 describe('Money Math & Helpers', () => {
@@ -376,20 +390,55 @@ describe('Category Ranking & Defaults', () => {
 
   it('exposes valid default wallets and categories', () => {
     expect(DEFAULT_WALLETS.length).toBe(4);
-    expect(DEFAULT_CATEGORIES.length).toBe(20);
-    expect(DEFAULT_CATEGORIES.filter((c) => c.type === 'EXPENSE').length).toBe(12);
+    expect(DEFAULT_CATEGORIES.length).toBe(21);
+    expect(DEFAULT_CATEGORIES.filter((c) => c.type === 'EXPENSE').length).toBe(13);
     expect(DEFAULT_CATEGORIES.filter((c) => c.type === 'INCOME').length).toBe(8);
+  });
+
+  it('classifies wallet Safe-to-Spend liquidity accurately with optional override', () => {
+    const base = {
+      name: 'W',
+      icon: '🏦',
+      color: '#208AEF',
+      currency: 'PHP',
+      balanceMinor: 10000,
+    };
+    const checking: Wallet = { id: 'w1', type: 'CHECKING', ...base };
+    const cash: Wallet = { id: 'w2', type: 'CASH', ...base };
+    const ewallet: Wallet = { id: 'w3', type: 'EWALLET', ...base };
+    const savings: Wallet = { id: 'w4', type: 'SAVINGS', ...base };
+    const card: Wallet = { id: 'w5', type: 'CREDIT_CARD', ...base };
+    const savingsIncluded: Wallet = {
+      id: 'w6',
+      type: 'SAVINGS',
+      includeInSafeToSpend: true,
+      ...base,
+    };
+    const checkingExcluded: Wallet = {
+      id: 'w7',
+      type: 'CHECKING',
+      includeInSafeToSpend: false,
+      ...base,
+    };
+
+    expect(isWalletLiquidForSafeToSpend(checking)).toBe(true);
+    expect(isWalletLiquidForSafeToSpend(cash)).toBe(true);
+    expect(isWalletLiquidForSafeToSpend(ewallet)).toBe(true);
+    expect(isWalletLiquidForSafeToSpend(savings)).toBe(false);
+    expect(isWalletLiquidForSafeToSpend(card)).toBe(false);
+    expect(isWalletLiquidForSafeToSpend(savingsIncluded)).toBe(true);
+    expect(isWalletLiquidForSafeToSpend(checkingExcluded)).toBe(false);
   });
 });
 
 describe('Dashboard Starter Seeds & Period Filtering', () => {
   const fixedNow = new Date('2026-10-31T12:00:00Z');
 
-  it('validates smart defaults schema including default monthly budget of ₱2,500.00', () => {
+  it('validates smart defaults schema including default monthly budget of ₱30,000.00', () => {
     const parsed = smartDefaultsSchema.parse({
       lastWalletId: 'wallet-checking',
     });
-    expect(parsed.monthlyBudgetMinor).toBe(250000);
+    expect(parsed.monthlyBudgetMinor).toBe(3000000);
     expect(parsed.recentMerchants).toEqual([]);
     expect(parsed.knownTags).toEqual([]);
   });
@@ -442,24 +491,27 @@ describe('Dashboard Aggregation Engine (computeDashboardMetrics)', () => {
       wallets: DEFAULT_WALLETS,
       categories: DEFAULT_CATEGORIES,
       period: 'THIS_MONTH',
-      monthlyBudgetMinor: 250000,
+      monthlyBudgetMinor: 3000000,
       now: fixedNow,
     });
 
-    // Net worth = 245000 (checking) + 0 (card) + 18000 (cash) + 850000 (savings) = 1113000
-    expect(metrics.netWorthMinor).toBe(1113000);
+    // Net worth = 4500000 (checking) + 0 (card) + 350000 (cash) + 12000000 (savings) = 16850000
+    expect(metrics.netWorthMinor).toBe(16850000);
 
-    // Income = Salary (420000)
-    expect(metrics.incomeMinor).toBe(420000);
+    // Income = Salary (5500000)
+    expect(metrics.incomeMinor).toBe(5500000);
 
-    // Expense = Whole Foods (12000) + Delta (34000) + Starbucks (675) + City Power (14520) = 61195
-    expect(metrics.expenseMinor).toBe(61195);
+    // Expense = SM Supermarket (450000) + PAL (850000) + Starbucks (18000) + Meralco (450000) = 1768000
+    expect(metrics.expenseMinor).toBe(1768000);
 
-    // Net Cashflow = 420000 - 61195 = 358805
-    expect(metrics.netCashflowMinor).toBe(358805);
+    // Net Cashflow = 5500000 - 1768000 = 3732000
+    expect(metrics.netCashflowMinor).toBe(3732000);
 
-    // Transfer Volume = Savings Transfer (50000)
-    expect(metrics.transferVolumeMinor).toBe(50000);
+    // Savings Rate = Math.round((3732000 * 100) / 5500000) = 68%
+    expect(metrics.savingsRatePercent).toBe(68);
+
+    // Transfer Volume = Savings Transfer (1000000)
+    expect(metrics.transferVolumeMinor).toBe(1000000);
 
     // Transaction Count
     expect(metrics.transactionCount).toBe(6);
@@ -467,10 +519,10 @@ describe('Dashboard Aggregation Engine (computeDashboardMetrics)', () => {
     // Recent Transactions: Top 5 sorted descending by occurredAt
     expect(metrics.recentTransactions.length).toBe(5);
     expect(metrics.recentTransactions[0].merchant).toBe('Acme Corp Payroll');
-    expect(metrics.recentTransactions[1].merchant).toBe('Whole Foods');
-    expect(metrics.recentTransactions[2].merchant).toBe('Delta Airlines');
+    expect(metrics.recentTransactions[1].merchant).toBe('SM Supermarket');
+    expect(metrics.recentTransactions[2].merchant).toBe('Philippine Airlines');
     expect(metrics.recentTransactions[3].merchant).toBe('Starbucks');
-    expect(metrics.recentTransactions[4].merchant).toBe('City Power & Light');
+    expect(metrics.recentTransactions[4].merchant).toBe('Meralco');
   });
 
   it('computes split-aware category breakdown accurately', () => {
@@ -479,44 +531,44 @@ describe('Dashboard Aggregation Engine (computeDashboardMetrics)', () => {
       wallets: DEFAULT_WALLETS,
       categories: DEFAULT_CATEGORIES,
       period: 'THIS_MONTH',
-      monthlyBudgetMinor: 250000,
+      monthlyBudgetMinor: 3000000,
       now: fixedNow,
     });
 
     const categoryBreakdown = metrics.categoryBreakdown;
 
     // Expected categories:
-    // Travel ($340.00), Bills ($145.20), Groceries ($85.00 split), Household ($35.00 split), Coffee ($6.75)
+    // Travel (850000), Bills (450000), Groceries (320000 split), Household (130000 split), Coffee (18000)
     expect(categoryBreakdown.length).toBe(5);
 
     // Top item: Travel
     expect(categoryBreakdown[0].categoryId).toBe('cat-travel');
     expect(categoryBreakdown[0].name).toBe('Travel');
-    expect(categoryBreakdown[0].amountMinor).toBe(34000);
-    expect(categoryBreakdown[0].percentage).toBe(56); // 34000 / 61195 = 55.56% -> 56%
+    expect(categoryBreakdown[0].amountMinor).toBe(850000);
+    expect(categoryBreakdown[0].percentage).toBe(48); // 850000 / 1768000 = 48.08%
 
     // Second: Bills & Utilities
     expect(categoryBreakdown[1].categoryId).toBe('cat-bills');
     expect(categoryBreakdown[1].name).toBe('Bills & Utilities');
-    expect(categoryBreakdown[1].amountMinor).toBe(14520);
-    expect(categoryBreakdown[1].percentage).toBe(24);
+    expect(categoryBreakdown[1].amountMinor).toBe(450000);
+    expect(categoryBreakdown[1].percentage).toBe(25);
 
     // Third: Groceries (from split!)
     expect(categoryBreakdown[2].categoryId).toBe('cat-groceries');
     expect(categoryBreakdown[2].name).toBe('Groceries');
-    expect(categoryBreakdown[2].amountMinor).toBe(8500);
-    expect(categoryBreakdown[2].percentage).toBe(14);
+    expect(categoryBreakdown[2].amountMinor).toBe(320000);
+    expect(categoryBreakdown[2].percentage).toBe(18);
 
     // Fourth: Household (from split!)
     expect(categoryBreakdown[3].categoryId).toBe('cat-household');
     expect(categoryBreakdown[3].name).toBe('Household');
-    expect(categoryBreakdown[3].amountMinor).toBe(3500);
-    expect(categoryBreakdown[3].percentage).toBe(6);
+    expect(categoryBreakdown[3].amountMinor).toBe(130000);
+    expect(categoryBreakdown[3].percentage).toBe(7);
 
     // Fifth: Coffee
     expect(categoryBreakdown[4].categoryId).toBe('cat-coffee');
     expect(categoryBreakdown[4].name).toBe('Coffee & Drinks');
-    expect(categoryBreakdown[4].amountMinor).toBe(675);
+    expect(categoryBreakdown[4].amountMinor).toBe(18000);
     expect(categoryBreakdown[4].percentage).toBe(1);
 
     // Total of splits + non-splits equals total expense
@@ -530,77 +582,327 @@ describe('Dashboard Aggregation Engine (computeDashboardMetrics)', () => {
       wallets: DEFAULT_WALLETS,
       categories: DEFAULT_CATEGORIES,
       period: 'THIS_MONTH',
-      monthlyBudgetMinor: 250000,
+      monthlyBudgetMinor: 3000000,
       now: fixedNow,
     });
 
     const tagBreakdown = metrics.tagBreakdown;
 
-    // Delta ($340): ['vacation', 'reimbursable']
-    // Whole Foods ($120): ['shared']
-    // City Power ($145.20): ['recurring', 'shared']
-    // Starbucks ($6.75): ['work']
+    // PAL (850000): ['vacation', 'reimbursable']
+    // SM Supermarket (450000): ['shared']
+    // Meralco (450000): ['recurring', 'shared']
+    // Starbucks (18000): ['work']
     // Note: Savings transfer 'recurring' and Salary 'work' do not count as they are not EXPENSE
     const tagMap = new Map(tagBreakdown.map((t) => [t.tag, t]));
 
     expect(tagMap.get('vacation')).toEqual({
       tag: 'vacation',
-      amountMinor: 34000,
+      amountMinor: 850000,
       transactionCount: 1,
     });
     expect(tagMap.get('reimbursable')).toEqual({
       tag: 'reimbursable',
-      amountMinor: 34000,
+      amountMinor: 850000,
       transactionCount: 1,
     });
     expect(tagMap.get('shared')).toEqual({
       tag: 'shared',
-      amountMinor: 26520, // 12000 + 14520
+      amountMinor: 900000, // 450000 + 450000
       transactionCount: 2,
     });
     expect(tagMap.get('recurring')).toEqual({
       tag: 'recurring',
-      amountMinor: 14520,
+      amountMinor: 450000,
       transactionCount: 1,
     });
     expect(tagMap.get('work')).toEqual({
       tag: 'work',
-      amountMinor: 675,
+      amountMinor: 18000,
       transactionCount: 1,
     });
   });
 
   it('computes budget utilization and over-budget state', () => {
-    // Normal budget scenario ($2,500 budget, $611.95 spent)
+    // Normal budget scenario (₱30,000 budget, ₱17,680 spent)
     const normal = computeDashboardMetrics({
       transactions: starterTransactions,
       wallets: DEFAULT_WALLETS,
       categories: DEFAULT_CATEGORIES,
       period: 'THIS_MONTH',
-      monthlyBudgetMinor: 250000,
+      monthlyBudgetMinor: 3000000,
       now: fixedNow,
     });
 
-    expect(normal.budget.budgetMinor).toBe(250000);
-    expect(normal.budget.spentMinor).toBe(61195);
-    expect(normal.budget.remainingMinor).toBe(188805);
-    expect(normal.budget.utilizationPercent).toBe(24);
+    expect(normal.budget.budgetMinor).toBe(3000000);
+    expect(normal.budget.spentMinor).toBe(1768000);
+    expect(normal.budget.remainingMinor).toBe(1232000);
+    expect(normal.budget.utilizationPercent).toBe(59);
     expect(normal.budget.isOverBudget).toBe(false);
 
-    // Over budget scenario ($500 budget, $611.95 spent)
+    // Over budget scenario (₱10,000 budget, ₱17,680 spent)
     const overBudget = computeDashboardMetrics({
       transactions: starterTransactions,
       wallets: DEFAULT_WALLETS,
       categories: DEFAULT_CATEGORIES,
       period: 'THIS_MONTH',
-      monthlyBudgetMinor: 50000,
+      monthlyBudgetMinor: 1000000,
       now: fixedNow,
     });
 
-    expect(overBudget.budget.budgetMinor).toBe(50000);
-    expect(overBudget.budget.spentMinor).toBe(61195);
-    expect(overBudget.budget.remainingMinor).toBe(-11195);
-    expect(overBudget.budget.utilizationPercent).toBe(122);
+    expect(overBudget.budget.budgetMinor).toBe(1000000);
+    expect(overBudget.budget.spentMinor).toBe(1768000);
+    expect(overBudget.budget.remainingMinor).toBe(-768000);
+    expect(overBudget.budget.utilizationPercent).toBe(177);
     expect(overBudget.budget.isOverBudget).toBe(true);
+  });
+
+  it('supports MONTH period selection, split-aware incomeCategoryBreakdown, savingsRatePercent, and 6-month trend', () => {
+    const txs: Transaction[] = [
+      {
+        id: 'tx-sep-inc',
+        type: 'INCOME',
+        amountMinor: 100000,
+        currency: 'PHP',
+        walletId: 'wallet-checking',
+        splits: [
+          { id: 'si-1', categoryId: 'cat-salary', amountMinor: 70000 },
+          { id: 'si-2', categoryId: 'cat-freelance', amountMinor: 30000 },
+        ],
+        tags: [],
+        occurredAt: '2026-09-15T12:00:00.000Z',
+        createdAt: '2026-09-15T12:00:00.000Z',
+      },
+      {
+        id: 'tx-sep-exp',
+        type: 'EXPENSE',
+        amountMinor: 120000,
+        currency: 'PHP',
+        walletId: 'wallet-checking',
+        categoryId: 'cat-groceries',
+        tags: [],
+        occurredAt: '2026-09-20T12:00:00.000Z',
+        createdAt: '2026-09-20T12:00:00.000Z',
+      },
+      {
+        id: 'tx-aug-exp',
+        type: 'EXPENSE',
+        amountMinor: 50000,
+        currency: 'PHP',
+        walletId: 'wallet-checking',
+        categoryId: 'cat-dining',
+        tags: [],
+        occurredAt: '2026-08-10T12:00:00.000Z',
+        createdAt: '2026-08-10T12:00:00.000Z',
+      },
+    ];
+
+    const sepMetrics = computeDashboardMetrics({
+      transactions: txs,
+      wallets: DEFAULT_WALLETS,
+      categories: DEFAULT_CATEGORIES,
+      period: 'MONTH',
+      selectedMonth: '2026-09',
+      monthlyBudgetMinor: 300000,
+      now: new Date('2026-11-15T12:00:00Z'),
+    });
+
+    expect(sepMetrics.selectedMonth).toBe('2026-09');
+    expect(sepMetrics.incomeMinor).toBe(100000);
+    expect(sepMetrics.expenseMinor).toBe(120000);
+    expect(sepMetrics.netCashflowMinor).toBe(-20000);
+    expect(sepMetrics.savingsRatePercent).toBe(-20);
+    expect(sepMetrics.incomeCategoryBreakdown).toHaveLength(2);
+    expect(sepMetrics.incomeCategoryBreakdown[0]).toMatchObject({
+      categoryId: 'cat-salary',
+      amountMinor: 70000,
+      percentage: 70,
+    });
+    expect(sepMetrics.incomeCategoryBreakdown[1]).toMatchObject({
+      categoryId: 'cat-freelance',
+      amountMinor: 30000,
+      percentage: 30,
+    });
+    expect(sepMetrics.monthlyTrend.map((p) => p.periodMonth)).toEqual([
+      '2026-04',
+      '2026-05',
+      '2026-06',
+      '2026-07',
+      '2026-08',
+      '2026-09',
+    ]);
+    expect(sepMetrics.monthlyTrend[4]).toMatchObject({
+      periodMonth: '2026-08',
+      incomeMinor: 0,
+      expenseMinor: 50000,
+      savingsRatePercent: null,
+    });
+    expect(sepMetrics.monthlyTrend[5]).toMatchObject({
+      periodMonth: '2026-09',
+      incomeMinor: 100000,
+      expenseMinor: 120000,
+      netCashflowMinor: -20000,
+      savingsRatePercent: -20,
+    });
+
+    // ALL_TIME when current month has 0 expenses must NOT substitute all-time expense into monthly budget
+    const allTimeWithEmptyNov = computeDashboardMetrics({
+      transactions: txs,
+      wallets: DEFAULT_WALLETS,
+      categories: DEFAULT_CATEGORIES,
+      period: 'ALL_TIME',
+      monthlyBudgetMinor: 300000,
+      now: new Date('2026-11-15T12:00:00Z'),
+    });
+    expect(allTimeWithEmptyNov.expenseMinor).toBe(170000);
+    expect(allTimeWithEmptyNov.budget.spentMinor).toBe(0);
+    expect(allTimeWithEmptyNov.budget.remainingMinor).toBe(300000);
+  });
+});
+
+describe('Auth & API Contract Schemas', () => {
+  it('validates registerInputSchema, loginInputSchema, and authResponseSchema', () => {
+    const reg = registerInputSchema.parse({
+      name: '  Jane Doe ',
+      email: '  Jane@Example.COM ',
+      password: 'password123',
+    });
+    expect(reg).toEqual({
+      name: 'Jane Doe',
+      email: 'jane@example.com',
+      password: 'password123',
+    });
+
+    expect(() =>
+      registerInputSchema.parse({
+        name: 'Jane',
+        email: 'not-an-email',
+        password: '123',
+      }),
+    ).toThrow();
+
+    const login = loginInputSchema.parse({
+      email: ' User@Example.com ',
+      password: 'secret',
+    });
+    expect(login.email).toBe('user@example.com');
+
+    const authRes = authResponseSchema.parse({
+      token: 'tok-123',
+      user: {
+        id: 'usr-1',
+        email: 'user@example.com',
+        name: 'User',
+      },
+    });
+    expect(authRes.user.id).toBe('usr-1');
+  });
+
+  it('validates API request contracts', () => {
+    expect(
+      updateMonthlyBudgetInputSchema.parse({ monthlyBudgetMinor: 3000000 })
+        .monthlyBudgetMinor,
+    ).toBe(3000000);
+
+    expect(() =>
+      updateMonthlyBudgetInputSchema.parse({ monthlyBudgetMinor: -100 }),
+    ).toThrow();
+
+    expect(
+      settleRecurringCommitmentInputSchema.parse({
+        periodMonth: '2026-11',
+        recordTransaction: true,
+      }),
+    ).toEqual({ periodMonth: '2026-11', recordTransaction: true });
+
+    const batch = batchCreateTransactionsInputSchema.parse({
+      transactions: [
+        {
+          type: 'EXPENSE',
+          amountMinor: 15000,
+          walletId: 'wallet-checking',
+          categoryId: 'cat-coffee',
+          occurredAt: new Date().toISOString(),
+        },
+      ],
+    });
+    expect(batch.transactions).toHaveLength(1);
+
+    expect(() => batchCreateTransactionsInputSchema.parse({ transactions: [] })).toThrow();
+
+    const backupReq = importBackupInputSchema.parse({
+      mode: 'merge',
+      envelope: {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: {
+          wallets: [],
+          categories: [],
+          transactions: [],
+          categoryBudgets: [],
+          recurringCommitments: [],
+          sinkingFunds: [],
+          quickPresets: [],
+        },
+      },
+    });
+    expect(backupReq.mode).toBe('merge');
+  });
+
+  it('enforces PHP-only currency and openingBalanceMinor ledger invariants', () => {
+    expect(currencyCodeSchema.parse(undefined)).toBe('PHP');
+    expect(currencyCodeSchema.parse(' php ')).toBe('PHP');
+    expect(() => currencyCodeSchema.parse('USD')).toThrow();
+    expect(() => currencyCodeSchema.parse('EUR')).toThrow();
+
+    // Legacy wallets without openingBalanceMinor still parse cleanly
+    const legacyWallet = walletSchema.parse({
+      id: 'w-legacy',
+      name: 'Legacy',
+      type: 'CASH',
+      icon: '💵',
+      color: '#10B981',
+      currency: 'PHP',
+      balanceMinor: 50000,
+    });
+    expect(legacyWallet.openingBalanceMinor).toBeUndefined();
+
+    const createdInput = createWalletInputSchema.parse({
+      name: 'GCash',
+      type: 'EWALLET',
+      openingBalanceMinor: 125000,
+    });
+    expect(createdInput.currency).toBe('PHP');
+    expect(createdInput.openingBalanceMinor).toBe(125000);
+
+    const updatedInput = updateWalletInputSchema.parse({
+      openingBalanceMinor: 200000,
+      includeInSafeToSpend: null,
+    });
+    expect(updatedInput.openingBalanceMinor).toBe(200000);
+    expect(updatedInput.includeInSafeToSpend).toBeNull();
+
+    // Verify DEFAULT_WALLETS openingBalanceMinor + createDefaultTransactions() === balanceMinor
+    const deltaByWallet = new Map<string, number>();
+    for (const tx of createDefaultTransactions()) {
+      if (tx.type === 'INCOME') {
+        deltaByWallet.set(tx.walletId, (deltaByWallet.get(tx.walletId) ?? 0) + tx.amountMinor);
+      } else if (tx.type === 'EXPENSE') {
+        deltaByWallet.set(tx.walletId, (deltaByWallet.get(tx.walletId) ?? 0) - tx.amountMinor);
+      } else if (tx.type === 'TRANSFER') {
+        deltaByWallet.set(tx.walletId, (deltaByWallet.get(tx.walletId) ?? 0) - tx.amountMinor);
+        if (tx.toWalletId) {
+          deltaByWallet.set(
+            tx.toWalletId,
+            (deltaByWallet.get(tx.toWalletId) ?? 0) + tx.amountMinor,
+          );
+        }
+      }
+    }
+
+    for (const wallet of DEFAULT_WALLETS) {
+      expect(wallet.openingBalanceMinor).toBeDefined();
+      const expected = (wallet.openingBalanceMinor ?? 0) + (deltaByWallet.get(wallet.id) ?? 0);
+      expect(expected).toBe(wallet.balanceMinor);
+    }
   });
 });

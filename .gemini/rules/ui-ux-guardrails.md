@@ -27,10 +27,15 @@ Before declaring any UI/UX task complete, the agent **MUST** audit changes again
 
 ### 2. Design & Theme Consistency
 - **Token Compliance**: All colors, fonts, and spacing must be consumed from `@/constants/theme` (`Colors`, `Fonts`, `Spacing`) or via `useTheme()`.
-- **Dark/Light Mode Support**: No hardcoded hex color literals (`#fff`, `#000000`, etc.) in style objects or class names. All components must render with readable contrast in both light and dark themes.
+- **Defined Custom Tailwind Shades Only**: Before referencing custom theme shades (such as `brand-50` through `brand-950` in `dark:bg-brand-*` / `dark:text-brand-*`), verify that every shade is defined in `apps/mobile/tailwind.config.js`. Undefined `dark:*` custom shades silently emit no CSS and leave light-mode surfaces stuck in Dark mode.
+- **Dark/Light Mode & Active-State Contrast**: No hardcoded hex color literals (`#fff`, `#000000`, etc.) in style objects or class names. Every surface—especially **active/selected** cards, pills, tabs, and segmented controls—must be verified for readable contrast in both Light and Dark modes (including after toggling themes dynamically). When dynamic `isSelected` text-color class swaps risk NativeWind specificity glitches across theme toggles, drive the text color directly through `useTheme()` / `StitchTokens` and set `accessibilityState={{ selected: isSelected }}`.
 
 ### 3. UX & Accessibility Standards
 - **Touch Targets**: All interactive elements (buttons, pressable rows, icon triggers) must provide at least a 44x44 pt/px hit area (using `hitSlop` where visual assets are smaller).
+- **Responsive Proportions & Button Sizing**:
+  - Single-column settings, forms, and detail views must cap web container width at `NarrowContentWidth` (`720px`) or `MaxContentWidth` (`800px`); reserve `WebMaxContentWidth` (`1360px`) for multi-column dashboards and tables.
+  - On wide viewports (`>= 640px`), buttons and segmented controls must fit their content proportionally (compact intrinsic widths, `self-start`, or capped segmented bars around `280px–360px`) rather than stretching edge-to-edge across wide cards. On narrow mobile viewports (`< 640px`), full-width/stacked controls remain preferred for thumb ergonomics.
+  - Destructive or data-overwriting actions must carry clear warning/danger styling (e.g. rose for permanent deletion, amber for destructive resets/overwrites) rather than neutral button chrome.
 - **Accessibility Attributes**: Provide `accessibilityRole` and `accessibilityLabel` for all custom and icon-only interactive controls.
 
 ### 4. Complete UI State Coverage

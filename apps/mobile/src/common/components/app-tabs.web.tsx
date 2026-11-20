@@ -19,8 +19,7 @@ import {
 } from 'react-native';
 
 import { useAuth } from '@/features/auth/context/auth-context';
-import { useWebThemeMode } from '@/app/_layout.web';
-import { ExternalLink } from './external-link';
+import { useThemeMode } from '@/common/context/theme-mode-context';
 import { ThemedText } from './themed-text';
 
 export const DrawerNavContext = createContext<{
@@ -58,6 +57,9 @@ export default function AppTabs() {
           </TabTrigger>
           <TabTrigger name="portability" href="/portability" asChild>
             <TabButton>Data & Backup</TabButton>
+          </TabTrigger>
+          <TabTrigger name="settings" href="/settings" asChild>
+            <TabButton>Settings</TabButton>
           </TabTrigger>
           <TabTrigger name="index" href="/" style={{ display: 'none' }} />
           <TabTrigger name="register" href="/register" style={{ display: 'none' }} />
@@ -157,7 +159,7 @@ const BOTTOM_NAV_ITEMS: BottomNavItem[] = [
   { label: 'Ledger', href: '/transactions' },
   { label: '+ Capture', href: '/capture', isPrimary: true },
   { label: 'Reconcile', href: '/reconciliation' },
-  { label: 'Backup', href: '/portability' },
+  { label: 'Settings', href: '/settings' },
 ];
 
 export function CustomTabList(props: TabListProps) {
@@ -172,7 +174,7 @@ export function CustomTabList(props: TabListProps) {
   }, [pathname]);
 
   const systemScheme = useColorScheme();
-  const webTheme = typeof useWebThemeMode === 'function' ? useWebThemeMode() : null;
+  const webTheme = useThemeMode();
   const resolvedScheme = webTheme?.resolvedScheme ?? (systemScheme === 'dark' ? 'dark' : 'light');
   const toggleTheme = webTheme?.toggleTheme ?? (() => {});
 
@@ -274,18 +276,6 @@ export function CustomTabList(props: TabListProps) {
             </ThemedText>
           </Pressable>
 
-          {/* Docs ExternalLink */}
-          <ExternalLink href="https://docs.expo.dev" asChild>
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel="Open Documentation"
-              className="w-full flex-row items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800/60 min-h-[44px] transition-colors">
-              <ThemedText className="text-xs font-medium text-slate-600 dark:text-slate-300 flex-1">
-                Documentation
-              </ThemedText>
-            </Pressable>
-          </ExternalLink>
-
           {/* User Account & Sign Out */}
           <View className="pt-2 border-t border-slate-200/80 dark:border-slate-800/90 gap-2">
             <View className="flex-row items-center gap-2.5 px-1">
@@ -310,8 +300,9 @@ export function CustomTabList(props: TabListProps) {
                 if (isCompactViewport) {
                   setDrawerOpen(false);
                 }
-                logout();
-                router.replace('/');
+                void logout().finally(() => {
+                  router.replace('/');
+                });
               }}
               accessibilityRole="button"
               accessibilityLabel="Sign Out"

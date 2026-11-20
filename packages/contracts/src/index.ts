@@ -9,3 +9,5 @@ export * from './recurring.schema';
 export * from './presets.schema';
 export * from './sinking-funds.schema';
 export * from './portability.schema';
+export * from './auth.schema';
+export * from './api.schema';

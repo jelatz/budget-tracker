@@ -1,56 +1,61 @@
-# Welcome to your Expo app 👋
+# Budget Tracker (Web, Android & iOS)
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Personal multi-device PHP budget tracker built as a **pnpm + Turborepo** monorepo with:
+- **`apps/mobile` (`@repo/mobile`)**: Expo SDK 58 + Expo Router + NativeWind + TanStack Query (iOS, Android, Web)
+- **`apps/api` (`@repo/api`)**: Hono + Drizzle ORM + PostgreSQL backend
+- **`packages/contracts` (`@repo/contracts`)**: Shared Zod schemas, integer minor-unit PHP money math, calculator engine, and dashboard analytics
 
-## Get started
+---
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Local Development
 
 ```bash
-npm run reset-project
+# 1. Install dependencies
+pnpm install
+
+# 2. Start PostgreSQL
+docker compose up -d
+
+# 3. Configure env files
+cp apps/api/.env.example apps/api/.env
+cp apps/mobile/.env.example apps/mobile/.env
+
+# 4. Run database migrations
+pnpm --filter @repo/api db:migrate
+
+# 5. Start API and Expo (in separate terminals)
+pnpm api
+pnpm start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+### Verification Commands
+```bash
+pnpm turbo run typecheck lint test
+pnpm --filter @repo/api build
+```
 
-### Other setup steps
+---
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+## Deploying for Personal Multi-Device Use (Web + Android + iOS)
 
-## Learn more
+1. **Database & API (`@repo/api`)**
+   - Provision PostgreSQL (e.g., Neon free tier or self-hosted Postgres via `docker compose --profile full up -d --build`).
+   - Deploy `apps/api/Dockerfile` (Fly.io, Render, Railway, or a Tailscale host) with `DATABASE_URL`, `DATABASE_URL_UNPOOLED` (for migrations), and `CORS_ORIGIN`.
+   - Run `pnpm --filter @repo/api db:migrate` against the production database.
 
-To learn more about developing your project with Expo, look at the following resources:
+2. **Web Client (`@repo/mobile` static SPA)**
+   - Set `EXPO_PUBLIC_API_URL=https://<your-api-host>` and export static files:
+     ```bash
+     pnpm --filter @repo/mobile exec npx expo export --platform web
+     ```
+   - Host `apps/mobile/dist/` on Cloudflare Pages, Vercel, or Netlify.
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+3. **Android Phone (Direct APK)**
+   - Build an installable APK via EAS with `EXPO_PUBLIC_API_URL` configured in EAS environment variables:
+     ```bash
+     cd apps/mobile && npx eas-cli@latest build -p android --profile preview
+     ```
 
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+4. **iOS Phone**
+   - **No Apple Developer account**: Open your hosted Web URL in iOS Safari → Share → **Add to Home Screen** (or run via Expo Go on LAN/tunnel).
+   - **With Apple Developer account**: Run `npx eas-cli@latest build -p ios --profile preview` for ad-hoc/TestFlight installation.

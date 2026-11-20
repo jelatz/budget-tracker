@@ -7,15 +7,60 @@ export type TransactionType = z.infer<typeof transactionTypeSchema>;
 export const categoryTypeSchema = z.enum(['EXPENSE', 'INCOME']);
 export type CategoryType = z.infer<typeof categoryTypeSchema>;
 
+export const walletTypeSchema = z.enum([
+  'CHECKING',
+  'CASH',
+  'EWALLET',
+  'SAVINGS',
+  'CREDIT_CARD',
+]);
+export type WalletType = z.infer<typeof walletTypeSchema>;
+
 export const walletSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  type: walletTypeSchema.default('CHECKING'),
   icon: z.string().min(1),
   color: z.string().min(1),
   currency: currencyCodeSchema,
+  openingBalanceMinor: amountMinorSchema.optional(),
   balanceMinor: amountMinorSchema,
+  includeInSafeToSpend: z.boolean().optional(),
 });
 export type Wallet = z.infer<typeof walletSchema>;
+
+/**
+ * Determines whether a wallet contributes liquid cash to Safe-to-Spend.
+ * Honors an explicit per-wallet override, otherwise defaults to CHECKING, CASH, and EWALLET.
+ */
+export function isWalletLiquidForSafeToSpend(wallet: Wallet): boolean {
+  if (typeof wallet.includeInSafeToSpend === 'boolean') {
+    return wallet.includeInSafeToSpend;
+  }
+  return wallet.type === 'CHECKING' || wallet.type === 'CASH' || wallet.type === 'EWALLET';
+}
+
+export const createWalletInputSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  type: walletTypeSchema.default('CHECKING'),
+  icon: z.string().min(1).default('🏦'),
+  color: z.string().min(1).default('#208AEF'),
+  currency: currencyCodeSchema.default('PHP'),
+  openingBalanceMinor: amountMinorSchema.optional(),
+  balanceMinor: amountMinorSchema.default(0),
+  includeInSafeToSpend: z.boolean().optional(),
+});
+export type CreateWalletInput = z.infer<typeof createWalletInputSchema>;
+
+export const updateWalletInputSchema = z.object({
+  name: z.string().trim().min(1).max(40).optional(),
+  type: walletTypeSchema.optional(),
+  icon: z.string().min(1).optional(),
+  color: z.string().min(1).optional(),
+  openingBalanceMinor: amountMinorSchema.optional(),
+  includeInSafeToSpend: z.boolean().nullable().optional(),
+});
+export type UpdateWalletInput = z.infer<typeof updateWalletInputSchema>;
 
 export const categorySchema = z.object({
   id: z.string().min(1),
@@ -138,6 +183,9 @@ export const createTransactionInputSchema = Object.assign(
 );
 export type CreateTransactionInput = z.infer<typeof baseCreateTransactionInputSchema>;
 
+export const updateTransactionInputSchema = createTransactionInputSchema;
+export type UpdateTransactionInput = CreateTransactionInput;
+
 export const transactionSchema = Object.assign(
   baseCreateTransactionInputSchema
     .extend({
@@ -160,7 +208,7 @@ export const smartDefaultsSchema = z.object({
   lastTransferToWalletId: z.string().min(1).optional(),
   recentMerchants: z.array(z.string()).default([]),
   knownTags: z.array(z.string()).default([]),
-  monthlyBudgetMinor: positiveAmountMinorSchema.default(250000),
+  monthlyBudgetMinor: positiveAmountMinorSchema.default(3000000),
 });
 export type SmartDefaults = z.infer<typeof smartDefaultsSchema>;
 
@@ -168,39 +216,47 @@ export const DEFAULT_WALLETS: Wallet[] = [
   {
     id: 'wallet-checking',
     name: 'Checking',
+    type: 'CHECKING',
     icon: '🏦',
     color: '#208AEF',
     currency: 'PHP',
-    balanceMinor: 245000,
+    openingBalanceMinor: 450000,
+    balanceMinor: 4500000,
   },
   {
     id: 'wallet-card',
     name: 'Credit Card',
+    type: 'CREDIT_CARD',
     icon: '💳',
     color: '#8B5CF6',
     currency: 'PHP',
+    openingBalanceMinor: 1300000,
     balanceMinor: 0,
   },
   {
     id: 'wallet-cash',
     name: 'Cash',
+    type: 'CASH',
     icon: '💵',
     color: '#10B981',
     currency: 'PHP',
-    balanceMinor: 18000,
+    openingBalanceMinor: 368000,
+    balanceMinor: 350000,
   },
   {
     id: 'wallet-savings',
     name: 'Savings',
+    type: 'SAVINGS',
     icon: '🐷',
     color: '#F59E0B',
     currency: 'PHP',
-    balanceMinor: 850000,
+    openingBalanceMinor: 11000000,
+    balanceMinor: 12000000,
   },
 ];
 
 export const DEFAULT_CATEGORIES: Category[] = [
-  // 12 Expense Categories
+  // 13 Expense Categories
   {
     id: 'cat-groceries',
     name: 'Groceries',
@@ -319,6 +375,16 @@ export const DEFAULT_CATEGORIES: Category[] = [
     color: '#F43F5E',
     usageCount: 0,
     defaultOrder: 11,
+    isCustom: false,
+  },
+  {
+    id: 'cat-adjustment',
+    name: 'Balance Adjustment',
+    type: 'EXPENSE',
+    icon: '⚖️',
+    color: '#64748B',
+    usageCount: 0,
+    defaultOrder: 12,
     isCustom: false,
   },
 
@@ -450,7 +516,7 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
     {
       id: 'tx-seed-1',
       type: 'INCOME' as const,
-      amountMinor: 420000,
+      amountMinor: 5500000,
       currency: 'PHP',
       walletId: 'wallet-checking',
       categoryId: 'cat-salary',
@@ -463,24 +529,24 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
     {
       id: 'tx-seed-2',
       type: 'EXPENSE' as const,
-      amountMinor: 12000,
+      amountMinor: 450000,
       currency: 'PHP',
       walletId: 'wallet-card',
       splits: [
         {
           id: 'split-seed-1',
           categoryId: 'cat-groceries',
-          amountMinor: 8500,
+          amountMinor: 320000,
           note: 'Weekly produce & pantry',
         },
         {
           id: 'split-seed-2',
           categoryId: 'cat-household',
-          amountMinor: 3500,
+          amountMinor: 130000,
           note: 'Cleaning supplies',
         },
       ],
-      merchant: 'Whole Foods',
+      merchant: 'SM Supermarket',
       tags: ['shared'],
       note: 'Weekly grocery & household run',
       occurredAt: tx2OccurredAt,
@@ -489,11 +555,11 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
     {
       id: 'tx-seed-3',
       type: 'EXPENSE' as const,
-      amountMinor: 34000,
+      amountMinor: 850000,
       currency: 'PHP',
       walletId: 'wallet-card',
       categoryId: 'cat-travel',
-      merchant: 'Delta Airlines',
+      merchant: 'Philippine Airlines',
       tags: ['vacation', 'reimbursable'],
       note: 'Flight booking',
       receiptUri: 'local://receipt-seed-delta.jpg',
@@ -503,7 +569,7 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
     {
       id: 'tx-seed-4',
       type: 'EXPENSE' as const,
-      amountMinor: 675,
+      amountMinor: 18000,
       currency: 'PHP',
       walletId: 'wallet-cash',
       categoryId: 'cat-coffee',
@@ -515,11 +581,11 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
     {
       id: 'tx-seed-5',
       type: 'EXPENSE' as const,
-      amountMinor: 14520,
+      amountMinor: 450000,
       currency: 'PHP',
       walletId: 'wallet-checking',
       categoryId: 'cat-bills',
-      merchant: 'City Power & Light',
+      merchant: 'Meralco',
       tags: ['recurring', 'shared'],
       note: 'Electric utility bill',
       occurredAt: tx5OccurredAt,
@@ -528,7 +594,7 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
     {
       id: 'tx-seed-6',
       type: 'TRANSFER' as const,
-      amountMinor: 50000,
+      amountMinor: 1000000,
       currency: 'PHP',
       walletId: 'wallet-checking',
       toWalletId: 'wallet-savings',

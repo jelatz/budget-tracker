@@ -1,8 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   Text,
   TextInput,
@@ -11,15 +13,22 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   formatMinorUnits,
+  formatPeriodMonthLabel,
+  getCurrentPeriodMonth,
+  isTransactionInMonth,
+  shiftPeriodMonth,
   type Transaction,
   type TransactionType,
 } from '@repo/contracts';
 
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
+import { confirmAction } from '@/common/lib/confirm';
 
 import {
+  TRANSACTION_KEYS,
   useAllCategories,
   useDeleteTransaction,
   useTransactions,
@@ -27,6 +36,14 @@ import {
 } from '../hooks/use-transactions';
 
 type FilterType = 'ALL' | TransactionType;
+
+export interface TransactionsScreenProps {
+  initialType?: FilterType;
+  initialCategoryId?: string;
+  initialWalletId?: string;
+  initialTag?: string;
+  initialMonth?: string;
+}
 
 const FILTER_OPTIONS: readonly { key: FilterType; label: string }[] = [
   { key: 'ALL', label: 'All' },
@@ -50,13 +67,62 @@ function formatTxDate(isoString: string): string {
   }
 }
 
-export function TransactionsScreen() {
+export function TransactionsScreen({
+  initialType,
+  initialCategoryId,
+  initialWalletId,
+  initialTag,
+  initialMonth,
+}: TransactionsScreenProps = {}) {
   const { isAuthenticated } = useRequireAuth();
+  const queryClient = useQueryClient();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 960;
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const [filter, setFilter] = useState<FilterType>('ALL');
+  const handlePullRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  const [filter, setFilter] = useState<FilterType>(initialType ?? 'ALL');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(
+    initialCategoryId ?? null,
+  );
+  const [selectedWalletId, setSelectedWalletId] = useState<string | null>(
+    initialWalletId ?? null,
+  );
+  const [selectedTag, setSelectedTag] = useState<string | null>(
+    initialTag ?? null,
+  );
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(
+    initialMonth ?? null,
+  );
   const [searchQuery, setSearchQuery] = useState('');
+
+  useEffect(() => {
+    setFilter(initialType ?? 'ALL');
+  }, [initialType]);
+
+  useEffect(() => {
+    setSelectedCategoryId(initialCategoryId ?? null);
+  }, [initialCategoryId]);
+
+  useEffect(() => {
+    setSelectedWalletId(initialWalletId ?? null);
+  }, [initialWalletId]);
+
+  useEffect(() => {
+    setSelectedTag(initialTag ?? null);
+  }, [initialTag]);
+
+  useEffect(() => {
+    setSelectedMonth(initialMonth ?? null);
+  }, [initialMonth]);
 
   const walletsQuery = useWallets();
   const wallets = walletsQuery.data ?? [];
@@ -67,12 +133,56 @@ export function TransactionsScreen() {
 
   const deleteTransactionMutation = useDeleteTransaction();
 
+  const currentMonth = getCurrentPeriodMonth();
+
+  const filterableCategories = useMemo(() => {
+    if (filter === 'EXPENSE' || filter === 'INCOME') {
+      return categories.filter((c) => c.type === filter);
+    }
+    return categories;
+  }, [categories, filter]);
+
   const filteredTransactions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
+    const normalizedTagFilter = selectedTag?.trim().toLowerCase() ?? null;
+
     return transactions.filter((tx) => {
       // Type filter
       if (filter !== 'ALL' && tx.type !== filter) {
         return false;
+      }
+
+      // Month filter
+      if (selectedMonth && !isTransactionInMonth(tx.occurredAt, selectedMonth)) {
+        return false;
+      }
+
+      // Wallet filter (source or destination for transfers)
+      if (
+        selectedWalletId &&
+        tx.walletId !== selectedWalletId &&
+        tx.toWalletId !== selectedWalletId
+      ) {
+        return false;
+      }
+
+      // Category filter (split-aware)
+      if (selectedCategoryId) {
+        const matchesDirect = tx.categoryId === selectedCategoryId;
+        const matchesSplit =
+          tx.splits?.some((s) => s.categoryId === selectedCategoryId) ?? false;
+        if (!matchesDirect && !matchesSplit) {
+          return false;
+        }
+      }
+
+      // Tag filter
+      if (normalizedTagFilter) {
+        const hasTag =
+          tx.tags?.some((t) => t.toLowerCase() === normalizedTagFilter) ?? false;
+        if (!hasTag) {
+          return false;
+        }
       }
 
       // Search query filter
@@ -108,10 +218,20 @@ export function TransactionsScreen() {
         splitCategoryMatch
       );
     });
-  }, [transactions, filter, searchQuery, wallets, categories]);
+  }, [
+    transactions,
+    filter,
+    selectedMonth,
+    selectedWalletId,
+    selectedCategoryId,
+    selectedTag,
+    searchQuery,
+    wallets,
+    categories,
+  ]);
 
-  // 3-Metric Summary Strip computations
-  const { totalIncomeMinor, totalExpenseMinor } = useMemo(() => {
+  // Summary Strip computations
+  const { totalIncomeMinor, totalExpenseMinor, netCashflowMinor } = useMemo(() => {
     let income = 0;
     let expense = 0;
     for (const tx of filteredTransactions) {
@@ -121,22 +241,80 @@ export function TransactionsScreen() {
         expense += tx.amountMinor;
       }
     }
-    return { totalIncomeMinor: income, totalExpenseMinor: expense };
+    return {
+      totalIncomeMinor: income,
+      totalExpenseMinor: expense,
+      netCashflowMinor: income - expense,
+    };
   }, [filteredTransactions]);
 
-  const handleDelete = (transactionId: string) => {
-    deleteTransactionMutation.mutate(transactionId);
+  const hasActiveFilters =
+    filter !== 'ALL' ||
+    selectedMonth !== null ||
+    selectedWalletId !== null ||
+    selectedCategoryId !== null ||
+    selectedTag !== null ||
+    searchQuery.trim().length > 0;
+
+  const handleClearFilters = () => {
+    setFilter('ALL');
+    setSelectedMonth(null);
+    setSelectedWalletId(null);
+    setSelectedCategoryId(null);
+    setSelectedTag(null);
+    setSearchQuery('');
+  };
+
+  const handleShiftMonth = (delta: number) => {
+    const base = selectedMonth ?? currentMonth;
+    const next = shiftPeriodMonth(base, delta);
+    if (next > currentMonth) {
+      return;
+    }
+    setSelectedMonth(next);
+  };
+
+  const handleDelete = async (tx: Transaction) => {
+    const label = tx.merchant || (tx.type === 'TRANSFER' ? 'Transfer' : 'Transaction');
+    const confirmed = await confirmAction({
+      title: 'Delete Transaction',
+      message: `Delete this ${tx.type.toLowerCase()} (${label}, ${formatMinorUnits(tx.amountMinor, tx.currency)}) and reverse its wallet balance?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (confirmed) {
+      deleteTransactionMutation.mutate(tx.id);
+    }
   };
 
   if (!isAuthenticated) {
     return null;
   }
 
+  const activeCategoryObj = selectedCategoryId
+    ? categories.find((c) => c.id === selectedCategoryId)
+    : undefined;
+  const activeWalletObj = selectedWalletId
+    ? wallets.find((w) => w.id === selectedWalletId)
+    : undefined;
+
   return (
     <View className="flex-1 bg-slate-50 dark:bg-[#0b1326]">
       <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          className="flex-1"
+        >
         <ScrollView
           className="flex-1"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => void handlePullRefresh()}
+              tintColor="#208AEF"
+              colors={['#208AEF']}
+            />
+          }
           contentContainerStyle={{
             width: '100%',
             maxWidth: isDesktop ? 1200 : 720,
@@ -155,7 +333,9 @@ export function TransactionsScreen() {
                 Transactions
               </Text>
               <Text className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5" numberOfLines={1}>
-                {transactions.length} recorded {transactions.length === 1 ? 'entry' : 'entries'}
+                {hasActiveFilters
+                  ? `${filteredTransactions.length} of ${transactions.length} entries`
+                  : `${transactions.length} recorded ${transactions.length === 1 ? 'entry' : 'entries'}`}
               </Text>
             </View>
 
@@ -184,7 +364,7 @@ export function TransactionsScreen() {
             </View>
           </View>
 
-          {/* 3-Metric Summary Strip */}
+          {/* Summary Strip (Inflow, Outflow, Net Cashflow) */}
           {isDesktop ? (
             <View className="mb-5 flex-row gap-4">
               {/* Metric 1: Matching Entries */}
@@ -216,31 +396,33 @@ export function TransactionsScreen() {
                   {formatMinorUnits(totalExpenseMinor)}
                 </Text>
               </View>
-            </View>
-          ) : (
-            /* Single-row 3-column compact Stitch KPI bar */
-            <View className="rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 p-3 flex-row items-center justify-between mb-4">
-              <View className="flex-1 items-center">
-                <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  Entries
+
+              {/* Metric 4: Net Cashflow */}
+              <View className="flex-1 min-w-[140px] p-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm">
+                <Text className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Net Cashflow
                 </Text>
                 <Text
-                  className="text-base sm:text-lg font-extrabold font-mono text-slate-900 dark:text-white mt-0.5"
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
+                  className={`text-2xl font-extrabold font-mono mt-1 ${
+                    netCashflowMinor >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
                 >
-                  {filteredTransactions.length}
+                  {netCashflowMinor >= 0 ? '+' : ''}
+                  {formatMinorUnits(netCashflowMinor)}
                 </Text>
               </View>
-
-              <View className="h-6 w-px bg-slate-200/80 dark:bg-slate-800/90" />
-
+            </View>
+          ) : (
+            /* Single-row 3-column compact Stitch KPI bar: Inflow | Outflow | Net */
+            <View className="rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 p-3 flex-row items-center justify-between mb-4">
               <View className="flex-1 items-center">
                 <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   Inflow
                 </Text>
                 <Text
-                  className="text-base sm:text-lg font-extrabold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5"
+                  className="text-sm sm:text-base font-extrabold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5"
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
@@ -255,11 +437,31 @@ export function TransactionsScreen() {
                   Outflow
                 </Text>
                 <Text
-                  className="text-base sm:text-lg font-extrabold font-mono text-rose-600 dark:text-rose-400 mt-0.5"
+                  className="text-sm sm:text-base font-extrabold font-mono text-rose-600 dark:text-rose-400 mt-0.5"
                   numberOfLines={1}
                   adjustsFontSizeToFit
                 >
                   {formatMinorUnits(totalExpenseMinor)}
+                </Text>
+              </View>
+
+              <View className="h-6 w-px bg-slate-200/80 dark:bg-slate-800/90" />
+
+              <View className="flex-1 items-center">
+                <Text className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                  Net
+                </Text>
+                <Text
+                  className={`text-sm sm:text-base font-extrabold font-mono mt-0.5 ${
+                    netCashflowMinor >= 0
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-rose-600 dark:text-rose-400'
+                  }`}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  {netCashflowMinor >= 0 ? '+' : ''}
+                  {formatMinorUnits(netCashflowMinor)}
                 </Text>
               </View>
             </View>
@@ -294,38 +496,8 @@ export function TransactionsScreen() {
               )}
             </View>
 
-            {/* Filter Pills */}
-            {isDesktop ? (
-              <View className="flex-row flex-wrap gap-2">
-                {FILTER_OPTIONS.map((opt) => {
-                  const isActive = filter === opt.key;
-                  return (
-                    <Pressable
-                      key={opt.key}
-                      onPress={() => setFilter(opt.key)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Filter by ${opt.label}`}
-                      hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      className={`min-h-[44px] px-4 py-2.5 rounded-full justify-center active:opacity-80 ${
-                        isActive
-                          ? 'bg-brand-500 shadow-sm shadow-brand-500/25'
-                          : 'bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90'
-                      }`}
-                    >
-                      <Text
-                        className={`text-xs font-bold ${
-                          isActive
-                            ? 'text-white'
-                            : 'text-slate-600 dark:text-slate-400'
-                        }`}
-                      >
-                        {opt.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            ) : (
+            {/* Type Filter Pills + Month Stepper */}
+            <View className="flex-row flex-wrap items-center justify-between gap-2">
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -338,6 +510,7 @@ export function TransactionsScreen() {
                       key={opt.key}
                       onPress={() => setFilter(opt.key)}
                       accessibilityRole="button"
+                      accessibilityState={{ selected: isActive }}
                       accessibilityLabel={`Filter by ${opt.label}`}
                       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       className={`min-h-[44px] px-4 py-2.5 rounded-full justify-center active:opacity-80 ${
@@ -359,13 +532,218 @@ export function TransactionsScreen() {
                   );
                 })}
               </ScrollView>
+
+              {/* Month Filter Stepper */}
+              <View className="flex-row items-center gap-1 bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 rounded-full px-1.5 py-0.5">
+                <Pressable
+                  onPress={() => setSelectedMonth(null)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedMonth === null }}
+                  accessibilityLabel="Show all dates"
+                  className={`min-h-[44px] px-3 rounded-full items-center justify-center ${
+                    selectedMonth === null ? 'bg-slate-900 dark:bg-white' : ''
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-bold ${
+                      selectedMonth === null
+                        ? 'text-white dark:text-slate-900'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    All Dates
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => handleShiftMonth(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous month"
+                  className="min-h-[44px] min-w-[44px] items-center justify-center rounded-full active:opacity-75"
+                >
+                  <Text className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                    ‹
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() =>
+                    setSelectedMonth((prev) => (prev === null ? currentMonth : prev))
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    selectedMonth
+                      ? `Filtering by ${formatPeriodMonthLabel(selectedMonth)}`
+                      : 'Filter by current month'
+                  }
+                  className={`min-h-[44px] px-2.5 rounded-full items-center justify-center ${
+                    selectedMonth !== null ? 'bg-brand-500' : ''
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-bold ${
+                      selectedMonth !== null
+                        ? 'text-white'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {selectedMonth ? formatPeriodMonthLabel(selectedMonth) : 'This Month'}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => handleShiftMonth(1)}
+                  disabled={selectedMonth === null || selectedMonth >= currentMonth}
+                  accessibilityRole="button"
+                  accessibilityLabel="Next month"
+                  className={`min-h-[44px] min-w-[44px] items-center justify-center rounded-full ${
+                    selectedMonth === null || selectedMonth >= currentMonth
+                      ? 'opacity-30'
+                      : 'active:opacity-75'
+                  }`}
+                >
+                  <Text className="text-sm font-bold text-slate-600 dark:text-slate-300">
+                    ›
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Category Quick-Filter Pills */}
+            {filterableCategories.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8 }}
+              >
+                <Pressable
+                  onPress={() => setSelectedCategoryId(null)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: selectedCategoryId === null }}
+                  accessibilityLabel="All categories"
+                  className={`min-h-[44px] px-3.5 py-2 rounded-full items-center justify-center border ${
+                    selectedCategoryId === null
+                      ? 'bg-slate-900 dark:bg-white border-slate-900 dark:border-white'
+                      : 'bg-white dark:bg-[#131b2e] border-slate-200/80 dark:border-slate-800/90'
+                  }`}
+                >
+                  <Text
+                    className={`text-xs font-semibold ${
+                      selectedCategoryId === null
+                        ? 'text-white dark:text-slate-900'
+                        : 'text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    All Categories
+                  </Text>
+                </Pressable>
+
+                {filterableCategories.map((cat) => {
+                  const isActive = selectedCategoryId === cat.id;
+                  return (
+                    <Pressable
+                      key={cat.id}
+                      onPress={() =>
+                        setSelectedCategoryId((prev) => (prev === cat.id ? null : cat.id))
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isActive }}
+                      accessibilityLabel={`Filter by category ${cat.name}`}
+                      className={`min-h-[44px] px-3.5 py-2 rounded-full flex-row items-center gap-1.5 border ${
+                        isActive
+                          ? 'bg-brand-500 border-brand-500'
+                          : 'bg-white dark:bg-[#131b2e] border-slate-200/80 dark:border-slate-800/90'
+                      }`}
+                    >
+                      <Text className="text-xs">{cat.icon}</Text>
+                      <Text
+                        className={`text-xs font-semibold ${
+                          isActive
+                            ? 'text-white'
+                            : 'text-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {cat.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {/* Active Drill-Down Filter Chips */}
+            {(activeCategoryObj || selectedTag || activeWalletObj || selectedMonth) && (
+              <View className="flex-row flex-wrap items-center gap-2">
+                {activeWalletObj && (
+                  <Pressable
+                    onPress={() => setSelectedWalletId(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove wallet filter ${activeWalletObj.name}`}
+                    className="min-h-[44px] px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 flex-row items-center gap-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-brand-700 dark:text-brand-300">
+                      {activeWalletObj.icon} {activeWalletObj.name} ✕
+                    </Text>
+                  </Pressable>
+                )}
+
+                {activeCategoryObj && (
+                  <Pressable
+                    onPress={() => setSelectedCategoryId(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove category filter ${activeCategoryObj.name}`}
+                    className="min-h-[44px] px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 flex-row items-center gap-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-brand-700 dark:text-brand-300">
+                      {activeCategoryObj.icon} {activeCategoryObj.name} ✕
+                    </Text>
+                  </Pressable>
+                )}
+
+                {selectedTag && (
+                  <Pressable
+                    onPress={() => setSelectedTag(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove tag filter ${selectedTag}`}
+                    className="min-h-[44px] px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 flex-row items-center gap-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-brand-700 dark:text-brand-300">
+                      #{selectedTag} ✕
+                    </Text>
+                  </Pressable>
+                )}
+
+                {selectedMonth && (
+                  <Pressable
+                    onPress={() => setSelectedMonth(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove month filter ${formatPeriodMonthLabel(selectedMonth)}`}
+                    className="min-h-[44px] px-3 py-1.5 rounded-full bg-brand-50 dark:bg-brand-950/60 border border-brand-200 dark:border-brand-800 flex-row items-center gap-1.5"
+                  >
+                    <Text className="text-xs font-semibold text-brand-700 dark:text-brand-300">
+                      {formatPeriodMonthLabel(selectedMonth)} ✕
+                    </Text>
+                  </Pressable>
+                )}
+
+                <Pressable
+                  onPress={handleClearFilters}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear all filters"
+                  className="min-h-[44px] px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center"
+                >
+                  <Text className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                    Clear All
+                  </Text>
+                </Pressable>
+              </View>
             )}
           </View>
 
-          {/* Wallets & Accounts Strip */}
+          {/* Wallets & Accounts Strip (Tap to filter by wallet) */}
           <View className="mb-5">
             <Text className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
-              Wallets & Accounts
+              Wallets & Accounts (Tap to filter)
             </Text>
             {isDesktop ? (
               <View className="flex-row flex-wrap gap-3">
@@ -374,10 +752,23 @@ export function TransactionsScreen() {
                     wallet.balanceMinor,
                     wallet.currency,
                   );
+                  const isSelected = selectedWalletId === wallet.id;
                   return (
-                    <View
+                    <Pressable
                       key={wallet.id}
-                      className="flex-1 min-w-[160px] max-w-[280px] py-3 px-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm"
+                      onPress={() =>
+                        setSelectedWalletId((prev) =>
+                          prev === wallet.id ? null : wallet.id,
+                        )
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={`Filter by wallet ${wallet.name}, balance ${formatted}`}
+                      className={`flex-1 min-w-[160px] max-w-[280px] min-h-[44px] py-3 px-4 rounded-2xl shadow-sm ${
+                        isSelected
+                          ? 'bg-brand-50/60 dark:bg-brand-950/40 border-2 border-brand-500'
+                          : 'bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90'
+                      }`}
                     >
                       <View className="flex-row items-center gap-1.5 mb-1">
                         <Text className="text-base">{wallet.icon}</Text>
@@ -394,7 +785,7 @@ export function TransactionsScreen() {
                       >
                         {formatted}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </View>
@@ -410,10 +801,23 @@ export function TransactionsScreen() {
                     wallet.balanceMinor,
                     wallet.currency,
                   );
+                  const isSelected = selectedWalletId === wallet.id;
                   return (
-                    <View
+                    <Pressable
                       key={wallet.id}
-                      className="min-w-[145px] py-3 px-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm mr-2.5"
+                      onPress={() =>
+                        setSelectedWalletId((prev) =>
+                          prev === wallet.id ? null : wallet.id,
+                        )
+                      }
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={`Filter by wallet ${wallet.name}, balance ${formatted}`}
+                      className={`min-w-[145px] min-h-[44px] py-3 px-4 rounded-2xl shadow-sm mr-2.5 ${
+                        isSelected
+                          ? 'bg-brand-50/60 dark:bg-brand-950/40 border-2 border-brand-500'
+                          : 'bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90'
+                      }`}
                     >
                       <View className="flex-row items-center gap-1.5 mb-1">
                         <Text className="text-base">{wallet.icon}</Text>
@@ -430,20 +834,37 @@ export function TransactionsScreen() {
                       >
                         {formatted}
                       </Text>
-                    </View>
+                    </Pressable>
                   );
                 })}
               </ScrollView>
             )}
           </View>
 
-          {/* Transactions List, Loading State, or Empty State */}
+          {/* Transactions List, Loading State, Error State, or Empty State */}
           {transactionsQuery.isLoading ? (
             <View className="p-8 items-center justify-center gap-3">
               <ActivityIndicator size="large" color="#208AEF" />
               <Text className="text-sm font-medium text-slate-500 dark:text-slate-400">
                 Loading transactions...
               </Text>
+            </View>
+          ) : transactionsQuery.isError ? (
+            <View className="p-8 rounded-3xl bg-white dark:bg-[#131b2e] border border-rose-200 dark:border-rose-900/60 items-center gap-3 mt-2 shadow-sm">
+              <Text className="text-lg font-bold text-slate-900 dark:text-white text-center">
+                Failed to Load Transactions
+              </Text>
+              <Text className="text-sm text-slate-500 dark:text-slate-400 text-center max-w-[300px]">
+                There was an issue reading your local transactions. Please try again.
+              </Text>
+              <Pressable
+                onPress={() => void transactionsQuery.refetch()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading transactions"
+                className="min-h-[44px] bg-brand-500 active:bg-brand-600 px-6 py-3 rounded-2xl mt-1 justify-center items-center"
+              >
+                <Text className="text-white font-bold text-sm">Retry</Text>
+              </Pressable>
             </View>
           ) : filteredTransactions.length === 0 ? (
             transactions.length === 0 ? (
@@ -476,10 +897,7 @@ export function TransactionsScreen() {
                   {filter !== 'ALL' ? `${filter.toLowerCase()} filter` : ''}.
                 </Text>
                 <Pressable
-                  onPress={() => {
-                    setFilter('ALL');
-                    setSearchQuery('');
-                  }}
+                  onPress={handleClearFilters}
                   accessibilityRole="button"
                   accessibilityLabel="Clear search and filters"
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -499,7 +917,10 @@ export function TransactionsScreen() {
                   transaction={tx}
                   categories={categories}
                   wallets={wallets}
-                  onDelete={() => handleDelete(tx.id)}
+                  onEdit={() =>
+                    router.push({ pathname: '/capture', params: { editId: tx.id } })
+                  }
+                  onDelete={() => void handleDelete(tx)}
                   isDeleting={deleteTransactionMutation.isPending}
                 />
               ))}
@@ -509,6 +930,7 @@ export function TransactionsScreen() {
           {/* Subtle bottom spacer */}
           <View className="h-6" />
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     </View>
   );
@@ -518,6 +940,7 @@ interface TransactionItemCardProps {
   transaction: Transaction;
   categories: readonly { id: string; name: string; icon: string }[];
   wallets: readonly { id: string; name: string; icon: string }[];
+  onEdit: () => void;
   onDelete: () => void;
   isDeleting: boolean;
 }
@@ -526,6 +949,7 @@ function TransactionItemCard({
   transaction: tx,
   categories,
   wallets,
+  onEdit,
   onDelete,
   isDeleting,
 }: TransactionItemCardProps) {
@@ -654,14 +1078,27 @@ function TransactionItemCard({
       )}
 
       {/* Bottom Action Row */}
-      <View className="border-t border-slate-100 dark:border-slate-800/80 pt-2.5 flex-row justify-end items-center">
+      <View className="border-t border-slate-100 dark:border-slate-800/80 pt-2.5 flex-row justify-end items-center gap-2">
+        <Pressable
+          onPress={onEdit}
+          disabled={isDeleting}
+          accessibilityRole="button"
+          accessibilityLabel="Edit transaction"
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          className="min-h-[44px] px-4 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80 justify-center items-center active:opacity-75"
+        >
+          <Text className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+            Edit
+          </Text>
+        </Pressable>
+
         <Pressable
           onPress={onDelete}
           disabled={isDeleting}
           accessibilityRole="button"
           accessibilityLabel="Undo or delete transaction"
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          className={`min-h-[36px] px-3.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 justify-center items-center active:opacity-75 ${
+          className={`min-h-[44px] px-3.5 py-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/50 justify-center items-center active:opacity-75 ${
             isDeleting ? 'opacity-50' : ''
           }`}
         >

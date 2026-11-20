@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -231,7 +233,11 @@ export function CategoryPickerGrid({
         presentationStyle="pageSheet"
         onRequestClose={() => setIsSearchOpen(false)}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'left', 'right']}>
+        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
           <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
           {/* Modal Header */}
           <View className="flex-row justify-between items-center mb-4">
@@ -247,7 +253,8 @@ export function CategoryPickerGrid({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Close category search"
-              className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
               onPress={() => setIsSearchOpen(false)}
             >
               <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -451,6 +458,7 @@ export function CategoryPickerGrid({
             </View>
           </ScrollView>
         </ThemedView>
+          </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
   </View>

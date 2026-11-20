@@ -1,6 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -106,15 +107,26 @@ function CompactMobileBrandHeader() {
 }
 
 export function LoginScreen() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, isHydrating, login } = useAuth();
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 960;
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isHydrating && isAuthenticated) {
       router.replace('/dashboard');
     }
-  }, [isAuthenticated]);
+  }, [isHydrating, isAuthenticated]);
+
+  if (isHydrating) {
+    return (
+      <View className="flex-1 bg-slate-50 dark:bg-[#0b1326] items-center justify-center gap-3">
+        <ActivityIndicator size="large" color="#208AEF" />
+        <Text className="text-sm font-medium text-slate-500 dark:text-slate-400">
+          Restoring your session...
+        </Text>
+      </View>
+    );
+  }
 
   if (isAuthenticated) {
     return null;
@@ -147,8 +159,8 @@ export function LoginScreen() {
 
       {/* Login Form */}
       <LoginForm
-        onSuccess={(email) => {
-          login(email);
+        onSubmit={async (email, password) => {
+          await login(email, password);
           router.replace('/dashboard');
         }}
       />

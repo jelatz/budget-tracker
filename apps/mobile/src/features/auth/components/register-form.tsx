@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,10 +8,10 @@ import {
 } from 'react-native';
 
 export type RegisterFormProps = {
-  onSuccess: (user: { name: string; email: string }) => void;
+  onSubmit: (user: { name: string; email: string; password: string }) => Promise<void>;
 };
 
-export function RegisterForm({ onSuccess }: RegisterFormProps) {
+export function RegisterForm({ onSubmit }: RegisterFormProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,6 +19,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const isSubmittingRef = useRef(false);
 
   const isNameError = Boolean(errorMessage && errorMessage.toLowerCase().includes('name'));
   const isEmailError = Boolean(errorMessage && errorMessage.toLowerCase().includes('email'));
@@ -31,6 +32,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
   );
 
   const handleRegister = async () => {
+    if (isSubmittingRef.current || isLoading) return;
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
 
@@ -55,12 +57,11 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
     }
 
     setErrorMessage(null);
+    isSubmittingRef.current = true;
     setIsLoading(true);
 
     try {
-      // Simulate network account creation delay
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      onSuccess({ name: trimmedName, email: trimmedEmail });
+      await onSubmit({ name: trimmedName, email: trimmedEmail, password });
     } catch (error: unknown) {
       const message =
         error instanceof Error
@@ -68,6 +69,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
           : 'An unexpected error occurred while creating your account.';
       setErrorMessage(message);
     } finally {
+      isSubmittingRef.current = false;
       setIsLoading(false);
     }
   };

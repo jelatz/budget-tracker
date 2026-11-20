@@ -4,7 +4,7 @@ import type { Transaction } from './transactions.schema';
 
 export const periodMonthSchema = z
   .string()
-  .regex(/^\d{4}-\d{2}$/, 'Period must be in YYYY-MM format');
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Period must be in YYYY-MM format with month 01-12');
 
 export const categoryBudgetSchema = z.object({
   id: z.string().min(1),
@@ -36,40 +36,65 @@ export const categoryBudgetStatusSchema = z.object({
 export type CategoryBudgetStatus = z.infer<typeof categoryBudgetStatusSchema>;
 
 /**
- * Computes previous month in "YYYY-MM" format.
- * e.g. "2026-11" -> "2026-10", "2026-01" -> "2025-12"
+ * Returns the local calendar month string in "YYYY-MM" format.
  */
-export function getPreviousPeriodMonth(periodMonth: string): string {
+export function getCurrentPeriodMonth(now = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+}
+
+/**
+ * Shifts a "YYYY-MM" period month string by `delta` months (positive or negative).
+ */
+export function shiftPeriodMonth(periodMonth: string, delta: number): string {
   const [yearStr, monthStr] = periodMonth.split('-');
   let year = parseInt(yearStr, 10);
-  let month = parseInt(monthStr, 10);
-  month -= 1;
-  if (month === 0) {
-    month = 12;
+  let month = parseInt(monthStr, 10) + delta;
+  while (month < 1) {
+    month += 12;
     year -= 1;
+  }
+  while (month > 12) {
+    month -= 12;
+    year += 1;
   }
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
 /**
- * Checks if a transaction occurred within a given "YYYY-MM" period.
+ * Formats a "YYYY-MM" period month string into a human-readable label (e.g. "Nov 2026").
+ */
+export function formatPeriodMonthLabel(periodMonth: string): string {
+  const [yearStr, monthStr] = periodMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const monthIndex = parseInt(monthStr, 10) - 1;
+  if (Number.isNaN(year) || Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) {
+    return periodMonth;
+  }
+  const d = new Date(year, monthIndex, 1);
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+}
+
+/**
+ * Computes previous month in "YYYY-MM" format.
+ * e.g. "2026-11" -> "2026-10", "2026-01" -> "2025-12"
+ */
+export function getPreviousPeriodMonth(periodMonth: string): string {
+  return shiftPeriodMonth(periodMonth, -1);
+}
+
+/**
+ * Checks if a transaction occurred within a given local calendar "YYYY-MM" period.
  */
 export function isTransactionInMonth(occurredAtIso: string, periodMonth: string): boolean {
-  if (occurredAtIso.startsWith(periodMonth)) {
-    return true;
-  }
   const d = new Date(occurredAtIso);
   if (isNaN(d.getTime())) {
     return false;
   }
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
-  if (`${year}-${month}` === periodMonth) {
-    return true;
-  }
-  const utcYear = d.getUTCFullYear();
-  const utcMonth = String(d.getUTCMonth() + 1).padStart(2, '0');
-  return `${utcYear}-${utcMonth}` === periodMonth;
+  return `${year}-${month}` === periodMonth;
 }
 
 /**

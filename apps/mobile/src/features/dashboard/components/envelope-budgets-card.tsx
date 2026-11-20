@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -13,12 +12,16 @@ import {
 } from 'react-native';
 import {
   formatMinorUnits,
+  formatPeriodMonthLabel,
+  getCurrentPeriodMonth,
   minorUnitsToDecimalInput,
   parseDecimalToMinorUnits,
+  shiftPeriodMonth,
   type CategoryBudget,
   type CategoryBudgetStatus,
 } from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
+import { confirmAction } from '@/common/lib/confirm';
 import {
   useAllCategories,
   useCategoryBudgets,
@@ -26,44 +29,10 @@ import {
   useUpsertCategoryBudget,
 } from '@/features/transactions/hooks/use-transactions';
 
-function getCurrentPeriod(): string {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-}
-
-function formatPeriodDisplay(periodMonth: string): string {
-  try {
-    const [yearStr, monthStr] = periodMonth.split('-');
-    const year = parseInt(yearStr, 10);
-    const month = parseInt(monthStr, 10) - 1;
-    const d = new Date(year, month, 1);
-    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  } catch (error: unknown) {
-    return periodMonth;
-  }
-}
-
-function shiftPeriodMonth(periodMonth: string, delta: number): string {
-  const [yearStr, monthStr] = periodMonth.split('-');
-  let year = parseInt(yearStr, 10);
-  let month = parseInt(monthStr, 10) + delta;
-  while (month < 1) {
-    month += 12;
-    year -= 1;
-  }
-  while (month > 12) {
-    month -= 12;
-    year += 1;
-  }
-  return `${year}-${String(month).padStart(2, '0')}`;
-}
-
-const AMOUNT_PRESETS = [5000, 10000, 25000, 50000]; // in centavos: ₱50, ₱100, ₱250, ₱500
+const AMOUNT_PRESETS = [200000, 500000, 1000000, 1500000]; // ₱2,000, ₱5,000, ₱10,000, ₱15,000
 
 export function EnvelopeBudgetsCard() {
-  const [periodMonth, setPeriodMonth] = useState<string>(getCurrentPeriod);
+  const [periodMonth, setPeriodMonth] = useState<string>(() => getCurrentPeriodMonth());
 
   // Queries & Mutations
   const { data: envelopes = [], isLoading } = useCategoryBudgets(periodMonth);
@@ -115,7 +84,7 @@ export function EnvelopeBudgetsCard() {
   const handleOpenCreateModal = () => {
     setEditingEnvelope(null);
     setSelectedCategoryId(availableCategories[0]?.id ?? (categories[0]?.id ?? ''));
-    setAssignedInput('100');
+    setAssignedInput('5000');
     setRolloverEnabled(true);
     setNotes('');
     setFormError(null);
@@ -175,36 +144,29 @@ export function EnvelopeBudgetsCard() {
     }
   };
 
-  const handleDeleteEnvelope = () => {
+  const handleDeleteEnvelope = async () => {
     if (!editingEnvelope) return;
 
     const catName = categoryMap.get(editingEnvelope.categoryId)?.name ?? 'envelope';
-    const doDelete = async () => {
-      try {
-        if (editingEnvelope.id) {
-          await deleteMutation.mutateAsync(editingEnvelope.id);
-        }
-        setModalVisible(false);
-        setEditingEnvelope(null);
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Failed to delete envelope.';
-        setFormError(msg);
-      }
-    };
+    const confirmed = await confirmAction({
+      title: 'Delete Envelope',
+      message: `Are you sure you want to remove the "${catName}" envelope for ${formatPeriodMonthLabel(periodMonth)}?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`Delete the "${catName}" envelope for ${formatPeriodDisplay(periodMonth)}?`)) {
-        void doDelete();
+    try {
+      if (editingEnvelope.id) {
+        await deleteMutation.mutateAsync(editingEnvelope.id);
       }
-    } else {
-      Alert.alert(
-        'Delete Envelope',
-        `Are you sure you want to remove the "${catName}" envelope for ${formatPeriodDisplay(periodMonth)}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
-        ],
-      );
+      setModalVisible(false);
+      setEditingEnvelope(null);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to delete envelope.';
+      setFormError(msg);
     }
   };
 
@@ -248,7 +210,7 @@ export function EnvelopeBudgetsCard() {
 
           <View className="px-2 py-0.5">
             <ThemedText className="text-xs font-bold text-slate-900 dark:text-white">
-              {formatPeriodDisplay(periodMonth)}
+              {formatPeriodMonthLabel(periodMonth)}
             </ThemedText>
           </View>
 
@@ -264,9 +226,9 @@ export function EnvelopeBudgetsCard() {
             </ThemedText>
           </Pressable>
 
-          {periodMonth !== getCurrentPeriod() && (
+          {periodMonth !== getCurrentPeriodMonth() && (
             <Pressable
-              onPress={() => setPeriodMonth(getCurrentPeriod())}
+              onPress={() => setPeriodMonth(getCurrentPeriodMonth())}
               accessibilityRole="button"
               accessibilityLabel="Reset to Current Month"
               className="px-2 py-1 rounded-md bg-slate-200/70 dark:bg-slate-800 active:opacity-75 ml-1"
@@ -299,7 +261,7 @@ export function EnvelopeBudgetsCard() {
       ) : envelopes.length === 0 ? (
         <View className="py-6 items-center justify-center gap-2 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
           <ThemedText className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            No envelopes for {formatPeriodDisplay(periodMonth)}
+            No envelopes for {formatPeriodMonthLabel(periodMonth)}
           </ThemedText>
           <ThemedText className="text-xs text-center text-slate-500 dark:text-slate-400 max-w-[260px]">
             Create category envelopes to set monthly spending boundaries with automatic rollover.
@@ -460,7 +422,7 @@ export function EnvelopeBudgetsCard() {
                   {editingEnvelope ? 'Edit Envelope' : 'New Envelope'}
                 </ThemedText>
                 <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
-                  {formatPeriodDisplay(periodMonth)}
+                  {formatPeriodMonthLabel(periodMonth)}
                 </ThemedText>
               </View>
 
@@ -483,7 +445,11 @@ export function EnvelopeBudgetsCard() {
               </View>
             )}
 
-            <ScrollView className="max-h-[420px]" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              className="max-h-[420px]"
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View className="gap-4">
                 {/* Category Selection */}
                 <View className="gap-1.5">
@@ -553,7 +519,7 @@ export function EnvelopeBudgetsCard() {
                         if (formError) setFormError(null);
                       }}
                       keyboardType="decimal-pad"
-                      placeholder="100"
+                      placeholder="5000"
                       placeholderTextColor="#94A3B8"
                       editable={!isSubmitting}
                     />
@@ -634,7 +600,7 @@ export function EnvelopeBudgetsCard() {
 
               {editingEnvelope && (
                 <Pressable
-                  onPress={handleDeleteEnvelope}
+                  onPress={() => void handleDeleteEnvelope()}
                   disabled={isSubmitting}
                   accessibilityRole="button"
                   accessibilityLabel="Delete Envelope"

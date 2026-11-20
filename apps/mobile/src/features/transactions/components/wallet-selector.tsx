@@ -158,10 +158,11 @@ export function WalletSelector({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Swap from and to wallets"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={handleSwap}
-                  className="mt-1 px-2.5 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 active:scale-95"
+                  className="mt-1 min-h-[44px] min-w-[44px] px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 items-center justify-center active:scale-95"
                 >
-                  <ThemedText className="text-[11px] font-bold text-brand-500 dark:text-brand-400">
+                  <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
                     Swap ⇄
                   </ThemedText>
                 </Pressable>

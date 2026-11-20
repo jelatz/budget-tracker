@@ -10,21 +10,26 @@
     "web": "expo start --web",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "echo 'test stub'"
+    "test": "jest --watchAll=false"
   },
   "dependencies": {
     "@expo/ui": "~58.0.25",
     "@repo/contracts": "workspace:*",
     "@tanstack/react-query": "^5.105.0",
     "expo": "~58.0.21",
+    "expo-clipboard": "~58.0.4",
     "expo-constants": "~58.0.14",
     "expo-device": "~58.0.5",
+    "expo-document-picker": "~58.0.5",
+    "expo-file-system": "~58.0.14",
     "expo-font": "~58.0.11",
     "expo-glass-effect": "~58.0.5",
     "expo-image": "~58.0.18",
     "expo-image-picker": "~58.0.10",
     "expo-linking": "~58.0.15",
     "expo-router": "~58.0.28",
+    "expo-secure-store": "~58.0.3",
+    "expo-sharing": "~58.0.23",
     "expo-splash-screen": "~58.0.12",
     "expo-status-bar": "~58.0.4",
     "expo-symbols": "~58.0.4",
@@ -45,7 +50,10 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@types/jest": "30.0.0",
     "@types/react": "~19.3.0",
+    "jest": "~30.5.2",
+    "jest-expo": "~58.0.15",
     "typescript": "~6.0.3"
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -8,25 +8,19 @@ import {
 } from 'react-native';
 
 export type LoginFormProps = {
-  onSuccess: (email: string) => void;
+  onSubmit: (email: string, password: string) => Promise<void>;
 };
 
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSubmit }: LoginFormProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  const handleUseDemoCredentials = () => {
-    const demoEmail = 'demo@budgettracker.app';
-    const demoPassword = 'password123';
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setErrorMessage(null);
-  };
+  const isSubmittingRef = useRef(false);
 
   const handleSignIn = async () => {
+    if (isSubmittingRef.current || isLoading) return;
     const trimmedEmail = email.trim();
 
     if (!trimmedEmail || !trimmedEmail.includes('@')) {
@@ -34,21 +28,25 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long.');
+    if (password.length < 1) {
+      setErrorMessage('Please enter your password.');
       return;
     }
 
     setErrorMessage(null);
+    isSubmittingRef.current = true;
     setIsLoading(true);
 
     try {
-      onSuccess(trimmedEmail);
+      await onSubmit(trimmedEmail, password);
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : 'An unexpected error occurred during sign-in.';
+        error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred during sign-in.';
       setErrorMessage(message);
     } finally {
+      isSubmittingRef.current = false;
       setIsLoading(false);
     }
   };
@@ -56,12 +54,13 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   const hasEmailError = Boolean(
     errorMessage &&
       (errorMessage.toLowerCase().includes('email') ||
-        (!email.trim() || !email.includes('@')))
+        !email.trim() ||
+        !email.includes('@')),
   );
 
   const hasPasswordError = Boolean(
     errorMessage &&
-      (errorMessage.toLowerCase().includes('password') || password.length < 6)
+      (errorMessage.toLowerCase().includes('password') || password.length === 0),
   );
 
   return (
@@ -108,7 +107,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             hasPasswordError
               ? 'border-rose-500 dark:border-rose-500'
               : 'border-slate-200 dark:border-slate-700'
-          } flex-row items-center justify-between`}>
+          } flex-row items-center justify-between`}
+        >
           <TextInput
             value={password}
             onChangeText={(text) => {
@@ -129,7 +129,8 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             accessibilityRole="button"
             accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            className="ml-2 py-1 px-1.5 active:opacity-70">
+            className="ml-2 py-1 px-1.5 active:opacity-70"
+          >
             <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">
               {showPassword ? 'Hide' : 'Show'}
             </Text>
@@ -138,13 +139,14 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
       </View>
 
       <Pressable
-        onPress={handleSignIn}
+        onPress={() => void handleSignIn()}
         disabled={isLoading}
         accessibilityRole="button"
         accessibilityLabel="Sign In"
         className={`h-12 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-md shadow-brand-500/25 mt-1 ${
           isLoading ? 'opacity-70' : ''
-        }`}>
+        }`}
+      >
         {isLoading ? (
           <ActivityIndicator color="#ffffff" size="small" />
         ) : (
@@ -152,19 +154,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             Sign In
           </Text>
         )}
-      </Pressable>
-
-      <Pressable
-        onPress={handleUseDemoCredentials}
-        disabled={isLoading}
-        accessibilityRole="button"
-        accessibilityLabel="Use Demo Credentials"
-        className={`h-11 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75 ${
-          isLoading ? 'opacity-70' : ''
-        }`}>
-        <Text className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Use Demo Credentials
-        </Text>
       </Pressable>
     </View>
   );

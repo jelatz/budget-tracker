@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -284,6 +286,10 @@ export function SplitEditorModal({
       onRequestClose={onClose}
     >
       <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          className="flex-1"
+        >
         <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 pt-4">
           {/* Header */}
           <View className="flex-row justify-between items-center px-4 mb-3">
@@ -300,7 +306,7 @@ export function SplitEditorModal({
               accessibilityRole="button"
               accessibilityLabel="Close split editor"
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+              className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
               onPress={onClose}
             >
               <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Cancel</ThemedText>
@@ -367,7 +373,7 @@ export function SplitEditorModal({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Split total evenly among categories"
-              className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:scale-[0.98]"
+              className="flex-1 min-h-[44px] py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:scale-[0.98]"
               onPress={handleSplitEvenly}
             >
               <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -379,7 +385,7 @@ export function SplitEditorModal({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Auto-balance remainder to last split category"
-                className="flex-1 py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 items-center justify-center active:scale-[0.98]"
+                className="flex-1 min-h-[44px] py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 items-center justify-center active:scale-[0.98]"
                 onPress={handleAutoBalanceRemainder}
               >
                 <ThemedText className="text-xs font-bold text-amber-700 dark:text-amber-400">
@@ -394,7 +400,7 @@ export function SplitEditorModal({
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Update total amount to match sum"
-              className="mt-2.5 bg-emerald-500 active:bg-emerald-600 rounded-xl py-2 px-3 items-center justify-center active:scale-[0.98]"
+              className="mt-2.5 min-h-[44px] bg-emerald-500 active:bg-emerald-600 rounded-xl py-2 px-3 items-center justify-center active:scale-[0.98]"
               onPress={handleApplyWithUpdatedTotal}
             >
               <ThemedText className="text-xs font-bold text-white">
@@ -429,7 +435,7 @@ export function SplitEditorModal({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Change category for split line ${index + 1}`}
-                    className="flex-row items-center gap-2 px-3 py-1.5 rounded-xl border active:opacity-75"
+                    className="min-h-[44px] flex-row items-center gap-2 px-3 py-1.5 rounded-xl border active:opacity-75"
                     style={{
                       backgroundColor: currentCat?.color ? `${currentCat.color}15` : undefined,
                       borderColor: currentCat?.color ?? '#E2E8F0',
@@ -457,7 +463,8 @@ export function SplitEditorModal({
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`Delete split line ${index + 1}`}
-                      className="px-2.5 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 active:opacity-75"
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      className="min-h-[44px] px-3 py-1 rounded-lg bg-rose-50 dark:bg-rose-950/60 items-center justify-center active:opacity-75"
                       onPress={() => handleRemoveSplitLine(index)}
                     >
                       <ThemedText className="text-xs font-bold text-rose-500">
@@ -580,7 +587,7 @@ export function SplitEditorModal({
             accessibilityRole="button"
             accessibilityLabel="Remove splits and revert to single category"
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            className="py-1.5 active:opacity-75"
+            className="min-h-[44px] px-3 items-center justify-center active:opacity-75"
             onPress={handleClear}
           >
             <ThemedText className="text-xs text-slate-400 dark:text-slate-500 underline">
@@ -589,6 +596,7 @@ export function SplitEditorModal({
           </Pressable>
         </View>
       </ThemedView>
+        </KeyboardAvoidingView>
     </SafeAreaView>
   </Modal>
 );

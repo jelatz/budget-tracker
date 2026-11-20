@@ -4,15 +4,20 @@ import { router, useRootNavigationState } from 'expo-router';
 import { useAuth } from '@/features/auth/context/auth-context';
 
 export function useRequireAuth() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, isHydrating, user, logout } = useAuth();
   const rootNavigationState = useRootNavigationState();
   const isNavigationReady = Boolean(rootNavigationState?.key);
 
   useEffect(() => {
-    if (isNavigationReady && !isAuthenticated) {
+    if (isNavigationReady && !isHydrating && !isAuthenticated) {
       router.replace('/');
     }
-  }, [isNavigationReady, isAuthenticated]);
+  }, [isNavigationReady, isHydrating, isAuthenticated]);
 
-  return { isAuthenticated: isNavigationReady && isAuthenticated, user, logout };
+  return {
+    isAuthenticated: isNavigationReady && !isHydrating && isAuthenticated,
+    isHydrating,
+    user,
+    logout,
+  };
 }

@@ -1,76 +1,142 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  authMeResponseSchema,
+  authResponseSchema,
+  okResponseSchema,
+  type AuthUser,
+} from '@repo/contracts';
+import { ApiError, apiFetch, setUnauthorizedHandler } from '@/common/lib/api-client';
+import {
+  clearAccessToken,
+  getAccessToken,
+  setAccessToken,
+} from '@/common/lib/token-storage';
 
-export type User = {
-  email: string;
-  name?: string;
-};
+export type User = AuthUser;
 
 export type AuthContextType = {
   user: User | null;
   isAuthenticated: boolean;
-  login: (email: string, name?: string) => void;
-  logout: () => void;
+  isHydrating: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
 };
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const AUTH_STORAGE_KEY = 'budget_tracker_auth_user';
-
-function loadStoredUser(): User | null {
-  try {
-    const raw = globalThis.localStorage?.getItem(AUTH_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof (parsed as Record<string, unknown>).email === 'string' &&
-      ((parsed as Record<string, unknown>).email as string).length > 0
-    ) {
-      const parsedRecord = parsed as Record<string, unknown>;
-      return {
-        email: parsedRecord.email as string,
-        name: typeof parsedRecord.name === 'string' ? parsedRecord.name : undefined,
-      };
-    }
-    return null;
-  } catch (error: unknown) {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => loadStoredUser());
+  const queryClient = useQueryClient();
+  const [user, setUser] = useState<User | null>(null);
+  const [isHydrating, setIsHydrating] = useState(true);
 
-  const login = useCallback((email: string, name?: string) => {
-    const nextUser: User = { email, name };
-    setUser(nextUser);
-    try {
-      globalThis.localStorage?.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextUser));
-    } catch (error: unknown) {
-      // Storage unavailable or quota exceeded
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrateSession() {
+      try {
+        const token = await getAccessToken();
+        if (!token) {
+          return;
+        }
+        const { user: currentUser } = await apiFetch(
+          '/v1/auth/me',
+          authMeResponseSchema,
+        );
+        if (!cancelled) {
+          setUser(currentUser);
+        }
+      } catch (error: unknown) {
+        if (!(error instanceof ApiError && error.status === 0)) {
+          await clearAccessToken();
+        }
+        if (!cancelled) {
+          setUser(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHydrating(false);
+        }
+      }
     }
+
+    void hydrateSession();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const logout = useCallback(() => {
-    setUser(null);
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void clearAccessToken();
+      queryClient.clear();
+      setUser(null);
+    });
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, [queryClient]);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const response = await apiFetch('/v1/auth/login', authResponseSchema, {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({ email, password }),
+      });
+      await setAccessToken(response.token);
+      queryClient.clear();
+      setUser(response.user);
+    },
+    [queryClient],
+  );
+
+  const register = useCallback(
+    async (name: string, email: string, password: string) => {
+      const response = await apiFetch('/v1/auth/register', authResponseSchema, {
+        method: 'POST',
+        skipAuth: true,
+        body: JSON.stringify({ name, email, password }),
+      });
+      await setAccessToken(response.token);
+      queryClient.clear();
+      setUser(response.user);
+    },
+    [queryClient],
+  );
+
+  const logout = useCallback(async () => {
     try {
-      globalThis.localStorage?.removeItem(AUTH_STORAGE_KEY);
+      await apiFetch('/v1/auth/logout', okResponseSchema, {
+        method: 'POST',
+      });
     } catch (error: unknown) {
-      // Storage unavailable
+      // Best-effort session revocation; still clear local session
+    } finally {
+      await clearAccessToken();
+      queryClient.clear();
+      setUser(null);
     }
-  }, []);
+  }, [queryClient]);
 
   const value = useMemo<AuthContextType>(
     () => ({
       user,
       isAuthenticated: user !== null,
+      isHydrating,
       login,
+      register,
       logout,
     }),
-    [user, login, logout]
+    [user, isHydrating, login, register, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

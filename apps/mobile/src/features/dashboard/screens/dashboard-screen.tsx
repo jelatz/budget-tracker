@@ -1,37 +1,45 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   formatMinorUnits,
+  getCurrentPeriodMonth,
+  shiftPeriodMonth,
   type DashboardPeriod,
+  type Wallet,
 } from '@repo/contracts';
 
 import { ThemedText } from '@/common/components/themed-text';
 import { WebMaxContentWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
+import { confirmAction } from '@/common/lib/confirm';
 
 import {
-  useClearAllTransactions,
+  TRANSACTION_KEYS,
   useDashboardMetrics,
   useDeleteTransaction,
-  useResetDemoData,
   useUpdateMonthlyBudget,
 } from '@/features/transactions/hooks/use-transactions';
 
 import { SafeToSpendCard } from '../components/safe-to-spend-card';
 import { NetWorthCard } from '../components/net-worth-card';
 import { BudgetProgressCard } from '../components/budget-progress-card';
+import { CashflowTrendCard } from '../components/cashflow-trend-card';
 import { EnvelopeBudgetsCard } from '../components/envelope-budgets-card';
 import { SinkingFundsCard } from '../components/sinking-funds-card';
 import { CategoryBreakdownCard } from '../components/category-breakdown-card';
 import { TagInsightsCard } from '../components/tag-insights-card';
+import { WalletManagerModal } from '../components/wallet-manager-modal';
 
 const PERIOD_TABS: Array<{ key: DashboardPeriod; label: string }> = [
   { key: 'THIS_MONTH', label: 'This Month' },
@@ -63,19 +71,86 @@ function formatTxDate(isoString: string): string {
 }
 
 export function DashboardScreen() {
-  const { isAuthenticated, user, logout } = useRequireAuth();
+  const { isAuthenticated } = useRequireAuth();
+  const queryClient = useQueryClient();
   const [period, setPeriod] = useState<DashboardPeriod>('THIS_MONTH');
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => getCurrentPeriodMonth());
   const [mobileSection, setMobileSection] = useState<'OVERVIEW' | 'BUDGETS' | 'INSIGHTS'>('OVERVIEW');
+  const [walletModalVisible, setWalletModalVisible] = useState(false);
+  const [editingWallet, setEditingWallet] = useState<Wallet | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const handlePullRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const { width } = useWindowDimensions();
   const isDesktop = Platform.OS === 'web' && width >= 1024;
-  const isTablet = Platform.OS === 'web' && width >= 768;
 
-  const { metrics, wallets, categories } = useDashboardMetrics(period);
+  const { metrics, wallets, categories, isLoading, isError, refetch } = useDashboardMetrics(
+    period,
+    period === 'MONTH' ? selectedMonth : undefined,
+  );
   const updateBudgetMutation = useUpdateMonthlyBudget();
   const deleteTransactionMutation = useDeleteTransaction();
-  const resetDemoMutation = useResetDemoData();
-  const clearAllMutation = useClearAllTransactions();
+
+  const currentMonth = getCurrentPeriodMonth();
+  const activeMonthParam =
+    period === 'THIS_MONTH'
+      ? currentMonth
+      : period === 'MONTH'
+        ? selectedMonth
+        : undefined;
+
+  const handlePeriodChange = (nextPeriod: DashboardPeriod) => {
+    if (nextPeriod === 'THIS_MONTH') {
+      setSelectedMonth(getCurrentPeriodMonth());
+    }
+    setPeriod(nextPeriod);
+  };
+
+  const handleShiftMonth = (delta: number) => {
+    const latestMonth = getCurrentPeriodMonth();
+    const nextMonth = shiftPeriodMonth(selectedMonth, delta);
+    if (nextMonth > latestMonth) {
+      return;
+    }
+    setSelectedMonth(nextMonth);
+    setPeriod(nextMonth === latestMonth ? 'THIS_MONTH' : 'MONTH');
+  };
+
+  const handleSelectTrendMonth = (periodMonth: string) => {
+    const latestMonth = getCurrentPeriodMonth();
+    setSelectedMonth(periodMonth);
+    setPeriod(periodMonth === latestMonth ? 'THIS_MONTH' : 'MONTH');
+  };
+
+  const handleUndoTransaction = async (txId: string, label: string) => {
+    const confirmed = await confirmAction({
+      title: 'Delete Transaction',
+      message: `Remove "${label}" and reverse its wallet balance change?`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (confirmed) {
+      deleteTransactionMutation.mutate(txId);
+    }
+  };
+
+  const handleOpenAddWallet = () => {
+    setEditingWallet(null);
+    setWalletModalVisible(true);
+  };
+
+  const handleOpenEditWallet = (wallet: Wallet) => {
+    setEditingWallet(wallet);
+    setWalletModalVisible(true);
+  };
 
   if (!isAuthenticated) {
     return null;
@@ -83,28 +158,41 @@ export function DashboardScreen() {
 
   const walletsNode = (
     <View className="gap-2.5">
-      <View className="flex-row items-center justify-between mb-0.5">
+      <View className="flex-row items-center justify-between mb-0.5 flex-wrap gap-2">
         <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Wallets & Accounts
         </ThemedText>
-        <View className="flex-row items-center gap-3">
+        <View className="flex-row items-center gap-2">
+          <Pressable
+            onPress={handleOpenAddWallet}
+            accessibilityRole="button"
+            accessibilityLabel="Add new wallet"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            className="min-h-[44px] justify-center px-2 active:opacity-75"
+          >
+            <ThemedText className="text-xs font-bold text-brand-500">
+              + Add Wallet
+            </ThemedText>
+          </Pressable>
           <Pressable
             onPress={() => router.push('/reconciliation')}
             accessibilityRole="button"
             accessibilityLabel="Reconcile account balance"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            className="min-h-[36px] justify-center px-1 active:opacity-75"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            className="min-h-[44px] justify-center px-2 active:opacity-75"
           >
             <ThemedText className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
               Reconcile
             </ThemedText>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/capture')}
+            onPress={() =>
+              router.push({ pathname: '/capture', params: { initialType: 'TRANSFER' } })
+            }
             accessibilityRole="button"
             accessibilityLabel="Transfer funds"
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            className="min-h-[36px] justify-center px-1 active:opacity-75"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            className="min-h-[44px] justify-center px-2 active:opacity-75"
           >
             <ThemedText className="text-xs font-semibold text-brand-500">
               Transfer
@@ -118,9 +206,12 @@ export function DashboardScreen() {
           {wallets.map((wallet) => {
             const formatted = formatMinorUnits(wallet.balanceMinor, wallet.currency);
             return (
-              <View
+              <Pressable
                 key={wallet.id}
-                className="flex-1 min-w-[200px] p-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm justify-between"
+                onPress={() => handleOpenEditWallet(wallet)}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${wallet.name} wallet, balance ${formatted}`}
+                className="flex-1 min-w-[200px] min-h-[44px] p-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm justify-between active:opacity-80"
               >
                 <View className="flex-row items-center justify-between mb-2">
                   <View className="flex-row items-center gap-2 flex-1 mr-2">
@@ -133,8 +224,8 @@ export function DashboardScreen() {
                     </ThemedText>
                   </View>
                   <View className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#171f33] border border-slate-200/60 dark:border-slate-700/60">
-                    <ThemedText className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                      {wallet.currency}
+                    <ThemedText className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                      {wallet.type.replace('_', ' ')}
                     </ThemedText>
                   </View>
                 </View>
@@ -147,7 +238,7 @@ export function DashboardScreen() {
                 >
                   {formatted}
                 </ThemedText>
-              </View>
+              </Pressable>
             );
           })}
         </View>
@@ -161,18 +252,28 @@ export function DashboardScreen() {
           {wallets.map((wallet) => {
             const formatted = formatMinorUnits(wallet.balanceMinor, wallet.currency);
             return (
-              <View
+              <Pressable
                 key={wallet.id}
-                className="min-w-[148px] p-3.5 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm"
+                onPress={() => handleOpenEditWallet(wallet)}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${wallet.name} wallet, balance ${formatted}`}
+                className="min-w-[156px] min-h-[44px] p-3.5 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 shadow-sm active:opacity-80"
               >
-                <View className="flex-row items-center gap-2 mb-2">
-                  <ThemedText className="text-base">{wallet.icon}</ThemedText>
-                  <ThemedText
-                    className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex-1"
-                    numberOfLines={1}
-                  >
-                    {wallet.name}
-                  </ThemedText>
+                <View className="flex-row items-center justify-between gap-2 mb-2">
+                  <View className="flex-row items-center gap-1.5 flex-1">
+                    <ThemedText className="text-base">{wallet.icon}</ThemedText>
+                    <ThemedText
+                      className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex-1"
+                      numberOfLines={1}
+                    >
+                      {wallet.name}
+                    </ThemedText>
+                  </View>
+                  <View className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-[#171f33]">
+                    <ThemedText className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">
+                      {wallet.type.replace('_', ' ')}
+                    </ThemedText>
+                  </View>
                 </View>
                 <ThemedText
                   className="text-base font-bold font-mono leading-tight"
@@ -183,7 +284,7 @@ export function DashboardScreen() {
                 >
                   {formatted}
                 </ThemedText>
-              </View>
+              </Pressable>
             );
           })}
         </ScrollView>
@@ -308,12 +409,12 @@ export function DashboardScreen() {
                     {formattedAmount}
                   </ThemedText>
                   <Pressable
-                    onPress={() => deleteTransactionMutation.mutate(tx.id)}
+                    onPress={() => void handleUndoTransaction(tx.id, categoryName)}
                     disabled={deleteTransactionMutation.isPending}
                     accessibilityRole="button"
                     accessibilityLabel="Undo transaction"
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    className="min-h-[36px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-950/40 active:opacity-75 items-center justify-center"
+                    className="min-h-[44px] px-3 py-1 rounded-full bg-rose-50 dark:bg-rose-950/40 active:opacity-75 items-center justify-center"
                   >
                     <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
                       Undo
@@ -328,39 +429,19 @@ export function DashboardScreen() {
     </View>
   );
 
-  const demoControlsNode = (
-    <View className="flex-row gap-3 justify-center py-2">
-      <Pressable
-        onPress={() => resetDemoMutation.mutate()}
-        disabled={resetDemoMutation.isPending}
-        accessibilityRole="button"
-        accessibilityLabel="Restore demo data"
-        className="min-h-[44px] flex-1 py-3 px-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 items-center justify-center active:opacity-75 shadow-sm"
-      >
-        <ThemedText className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-          {resetDemoMutation.isPending ? 'Restoring...' : 'Restore Demo Data'}
-        </ThemedText>
-      </Pressable>
-
-      <Pressable
-        onPress={() => clearAllMutation.mutate()}
-        disabled={clearAllMutation.isPending}
-        accessibilityRole="button"
-        accessibilityLabel="Clear all entries"
-        className="min-h-[44px] flex-1 py-3 px-4 rounded-2xl bg-white dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 items-center justify-center active:opacity-75 shadow-sm"
-      >
-        <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-          {clearAllMutation.isPending ? 'Clearing...' : 'Clear All Entries'}
-        </ThemedText>
-      </Pressable>
-    </View>
-  );
-
   return (
     <View className="flex-1 bg-slate-50 dark:bg-[#0b1326]">
       <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
         <ScrollView
           className="flex-1"
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => void handlePullRefresh()}
+              tintColor="#208AEF"
+              colors={['#208AEF']}
+            />
+          }
           contentContainerStyle={{
             width: '100%',
             maxWidth: Platform.OS === 'web' ? WebMaxContentWidth : 720,
@@ -389,11 +470,13 @@ export function DashboardScreen() {
                 {isDesktop && (
                   <View className="flex-row items-center bg-slate-200/70 dark:bg-[#131b2e] p-1 rounded-full border border-slate-300/60 dark:border-slate-800 mr-1">
                     {PERIOD_TABS.map((tab) => {
-                      const isActive = period === tab.key;
+                      const isActive =
+                        period === tab.key ||
+                        (tab.key === 'THIS_MONTH' && period === 'MONTH');
                       return (
                         <Pressable
                           key={tab.key}
-                          onPress={() => setPeriod(tab.key)}
+                          onPress={() => handlePeriodChange(tab.key)}
                           accessibilityRole="button"
                           accessibilityLabel={`Filter by ${tab.label}`}
                           accessibilityState={{ selected: isActive }}
@@ -432,7 +515,7 @@ export function DashboardScreen() {
                     </Pressable>
 
                     <Pressable
-                      onPress={() => router.push('/portability' as any)}
+                      onPress={() => router.push('/portability')}
                       accessibilityRole="button"
                       accessibilityLabel="Backup or Export data"
                       className="min-h-[44px] px-3.5 py-2 rounded-full bg-slate-100 dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 active:opacity-75 flex-row items-center gap-1.5"
@@ -446,16 +529,13 @@ export function DashboardScreen() {
 
                 {isAuthenticated && !isDesktop && (
                   <Pressable
-                    onPress={() => {
-                      logout();
-                      router.replace('/');
-                    }}
+                    onPress={() => router.push('/settings')}
                     accessibilityRole="button"
-                    accessibilityLabel="Sign Out"
-                    className="min-h-[44px] px-3 py-2 rounded-full bg-rose-50 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/50 active:opacity-75 items-center justify-center"
+                    accessibilityLabel="Open Settings"
+                    className="min-h-[44px] px-3.5 py-2 rounded-full bg-slate-100 dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800/90 active:opacity-75 items-center justify-center"
                   >
-                    <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                      Sign Out
+                    <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      Settings
                     </ThemedText>
                   </Pressable>
                 )}
@@ -472,34 +552,56 @@ export function DashboardScreen() {
                 </Pressable>
               </View>
             </View>
-
-            {isAuthenticated && !isDesktop && (
-              <View className="flex-row items-center">
-                <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-[#131b2e] border border-slate-200/80 dark:border-slate-800">
-                  <ThemedText className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                    {user?.email ?? 'Authenticated'}
-                  </ThemedText>
-                </View>
-              </View>
-            )}
           </View>
 
-          {/* Responsive Bento Grid (Desktop) vs Vertical Stack (Mobile) */}
-          {isDesktop ? (
+          {/* Loading / Error Guard */}
+          {isLoading ? (
+            <View className="py-12 items-center justify-center gap-3">
+              <ActivityIndicator size="large" color="#208AEF" />
+              <ThemedText className="text-sm font-medium text-slate-500 dark:text-slate-400">
+                Loading financial overview...
+              </ThemedText>
+            </View>
+          ) : isError ? (
+            <View className="p-6 rounded-3xl bg-white dark:bg-[#131b2e] border border-rose-200 dark:border-rose-900/60 items-center gap-3 shadow-sm">
+              <ThemedText className="text-base font-bold text-slate-900 dark:text-white">
+                Could not load financial data
+              </ThemedText>
+              <ThemedText className="text-xs text-slate-500 dark:text-slate-400 text-center max-w-[300px]">
+                There was an issue reading your local budget records. Please try again.
+              </ThemedText>
+              <Pressable
+                onPress={() => void refetch()}
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading dashboard"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+              >
+                <ThemedText className="text-xs font-bold text-white">Retry</ThemedText>
+              </Pressable>
+            </View>
+          ) : isDesktop ? (
             <>
               {/* Row 1 (Hero Row — 7:5 split) */}
               <View className="flex-row gap-6 items-start">
-                <View className="flex-[7] min-w-0">
+                <View className="flex-[7] min-w-0 gap-6">
                   <SafeToSpendCard />
+                  <CashflowTrendCard
+                    points={metrics.monthlyTrend}
+                    activePeriodMonth={period === 'MONTH' ? selectedMonth : currentMonth}
+                    onSelectMonth={handleSelectTrendMonth}
+                  />
                 </View>
                 <View className="flex-[5] min-w-0 gap-6">
                   <NetWorthCard
                     period={period}
-                    onPeriodChange={setPeriod}
+                    onPeriodChange={handlePeriodChange}
+                    selectedMonth={selectedMonth}
+                    onShiftMonth={handleShiftMonth}
                     netWorthMinor={metrics.netWorthMinor}
                     incomeMinor={metrics.incomeMinor}
                     expenseMinor={metrics.expenseMinor}
                     netCashflowMinor={metrics.netCashflowMinor}
+                    savingsRatePercent={metrics.savingsRatePercent}
                     transactionCount={metrics.transactionCount}
                   />
                   <BudgetProgressCard
@@ -529,16 +631,34 @@ export function DashboardScreen() {
                   <CategoryBreakdownCard
                     items={metrics.categoryBreakdown}
                     totalExpenseMinor={metrics.expenseMinor}
-                    onCategoryPress={() => router.push('/transactions')}
+                    incomeItems={metrics.incomeCategoryBreakdown}
+                    totalIncomeMinor={metrics.incomeMinor}
+                    onCategoryPress={(item, txType) =>
+                      router.push({
+                        pathname: '/transactions',
+                        params: {
+                          categoryId: item.categoryId,
+                          type: txType,
+                          ...(activeMonthParam ? { month: activeMonthParam } : {}),
+                        },
+                      })
+                    }
                   />
                   <TagInsightsCard
                     items={metrics.tagBreakdown}
-                    onTagPress={() => router.push('/transactions')}
+                    onTagPress={(item) =>
+                      router.push({
+                        pathname: '/transactions',
+                        params: {
+                          tag: item.tag,
+                          ...(activeMonthParam ? { month: activeMonthParam } : {}),
+                        },
+                      })
+                    }
                   />
                 </View>
                 <View className="flex-[7] min-w-0 gap-6">
                   {recentActivityNode}
-                  {demoControlsNode}
                 </View>
               </View>
             </>
@@ -584,21 +704,28 @@ export function DashboardScreen() {
                 <>
                   <NetWorthCard
                     period={period}
-                    onPeriodChange={setPeriod}
+                    onPeriodChange={handlePeriodChange}
+                    selectedMonth={selectedMonth}
+                    onShiftMonth={handleShiftMonth}
                     netWorthMinor={metrics.netWorthMinor}
                     incomeMinor={metrics.incomeMinor}
                     expenseMinor={metrics.expenseMinor}
                     netCashflowMinor={metrics.netCashflowMinor}
+                    savingsRatePercent={metrics.savingsRatePercent}
                     transactionCount={metrics.transactionCount}
                   />
                   {walletsNode}
+                  <CashflowTrendCard
+                    points={metrics.monthlyTrend}
+                    activePeriodMonth={period === 'MONTH' ? selectedMonth : currentMonth}
+                    onSelectMonth={handleSelectTrendMonth}
+                  />
                   <BudgetProgressCard
                     budget={metrics.budget}
                     onUpdateBudget={(minor) => updateBudgetMutation.mutateAsync(minor)}
                     isUpdating={updateBudgetMutation.isPending}
                   />
                   {recentActivityNode}
-                  {demoControlsNode}
                 </>
               )}
 
@@ -616,14 +743,38 @@ export function DashboardScreen() {
 
               {mobileSection === 'INSIGHTS' && (
                 <>
+                  <CashflowTrendCard
+                    points={metrics.monthlyTrend}
+                    activePeriodMonth={period === 'MONTH' ? selectedMonth : currentMonth}
+                    onSelectMonth={handleSelectTrendMonth}
+                  />
                   <CategoryBreakdownCard
                     items={metrics.categoryBreakdown}
                     totalExpenseMinor={metrics.expenseMinor}
-                    onCategoryPress={() => router.push('/transactions')}
+                    incomeItems={metrics.incomeCategoryBreakdown}
+                    totalIncomeMinor={metrics.incomeMinor}
+                    onCategoryPress={(item, txType) =>
+                      router.push({
+                        pathname: '/transactions',
+                        params: {
+                          categoryId: item.categoryId,
+                          type: txType,
+                          ...(activeMonthParam ? { month: activeMonthParam } : {}),
+                        },
+                      })
+                    }
                   />
                   <TagInsightsCard
                     items={metrics.tagBreakdown}
-                    onTagPress={() => router.push('/transactions')}
+                    onTagPress={(item) =>
+                      router.push({
+                        pathname: '/transactions',
+                        params: {
+                          tag: item.tag,
+                          ...(activeMonthParam ? { month: activeMonthParam } : {}),
+                        },
+                      })
+                    }
                   />
                   {recentActivityNode}
                 </>
@@ -631,6 +782,15 @@ export function DashboardScreen() {
             </>
           )}
         </ScrollView>
+
+        <WalletManagerModal
+          visible={walletModalVisible}
+          editingWallet={editingWallet}
+          onClose={() => {
+            setWalletModalVisible(false);
+            setEditingWallet(null);
+          }}
+        />
       </SafeAreaView>
     </View>
   );

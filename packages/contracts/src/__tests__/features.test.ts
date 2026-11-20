@@ -13,6 +13,7 @@ import {
   DEFAULT_CATEGORIES,
   DEFAULT_PRESETS,
   DEFAULT_WALLETS,
+  isTransactionInMonth,
   parseTransactionsFromCsv,
   quickPresetSchema,
   recurringCommitmentSchema,
@@ -267,6 +268,27 @@ describe('Envelope Budgeting & Rollovers', () => {
     expect(diningStatus?.spentMinor).toBe(18000);
     expect(diningStatus?.remainingMinor).toBe(4000);
   });
+
+  it('matches month-boundary timestamps to strictly one local calendar month without double-counting', () => {
+    const timestamps = [
+      '2026-10-31T20:00:00.000Z',
+      '2026-11-01T00:30:00.000Z',
+      '2026-11-30T22:00:00.000Z',
+    ];
+
+    for (const iso of timestamps) {
+      const d = new Date(iso);
+      const expectedMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const prevMonth = expectedMonth === '2026-10' ? '2026-09' : expectedMonth === '2026-11' ? '2026-10' : '2026-11';
+      const nextMonth = expectedMonth === '2026-10' ? '2026-11' : expectedMonth === '2026-11' ? '2026-12' : '2027-01';
+
+      expect(isTransactionInMonth(iso, expectedMonth)).toBe(true);
+      expect(isTransactionInMonth(iso, prevMonth)).toBe(false);
+      expect(isTransactionInMonth(iso, nextMonth)).toBe(false);
+    }
+
+    expect(isTransactionInMonth('invalid-iso', '2026-11')).toBe(false);
+  });
 });
 
 describe('Balance Reconciliation Engine', () => {
@@ -324,6 +346,7 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
     {
       id: 'wallet-checking',
       name: 'Checking',
+      type: 'CHECKING',
       icon: '🏦',
       color: '#208AEF',
       currency: 'PHP',
@@ -332,6 +355,7 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
     {
       id: 'wallet-cash',
       name: 'Cash',
+      type: 'CASH',
       icon: '💵',
       color: '#10B981',
       currency: 'PHP',
@@ -344,6 +368,7 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
     {
       id: 'rc-rent',
       name: 'Apartment Rent',
+      type: 'EXPENSE',
       amountMinor: 80000,
       currency: 'PHP',
       walletId: 'wallet-checking',
@@ -357,6 +382,7 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
     {
       id: 'rc-electric',
       name: 'Electric Utility',
+      type: 'EXPENSE',
       amountMinor: 7000,
       currency: 'PHP',
       walletId: 'wallet-checking',
@@ -366,10 +392,11 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
       isAutoPaid: true,
       isActive: true,
     },
-    // Netflix: $15 due on day 5, already paid in 2026-11 -> NOT UPCOMING
+    // Netflix: $15 due on day 5, already paid in 2026-11 -> NOT UNPAID
     {
       id: 'rc-netflix',
       name: 'Netflix',
+      type: 'EXPENSE',
       amountMinor: 1500,
       currency: 'PHP',
       walletId: 'wallet-checking',
@@ -380,10 +407,11 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
       isActive: true,
       lastPaidPeriod: '2026-11',
     },
-    // Gym: $50 due on day 28, but inactive -> NOT UPCOMING
+    // Gym: $50 due on day 28, but inactive -> NOT RESERVED
     {
       id: 'rc-gym',
       name: 'Gym Membership',
+      type: 'EXPENSE',
       amountMinor: 5000,
       currency: 'PHP',
       walletId: 'wallet-checking',
@@ -393,10 +421,11 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
       isAutoPaid: false,
       isActive: false,
     },
-    // Water bill: $30 due on day 3, today is day 15 and not paid -> past due, not upcoming
+    // Water bill: $30 due on day 3, today is day 15 and not paid -> OVERDUE & STILL RESERVED
     {
       id: 'rc-water',
       name: 'Water Utility',
+      type: 'EXPENSE',
       amountMinor: 3000,
       currency: 'PHP',
       walletId: 'wallet-checking',
@@ -492,29 +521,59 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
       currentDate: testDate,
     });
 
-    // Total liquid balance = 200,000 + 15,000 = 215,000 ($2,150.00)
+    // Total liquid balance = 200,000 + 15,000 = 215,000
     expect(metrics.totalLiquidBalanceMinor).toBe(215000);
 
-    // Upcoming fixed bills: rent (80,000) + electric (7,000) = 87,000 ($870.00)
-    expect(metrics.upcomingFixedBillsMinor).toBe(87000);
+    // Unpaid fixed bills (including overdue): rent (80,000) + electric (7,000) + overdue water (3,000) = 90,000
+    expect(metrics.upcomingFixedBillsMinor).toBe(90000);
+    expect(metrics.overdueFixedBillsMinor).toBe(3000);
+    expect(metrics.expectedRemainingIncomeMinor).toBe(0);
 
-    // Remaining category budgets: groceries (20,000) + dining (10,000) + coffee (0) = 30,000 ($300.00)
+    // Remaining category budgets: groceries (20,000) + dining (10,000) + coffee (0) = 30,000
     expect(metrics.remainingCategoryBudgetsMinor).toBe(30000);
 
-    // Isolated sinking funds: 30,000 + 10,000 = 40,000 ($400.00)
+    // Isolated sinking funds: 30,000 + 10,000 = 40,000
     expect(metrics.isolatedSinkingFundsMinor).toBe(40000);
 
-    // Safe to spend = 215,000 - (40,000 + 87,000 + 30,000) = 215,000 - 157,000 = 58,000 ($580.00)
-    expect(metrics.safeToSpendMinor).toBe(58000);
+    // Safe to spend = 215,000 - (40,000 + 90,000 + 30,000) = 215,000 - 160,000 = 55,000
+    expect(metrics.safeToSpendMinor).toBe(55000);
 
     // Days remaining in Nov: 16 days
     expect(metrics.daysRemainingInMonth).toBe(16);
 
-    // Daily discretionary = Math.floor(58,000 / 16) = 3,625 ($36.25 / day)
-    expect(metrics.dailyDiscretionaryBudgetMinor).toBe(3625);
+    // Daily discretionary = Math.floor(55,000 / 16) = 3,437
+    expect(metrics.dailyDiscretionaryBudgetMinor).toBe(3437);
 
     // Validates against Zod schema
     expect(safeToSpendMetricsSchema.parse(metrics)).toBeDefined();
+  });
+
+  it('tracks recurring INCOME in expectedRemainingIncomeMinor without inflating safeToSpendMinor', () => {
+    const recurringPayday: RecurringCommitment = {
+      id: 'rc-salary',
+      name: 'Payday Salary',
+      type: 'INCOME',
+      amountMinor: 500000,
+      currency: 'PHP',
+      walletId: 'wallet-checking',
+      categoryId: 'cat-salary',
+      frequency: 'MONTHLY',
+      dueDay: 30,
+      isAutoPaid: false,
+      isActive: true,
+    };
+
+    const metrics = computeSafeToSpend({
+      liquidWallets,
+      commitments: [...commitments, recurringPayday],
+      categoryBudgets,
+      sinkingFunds,
+      currentDate: new Date('2026-11-15T12:00:00Z'),
+    });
+
+    expect(metrics.expectedRemainingIncomeMinor).toBe(500000);
+    expect(metrics.upcomingFixedBillsMinor).toBe(90000);
+    expect(metrics.safeToSpendMinor).toBe(55000);
   });
 
   it('clamps daily discretionary budget to 0 when in safe-to-spend deficit', () => {
@@ -522,6 +581,7 @@ describe('Safe-to-Spend & Recurring Commitments', () => {
     const deficitCommitment: RecurringCommitment = {
       id: 'rc-huge',
       name: 'Unfunded Large Debt',
+      type: 'EXPENSE',
       amountMinor: 300000,
       currency: 'PHP',
       walletId: 'wallet-checking',
@@ -623,20 +683,20 @@ describe('Quick Presets & Defaults', () => {
 
     const coffee = DEFAULT_PRESETS.find((p) => p.id === 'preset-coffee');
     expect(coffee).toBeDefined();
-    expect(coffee?.amountMinor).toBe(450); // $4.50
+    expect(coffee?.amountMinor).toBe(18000); // ₱180.00
     expect(coffee?.type).toBe('EXPENSE');
 
     const transit = DEFAULT_PRESETS.find((p) => p.id === 'preset-transit');
     expect(transit).toBeDefined();
-    expect(transit?.amountMinor).toBe(275); // $2.75
+    expect(transit?.amountMinor).toBe(8000); // ₱80.00
 
     const lunch = DEFAULT_PRESETS.find((p) => p.id === 'preset-lunch');
     expect(lunch).toBeDefined();
-    expect(lunch?.amountMinor).toBe(1200); // $12.00
+    expect(lunch?.amountMinor).toBe(25000); // ₱250.00
 
     const savings = DEFAULT_PRESETS.find((p) => p.id === 'preset-savings');
     expect(savings).toBeDefined();
-    expect(savings?.amountMinor).toBe(5000); // $50.00
+    expect(savings?.amountMinor).toBe(500000); // ₱5,000.00
     expect(savings?.type).toBe('TRANSFER');
     expect(savings?.toWalletId).toBe('wallet-savings');
   });
@@ -653,6 +713,7 @@ describe('CSV Serialization & Round-Trip Portability', () => {
     {
       id: 'wallet-checking',
       name: 'Checking',
+      type: 'CHECKING',
       icon: '🏦',
       color: '#208AEF',
       currency: 'PHP',
@@ -661,6 +722,7 @@ describe('CSV Serialization & Round-Trip Portability', () => {
     {
       id: 'wallet-savings',
       name: 'Savings',
+      type: 'SAVINGS',
       icon: '🐷',
       color: '#F59E0B',
       currency: 'PHP',

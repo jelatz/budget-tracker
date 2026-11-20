@@ -1,8 +1,11 @@
 import { z } from 'zod';
 import { amountMinorSchema, currencyCodeSchema, positiveAmountMinorSchema } from './money';
 import type { Wallet } from './transactions.schema';
-import type { CategoryBudgetStatus } from './category-budget.schema';
+import { periodMonthSchema, type CategoryBudgetStatus } from './category-budget.schema';
 import type { SinkingFund } from './sinking-funds.schema';
+
+export const commitmentTypeSchema = z.enum(['EXPENSE', 'INCOME']);
+export type CommitmentType = z.infer<typeof commitmentTypeSchema>;
 
 export const commitmentFrequencySchema = z.enum([
   'MONTHLY',
@@ -16,6 +19,7 @@ export type CommitmentFrequency = z.infer<typeof commitmentFrequencySchema>;
 export const recurringCommitmentSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
+  type: commitmentTypeSchema.default('EXPENSE'),
   amountMinor: positiveAmountMinorSchema,
   currency: currencyCodeSchema.default('PHP'),
   walletId: z.string().min(1),
@@ -24,10 +28,7 @@ export const recurringCommitmentSchema = z.object({
   dueDay: z.number().int().min(1).max(31),
   isAutoPaid: z.boolean().default(false),
   isActive: z.boolean().default(true),
-  lastPaidPeriod: z
-    .string()
-    .regex(/^\d{4}-\d{2}$/, 'Must be in YYYY-MM format')
-    .optional(),
+  lastPaidPeriod: periodMonthSchema.optional(),
   notes: z.string().trim().max(280).optional(),
 });
 export type RecurringCommitment = z.infer<typeof recurringCommitmentSchema>;
@@ -40,6 +41,8 @@ export type CreateRecurringCommitmentInput = z.infer<
 export const safeToSpendMetricsSchema = z.object({
   totalLiquidBalanceMinor: amountMinorSchema,
   upcomingFixedBillsMinor: z.number().int().nonnegative(),
+  overdueFixedBillsMinor: z.number().int().nonnegative().default(0),
+  expectedRemainingIncomeMinor: z.number().int().nonnegative().default(0),
   remainingCategoryBudgetsMinor: z.number().int().nonnegative(),
   isolatedSinkingFundsMinor: z.number().int().nonnegative(),
   safeToSpendMinor: amountMinorSchema,
@@ -50,7 +53,8 @@ export type SafeToSpendMetrics = z.infer<typeof safeToSpendMetricsSchema>;
 
 /**
  * Computes real-time "Safe to Spend" liquidity:
- * Safe to Spend = totalLiquidBalance - (isolatedSinkingFunds + upcomingFixedBills + sum(max(0, remainingCategoryBudgets)))
+ * Safe to Spend = totalLiquidBalance - (isolatedSinkingFunds + unpaidFixedBills + sum(max(0, remainingCategoryBudgets)))
+ * Overdue unpaid bills remain reserved until settled; recurring income is informational only.
  * Daily discretionary = max(0, safeToSpend) / daysRemainingInMonth (clamped to at least 1 day).
  */
 export function computeSafeToSpend(params: {
@@ -76,12 +80,28 @@ export function computeSafeToSpend(params: {
     0,
   );
 
-  const upcomingFixedBillsMinor = params.commitments
+  const unpaidExpenseCommitments = params.commitments.filter(
+    (c) =>
+      c.isActive &&
+      (c.type ?? 'EXPENSE') === 'EXPENSE' &&
+      c.lastPaidPeriod !== currentPeriod,
+  );
+
+  const overdueFixedBillsMinor = unpaidExpenseCommitments
+    .filter((c) => c.dueDay < currentDay)
+    .reduce((acc, c) => acc + c.amountMinor, 0);
+
+  const upcomingFixedBillsMinor = unpaidExpenseCommitments.reduce(
+    (acc, c) => acc + c.amountMinor,
+    0,
+  );
+
+  const expectedRemainingIncomeMinor = params.commitments
     .filter(
       (c) =>
         c.isActive &&
-        c.lastPaidPeriod !== currentPeriod &&
-        c.dueDay >= currentDay,
+        c.type === 'INCOME' &&
+        c.lastPaidPeriod !== currentPeriod,
     )
     .reduce((acc, c) => acc + c.amountMinor, 0);
 
@@ -107,6 +127,8 @@ export function computeSafeToSpend(params: {
   return {
     totalLiquidBalanceMinor,
     upcomingFixedBillsMinor,
+    overdueFixedBillsMinor,
+    expectedRemainingIncomeMinor,
     remainingCategoryBudgetsMinor,
     isolatedSinkingFundsMinor,
     safeToSpendMinor,

@@ -1,6 +1,21 @@
 import { z } from 'zod';
 import { positiveAmountMinorSchema } from './money';
 
+function isValidTargetDate(value: string): boolean {
+  const match = /^(\d{4})-(0[1-9]|1[0-2])(?:-(\d{2}))?$/.exec(value);
+  if (!match) return false;
+  if (!match[3]) return true;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  const date = new Date(year, month - 1, day);
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day
+  );
+}
+
 export const sinkingFundSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -10,7 +25,10 @@ export const sinkingFundSchema = z.object({
   currentSavedMinor: z.number().int().nonnegative().default(0),
   targetDate: z
     .string()
-    .regex(/^\d{4}-\d{2}(-\d{2})?$/, 'Must be in YYYY-MM or YYYY-MM-DD format'),
+    .refine(
+      isValidTargetDate,
+      'Must be a valid calendar date in YYYY-MM or YYYY-MM-DD format',
+    ),
   walletId: z.string().min(1),
   monthlyContributionMinor: z.number().int().nonnegative().default(0),
   isCompleted: z.boolean().default(false),

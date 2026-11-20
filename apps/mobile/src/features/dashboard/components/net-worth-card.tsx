@@ -1,15 +1,23 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { formatMinorUnits, type DashboardPeriod } from '@repo/contracts';
+import {
+  formatMinorUnits,
+  formatPeriodMonthLabel,
+  getCurrentPeriodMonth,
+  type DashboardPeriod,
+} from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
 
 export interface NetWorthCardProps {
   period: DashboardPeriod;
   onPeriodChange: (period: DashboardPeriod) => void;
+  selectedMonth?: string;
+  onShiftMonth?: (delta: number) => void;
   netWorthMinor: number;
   incomeMinor: number;
   expenseMinor: number;
   netCashflowMinor: number;
+  savingsRatePercent?: number | null;
   transactionCount: number;
   currency?: string;
 }
@@ -23,19 +31,29 @@ const PERIOD_OPTIONS: Array<{ key: DashboardPeriod; label: string }> = [
 export function NetWorthCard({
   period,
   onPeriodChange,
+  selectedMonth,
+  onShiftMonth,
   netWorthMinor,
   incomeMinor,
   expenseMinor,
   netCashflowMinor,
+  savingsRatePercent,
   transactionCount,
   currency = 'PHP',
 }: NetWorthCardProps) {
+  const currentMonth = getCurrentPeriodMonth();
+  const displayMonth = selectedMonth ?? currentMonth;
+  const isMonthlyMode = period === 'THIS_MONTH' || period === 'MONTH';
+  const canGoNext = displayMonth < currentMonth;
+
   return (
     <View className="rounded-3xl p-5 bg-slate-900 dark:bg-[#131b2e] border border-slate-800/90 shadow-lg">
       {/* 1. Period Selector Pill Strip */}
-      <View className="flex-row items-center bg-slate-800/90 dark:bg-[#171f33] p-1.5 rounded-2xl mb-5 border border-slate-700/50 dark:border-slate-800">
+      <View className="flex-row items-center bg-slate-800/90 dark:bg-[#171f33] p-1.5 rounded-2xl mb-3 border border-slate-700/50 dark:border-slate-800">
         {PERIOD_OPTIONS.map((option) => {
-          const isActive = period === option.key;
+          const isActive =
+            period === option.key ||
+            (option.key === 'THIS_MONTH' && period === 'MONTH');
           return (
             <Pressable
               key={option.key}
@@ -52,12 +70,44 @@ export function NetWorthCard({
                   isActive ? 'font-bold text-white' : 'font-medium text-slate-400'
                 }`}
               >
-                {option.label}
+                {option.key === 'THIS_MONTH' && period === 'MONTH'
+                  ? formatPeriodMonthLabel(displayMonth)
+                  : option.label}
               </ThemedText>
             </Pressable>
           );
         })}
       </View>
+
+      {/* Optional Month Stepper */}
+      {isMonthlyMode && onShiftMonth && (
+        <View className="flex-row items-center justify-between bg-slate-800/60 dark:bg-[#171f33]/80 px-2 py-1 rounded-2xl mb-4 border border-slate-700/40 dark:border-slate-800">
+          <Pressable
+            onPress={() => onShiftMonth(-1)}
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
+            className="min-h-[44px] min-w-[44px] items-center justify-center rounded-xl active:opacity-75"
+          >
+            <ThemedText className="text-base font-bold text-slate-200">‹</ThemedText>
+          </Pressable>
+
+          <ThemedText className="text-xs font-bold text-slate-200 tracking-wide">
+            {formatPeriodMonthLabel(displayMonth)}
+          </ThemedText>
+
+          <Pressable
+            onPress={() => onShiftMonth(1)}
+            disabled={!canGoNext}
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            className={`min-h-[44px] min-w-[44px] items-center justify-center rounded-xl ${
+              canGoNext ? 'active:opacity-75' : 'opacity-30'
+            }`}
+          >
+            <ThemedText className="text-base font-bold text-slate-200">›</ThemedText>
+          </Pressable>
+        </View>
+      )}
 
       {/* 2. Hero Net Worth Display */}
       <View className="items-center mb-5">
@@ -74,10 +124,34 @@ export function NetWorthCard({
           {formatMinorUnits(netWorthMinor, currency)}
         </ThemedText>
 
-        <View className="mt-2.5 px-3 py-1 rounded-full bg-slate-800/80 dark:bg-[#171f33] border border-slate-700/50 dark:border-slate-800">
-          <ThemedText className="text-xs font-medium text-slate-300">
-            {`${transactionCount} transactions in period`}
-          </ThemedText>
+        <View className="mt-2.5 flex-row flex-wrap items-center justify-center gap-2">
+          <View className="px-3 py-1 rounded-full bg-slate-800/80 dark:bg-[#171f33] border border-slate-700/50 dark:border-slate-800">
+            <ThemedText className="text-xs font-medium text-slate-300">
+              {`${transactionCount} ${transactionCount === 1 ? 'transaction' : 'transactions'} in period`}
+            </ThemedText>
+          </View>
+
+          {savingsRatePercent !== null && savingsRatePercent !== undefined && (
+            <View
+              className={`px-3 py-1 rounded-full border ${
+                savingsRatePercent >= 0
+                  ? 'bg-emerald-950/70 border-emerald-700/50'
+                  : 'bg-rose-950/70 border-rose-700/50'
+              }`}
+            >
+              <ThemedText
+                className={`text-xs font-bold ${
+                  savingsRatePercent >= 0
+                    ? 'text-emerald-300'
+                    : 'text-rose-300'
+                }`}
+              >
+                {savingsRatePercent >= 0
+                  ? `Saved ${savingsRatePercent}%`
+                  : `Overspent ${Math.abs(savingsRatePercent)}%`}
+              </ThemedText>
+            </View>
+          )}
         </View>
       </View>
 

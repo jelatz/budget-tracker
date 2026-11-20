@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -18,6 +17,7 @@ import {
   type SinkingFund,
 } from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
+import { confirmAction } from '@/common/lib/confirm';
 import {
   useContributeToSinkingFund,
   useDeleteSinkingFund,
@@ -55,7 +55,7 @@ const FUND_COLORS = [
   '#64748B',
 ];
 
-const AMOUNT_PRESETS = [50000, 100000, 250000, 500000]; // in centavos: ₱500, ₱1,000, ₱2,500, ₱5,000
+const AMOUNT_PRESETS = [500000, 1500000, 3000000, 5000000]; // ₱5,000, ₱15,000, ₱30,000, ₱50,000
 
 function getDatePreset(type: '3_MOS' | '6_MOS' | '1_YR' | 'EOY'): string {
   const now = new Date();
@@ -147,7 +147,7 @@ export function SinkingFundsCard() {
     setIcon('🎯');
     setCustomIcon('');
     setColor('#3B82F6');
-    setTargetAmountInput('1000');
+    setTargetAmountInput('10000');
     setTargetDate(getDatePreset('6_MOS'));
     setWalletId(wallets[0]?.id ?? '');
     setNotes('');
@@ -191,7 +191,7 @@ export function SinkingFundsCard() {
     if (calc.monthlyTargetMinor > 0) {
       setStashAmountInput(minorUnitsToDecimalInput(calc.monthlyTargetMinor));
     } else {
-      setStashAmountInput('50');
+      setStashAmountInput('1000');
     }
     setStashError(null);
     setStashModalVisible(true);
@@ -260,33 +260,26 @@ export function SinkingFundsCard() {
   };
 
   // Delete Sinking Fund
-  const handleDeleteFund = () => {
+  const handleDeleteFund = async () => {
     if (!editingFund) return;
 
-    const doDelete = async () => {
-      try {
-        await deleteMutation.mutateAsync(editingFund.id);
-        setEditModalVisible(false);
-        setEditingFund(null);
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Failed to delete fund.';
-        setEditError(msg);
-      }
-    };
+    const confirmed = await confirmAction({
+      title: 'Delete Sinking Fund',
+      message: `Are you sure you want to delete "${editingFund.name}"? Accumulated savings remain safe in the holding wallet.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) {
+      return;
+    }
 
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`Delete the "${editingFund.name}" sinking fund?`)) {
-        void doDelete();
-      }
-    } else {
-      Alert.alert(
-        'Delete Sinking Fund',
-        `Are you sure you want to delete "${editingFund.name}"? Accumulated savings remain safe in the holding wallet.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
-        ],
-      );
+    try {
+      await deleteMutation.mutateAsync(editingFund.id);
+      setEditModalVisible(false);
+      setEditingFund(null);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to delete fund.';
+      setEditError(msg);
     }
   };
 
@@ -551,7 +544,11 @@ export function SinkingFundsCard() {
               </View>
             )}
 
-            <ScrollView className="max-h-[440px]" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              className="max-h-[440px]"
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View className="gap-4">
                 {/* Fund Name */}
                 <View className="gap-1.5">
@@ -645,7 +642,7 @@ export function SinkingFundsCard() {
                         if (editError) setEditError(null);
                       }}
                       keyboardType="decimal-pad"
-                      placeholder="1000"
+                      placeholder="10000"
                       placeholderTextColor="#94A3B8"
                       editable={!isSubmitting}
                     />
@@ -822,7 +819,7 @@ export function SinkingFundsCard() {
 
               {editingFund && (
                 <Pressable
-                  onPress={handleDeleteFund}
+                  onPress={() => void handleDeleteFund()}
                   disabled={isSubmitting}
                   accessibilityRole="button"
                   accessibilityLabel="Delete Sinking Fund"
@@ -951,12 +948,18 @@ export function SinkingFundsCard() {
                     if (stashError) setStashError(null);
                   }}
                   keyboardType="decimal-pad"
-                  placeholder="50"
+                  placeholder="1000"
                   placeholderTextColor="#94A3B8"
                   autoFocus
                   editable={!isSubmitting}
                 />
               </View>
+
+              <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
+                {stashSourceWalletId === stashingFund?.walletId
+                  ? 'Earmarks funds already inside this holding wallet without creating an expense.'
+                  : 'Creates a transfer from the selected source wallet into this fund’s holding wallet.'}
+              </ThemedText>
 
               {/* Quick Suggestions */}
               <View className="flex-row gap-2 mt-1 flex-wrap">
@@ -981,7 +984,7 @@ export function SinkingFundsCard() {
                     </ThemedText>
                   </Pressable>
                 )}
-                {[2500, 5000, 10000].map((minor) => (
+                {[100000, 250000, 500000].map((minor) => (
                   <Pressable
                     key={minor}
                     onPress={() => setStashAmountInput(minorUnitsToDecimalInput(minor))}

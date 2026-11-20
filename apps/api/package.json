@@ -4,13 +4,31 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "echo 'api dev stub'",
-    "build": "echo 'api build stub'",
+    "dev": "tsx watch src/index.ts",
+    "build": "node scripts/build.mjs",
+    "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'lint stub'",
-    "test": "echo 'test stub'"
+    "lint": "tsc --noEmit",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/core/db/migrate.ts"
   },
   "dependencies": {
-    "@repo/contracts": "workspace:*"
+    "@hono/node-server": "^2.1.9",
+    "@repo/contracts": "workspace:*",
+    "dotenv": "^18.0.10",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.19",
+    "pg": "^8.23.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "@types/node": "^26.6.6",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
   }
 }

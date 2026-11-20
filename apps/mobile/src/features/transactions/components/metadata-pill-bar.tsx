@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import {
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -68,6 +70,15 @@ function formatTimestampPill(isoString: string): string {
   }
 }
 
+function formatLocalDateInput(isoString: string): string {
+  const d = new Date(isoString);
+  const valid = isNaN(d.getTime()) ? new Date() : d;
+  const year = valid.getFullYear();
+  const month = String(valid.getMonth() + 1).padStart(2, '0');
+  const day = String(valid.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function MetadataPillBar({
   value,
   recentMerchants,
@@ -77,13 +88,18 @@ export function MetadataPillBar({
   const [activeModal, setActiveModal] = useState<ActiveModal>('NONE');
 
   // Draft state for modal inputs
+  const [draftDateInput, setDraftDateInput] = useState('');
+  const [dateError, setDateError] = useState<string | null>(null);
   const [draftMerchant, setDraftMerchant] = useState('');
   const [draftNote, setDraftNote] = useState('');
   const [newTagInput, setNewTagInput] = useState('');
   const [receiptFeedback, setReceiptFeedback] = useState<string | null>(null);
 
   const openModal = (modal: ActiveModal) => {
-    if (modal === 'MERCHANT') {
+    if (modal === 'TIMESTAMP') {
+      setDraftDateInput(formatLocalDateInput(value.occurredAt));
+      setDateError(null);
+    } else if (modal === 'MERCHANT') {
       setDraftMerchant(value.merchant);
     } else if (modal === 'NOTE') {
       setDraftNote(value.note);
@@ -103,6 +119,33 @@ export function MetadataPillBar({
   const handleSelectTimestamp = (iso: string) => {
     onChange({ ...value, occurredAt: iso });
     closeModal();
+  };
+
+  const handleApplyCustomDate = () => {
+    const trimmed = draftDateInput.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      setDateError('Enter a valid date in YYYY-MM-DD format (e.g. 2026-11-15).');
+      return;
+    }
+
+    const [yearStr, monthStr, dayStr] = trimmed.split('-');
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+    const day = parseInt(dayStr, 10);
+
+    const parsed = new Date(year, month - 1, day, 12, 0, 0);
+    if (
+      isNaN(parsed.getTime()) ||
+      parsed.getFullYear() !== year ||
+      parsed.getMonth() !== month - 1 ||
+      parsed.getDate() !== day
+    ) {
+      setDateError('That calendar date does not exist. Please double-check month and day.');
+      return;
+    }
+
+    setDateError(null);
+    handleSelectTimestamp(parsed.toISOString());
   };
 
   // Merchant Actions
@@ -336,78 +379,143 @@ export function MetadataPillBar({
         onRequestClose={closeModal}
       >
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
-          <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
-            <View className="flex-row justify-between items-center mb-4">
-              <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-                Select Time
-              </ThemedText>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Close time selector"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
-                onPress={closeModal}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
+            <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+              <View className="flex-row justify-between items-center mb-4">
+                <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                  Select Time
+                </ThemedText>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Close time selector"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                  onPress={closeModal}
+                >
+                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Done</ThemedText>
+                </Pressable>
+              </View>
+
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerClassName="gap-3 pb-8"
               >
-                <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Done</ThemedText>
-              </Pressable>
-            </View>
+                <View className="gap-2.5">
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Set transaction time to Right Now"
+                    className="min-h-[44px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                    onPress={() => handleSelectTimestamp(new Date().toISOString())}
+                  >
+                    <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">Right Now</ThemedText>
+                    <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                      Current time
+                    </ThemedText>
+                  </Pressable>
 
-            <View className="gap-2.5">
-            <Pressable
-              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99] transition-all"
-              onPress={() => handleSelectTimestamp(new Date().toISOString())}
-            >
-              <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">Right Now</ThemedText>
-              <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                Current time
-              </ThemedText>
-            </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Set transaction time to Earlier Today"
+                    className="min-h-[44px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                    onPress={() =>
+                      handleSelectTimestamp(
+                        new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+                      )
+                    }
+                  >
+                    <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">Earlier Today (-2 hrs)</ThemedText>
+                    <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                      2 hours ago
+                    </ThemedText>
+                  </Pressable>
 
-            <Pressable
-              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99] transition-all"
-              onPress={() =>
-                handleSelectTimestamp(
-                  new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-                )
-              }
-            >
-              <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">Earlier Today (-2 hrs)</ThemedText>
-              <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                2 hours ago
-              </ThemedText>
-            </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Set transaction time to Yesterday"
+                    className="min-h-[44px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                    onPress={() =>
+                      handleSelectTimestamp(
+                        new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+                      )
+                    }
+                  >
+                    <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">Yesterday</ThemedText>
+                    <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                      24 hours ago
+                    </ThemedText>
+                  </Pressable>
 
-            <Pressable
-              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99] transition-all"
-              onPress={() =>
-                handleSelectTimestamp(
-                  new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-                )
-              }
-            >
-              <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">Yesterday</ThemedText>
-              <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                24 hours ago
-              </ThemedText>
-            </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Set transaction time to 2 Days Ago"
+                    className="min-h-[44px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                    onPress={() =>
+                      handleSelectTimestamp(
+                        new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
+                      )
+                    }
+                  >
+                    <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">2 Days Ago</ThemedText>
+                    <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                      48 hours ago
+                    </ThemedText>
+                  </Pressable>
+                </View>
 
-            <Pressable
-              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99] transition-all"
-              onPress={() =>
-                handleSelectTimestamp(
-                  new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-                )
-              }
-            >
-              <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">2 Days Ago</ThemedText>
-              <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                48 hours ago
-              </ThemedText>
-            </Pressable>
-          </View>
-        </ThemedView>
-      </SafeAreaView>
-    </Modal>
+                {/* Custom Date Entry */}
+                <View className="mt-2 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 gap-3">
+                  <View>
+                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Custom Date (YYYY-MM-DD)
+                    </ThemedText>
+                    <ThemedText className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Log past expenses or backdated salary deposits
+                    </ThemedText>
+                  </View>
+
+                  {dateError && (
+                    <View className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800">
+                      <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                        {dateError}
+                      </ThemedText>
+                    </View>
+                  )}
+
+                  <View className="flex-row items-center gap-2">
+                    <TextInput
+                      value={draftDateInput}
+                      onChangeText={(t) => {
+                        setDraftDateInput(t);
+                        if (dateError) setDateError(null);
+                      }}
+                      placeholder="YYYY-MM-DD"
+                      placeholderTextColor="#94a3b8"
+                      accessibilityLabel="Custom transaction date in YYYY-MM-DD format"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      className="flex-1 min-h-[44px] px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-sm font-mono font-semibold"
+                    />
+                    <Pressable
+                      onPress={handleApplyCustomDate}
+                      accessibilityRole="button"
+                      accessibilityLabel="Apply custom date"
+                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                    >
+                      <ThemedText className="text-xs font-bold text-white">
+                        Apply Date
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </View>
+              </ScrollView>
+            </ThemedView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
 
       {/* ==================================================================== */}
       {/* MODAL 2: Merchant Entry & Quick Chips */}
@@ -419,6 +527,10 @@ export function MetadataPillBar({
         onRequestClose={closeModal}
       >
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
           <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
             <View className="flex-row justify-between items-center mb-4">
               <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
@@ -428,14 +540,14 @@ export function MetadataPillBar({
                 accessibilityRole="button"
                 accessibilityLabel="Close merchant selector"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                 onPress={closeModal}
               >
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Done</ThemedText>
               </Pressable>
             </View>
 
-          <View className="flex-1">
+          <ScrollView className="flex-1" keyboardShouldPersistTaps="handled" contentContainerClassName="pb-8">
             <TextInput
               className="h-12 rounded-2xl border border-slate-200 dark:border-slate-800 px-4 text-base bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 mb-4"
               placeholder="e.g. Trader Joe's, Target, Uber..."
@@ -454,7 +566,9 @@ export function MetadataPillBar({
               {recentMerchants.map((merchant) => (
                 <Pressable
                   key={merchant}
-                  className={`px-3.5 py-2 rounded-xl border active:scale-95 transition-all ${
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select merchant ${merchant}`}
+                  className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center active:scale-95 transition-all ${
                     draftMerchant === merchant
                       ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-500'
                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
@@ -477,7 +591,9 @@ export function MetadataPillBar({
             <View className="flex-row justify-end gap-3 mt-6">
               {value.merchant ? (
                 <Pressable
-                  className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear merchant"
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                   onPress={handleClearMerchant}
                 >
                   <ThemedText className="text-xs font-bold text-rose-500">
@@ -487,7 +603,9 @@ export function MetadataPillBar({
               ) : null}
 
               <Pressable
-                className="px-5 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 shadow-md shadow-brand-500/25"
+                accessibilityRole="button"
+                accessibilityLabel="Save merchant"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-md shadow-brand-500/25"
                 onPress={() => handleSaveMerchant(draftMerchant)}
               >
                 <ThemedText className="text-xs font-bold text-white">
@@ -495,8 +613,9 @@ export function MetadataPillBar({
                 </ThemedText>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </ThemedView>
+          </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
 
@@ -510,6 +629,10 @@ export function MetadataPillBar({
         onRequestClose={closeModal}
       >
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
           <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
             <View className="flex-row justify-between items-center mb-4">
               <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
@@ -519,14 +642,14 @@ export function MetadataPillBar({
                 accessibilityRole="button"
                 accessibilityLabel="Close tags manager"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                 onPress={closeModal}
               >
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Done</ThemedText>
               </Pressable>
             </View>
 
-          <View className="flex-1">
+          <ScrollView className="flex-1" keyboardShouldPersistTaps="handled" contentContainerClassName="pb-8">
             {/* New tag input */}
             <View className="flex-row gap-2.5 items-center mb-4">
               <TextInput
@@ -539,6 +662,8 @@ export function MetadataPillBar({
                 maxLength={32}
               />
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Add custom tag"
                 className={`h-12 px-4 rounded-2xl items-center justify-center active:scale-95 transition-all ${
                   newTagInput.trim()
                     ? 'bg-emerald-500 active:bg-emerald-600 shadow-md shadow-emerald-500/25'
@@ -567,7 +692,10 @@ export function MetadataPillBar({
                 return (
                   <Pressable
                     key={tag}
-                    className={`px-3.5 py-2 rounded-xl border active:scale-95 transition-all ${
+                    accessibilityRole="button"
+                    accessibilityLabel={`Toggle tag ${tag}`}
+                    accessibilityState={{ selected: isSelected }}
+                    className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center active:scale-95 transition-all ${
                       isSelected
                         ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500'
                         : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
@@ -587,8 +715,9 @@ export function MetadataPillBar({
                 );
               })}
             </View>
-          </View>
+          </ScrollView>
         </ThemedView>
+          </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
 
@@ -602,6 +731,10 @@ export function MetadataPillBar({
         onRequestClose={closeModal}
       >
         <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950">
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            className="flex-1"
+          >
           <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
             <View className="flex-row justify-between items-center mb-4">
               <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
@@ -611,14 +744,14 @@ export function MetadataPillBar({
                 accessibilityRole="button"
                 accessibilityLabel="Close note editor"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                 onPress={closeModal}
               >
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Done</ThemedText>
               </Pressable>
             </View>
 
-          <View className="flex-1">
+          <ScrollView className="flex-1" keyboardShouldPersistTaps="handled" contentContainerClassName="pb-8">
             <TextInput
               className="h-32 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 text-base bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 mb-4"
               placeholder="Add details, reimbursement memo, or description..."
@@ -635,7 +768,9 @@ export function MetadataPillBar({
             <View className="flex-row justify-end gap-3 mt-2">
               {value.note ? (
                 <Pressable
-                  className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear note"
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                   onPress={handleClearNote}
                 >
                   <ThemedText className="text-xs font-bold text-rose-500">
@@ -645,7 +780,9 @@ export function MetadataPillBar({
               ) : null}
 
               <Pressable
-                className="px-5 py-2.5 rounded-xl bg-amber-500 active:bg-amber-600 shadow-md shadow-amber-500/25"
+                accessibilityRole="button"
+                accessibilityLabel="Save note"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-amber-500 active:bg-amber-600 items-center justify-center shadow-md shadow-amber-500/25"
                 onPress={handleSaveNote}
               >
                 <ThemedText className="text-xs font-bold text-white">
@@ -653,8 +790,9 @@ export function MetadataPillBar({
                 </ThemedText>
               </Pressable>
             </View>
-          </View>
+          </ScrollView>
         </ThemedView>
+          </KeyboardAvoidingView>
       </SafeAreaView>
     </Modal>
 
@@ -677,7 +815,7 @@ export function MetadataPillBar({
                 accessibilityRole="button"
                 accessibilityLabel="Close receipt attachment"
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="px-3.5 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 active:opacity-75"
+                className="min-h-[44px] px-4 py-1.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
                 onPress={closeModal}
               >
                 <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">Done</ThemedText>
@@ -705,7 +843,9 @@ export function MetadataPillBar({
                 )}
 
                 <Pressable
-                  className="px-4 py-2 rounded-xl bg-rose-500 active:bg-rose-600 shadow-sm"
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove receipt attachment"
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-500 active:bg-rose-600 items-center justify-center shadow-sm"
                   onPress={handleRemoveReceipt}
                 >
                   <ThemedText className="text-xs font-bold text-white">
