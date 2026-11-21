@@ -10,9 +10,19 @@ export const currencyCodeSchema = z
   .length(3)
   .default(DEFAULT_CURRENCY);
 
-export const amountMinorSchema = z.number().int();
+export const MAX_SAFE_MONEY_MINOR = 1_000_000_000_000_000;
 
-export const positiveAmountMinorSchema = z.number().int().positive();
+export const amountMinorSchema = z
+  .number()
+  .int()
+  .min(-MAX_SAFE_MONEY_MINOR)
+  .max(MAX_SAFE_MONEY_MINOR);
+
+export const positiveAmountMinorSchema = z
+  .number()
+  .int()
+  .positive()
+  .max(MAX_SAFE_MONEY_MINOR);
 
 /**
  * Formats an integer minor unit amount into a localized currency string.

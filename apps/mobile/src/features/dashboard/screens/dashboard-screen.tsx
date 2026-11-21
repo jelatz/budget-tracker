@@ -12,6 +12,7 @@ import {
   type DashboardPeriod,
 } from '@repo/contracts';
 
+import { SyncStatusBadge } from '@/common/components/sync-status-badge';
 import { ThemedText } from '@/common/components/themed-text';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 
@@ -100,12 +101,13 @@ export function DashboardScreen() {
 
                 {isAuthenticated && (
                   <Pressable
-                    onPress={() => {
-                      logout();
+                    onPress={async () => {
+                      await logout();
                       router.replace('/');
                     }}
                     accessibilityRole="button"
                     accessibilityLabel="Sign Out"
+                    hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
                     className="px-2.5 py-1.5 rounded-full bg-rose-50 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/50 active:opacity-75"
                   >
                     <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
@@ -128,12 +130,13 @@ export function DashboardScreen() {
             </View>
 
             {isAuthenticated && (
-              <View className="flex-row items-center">
+              <View className="flex-row flex-wrap items-center gap-2">
                 <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
                   <ThemedText className="text-xs font-medium text-slate-600 dark:text-slate-300">
                     👤 {user?.email ?? 'Authenticated'}
                   </ThemedText>
                 </View>
+                <SyncStatusBadge />
               </View>
             )}
           </View>

@@ -1,6 +1,7 @@
 import { Redirect, router } from 'expo-router';
 import { DEFAULT_CURRENCY_SYMBOL } from '@repo/contracts';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,9 +13,21 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { LoginForm } from '@/features/auth/components/login-form';
 import { useAuth } from '@/features/auth/context/auth-context';
+import { useTheme } from '@/hooks/use-theme';
 
 export function LoginScreen() {
-  const { isAuthenticated, login } = useAuth();
+  const { isAuthenticated, isHydrating } = useAuth();
+  const theme = useTheme();
+
+  if (isHydrating) {
+    return (
+      <View className="flex-1 bg-slate-50 dark:bg-slate-950 items-center justify-center">
+        <SafeAreaView className="flex-1 items-center justify-center">
+          <ActivityIndicator color={theme.text} size="large" />
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   if (isAuthenticated) {
     return <Redirect href="/dashboard" />;
@@ -62,14 +75,13 @@ export function LoginScreen() {
                   Welcome back
                 </Text>
                 <Text className="text-sm text-slate-500 dark:text-slate-400 text-center mt-1">
-                  Sign in to your Budget Tracker account
+                  Sign in to sync across Web &amp; Mobile
                 </Text>
               </View>
 
               {/* Login Form */}
               <LoginForm
-                onSuccess={(email) => {
-                  login(email);
+                onSuccess={() => {
                   router.replace('/dashboard');
                 }}
               />

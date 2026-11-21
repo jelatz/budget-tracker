@@ -10,15 +10,17 @@ import {
 
 import { Colors } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '../context/auth-context';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type LoginFormProps = {
-  onSuccess: (email: string) => void;
+  onSuccess: () => void;
 };
 
 export function LoginForm({ onSuccess }: LoginFormProps) {
   const theme = useTheme();
+  const { signIn } = useAuth();
   const passwordInputRef = useRef<TextInputInstance>(null);
 
   const [email, setEmail] = useState('');
@@ -58,10 +60,13 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
     setIsLoading(true);
 
     try {
-      onSuccess(trimmedEmail);
+      await signIn(trimmedEmail, password);
+      onSuccess();
     } catch (error: unknown) {
       const message =
-        error instanceof Error ? error.message : 'An unexpected error occurred during sign-in.';
+        error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred during sign-in.';
       setFormError(message);
     } finally {
       setIsLoading(false);

@@ -10,6 +10,8 @@
     "web": "pnpm --filter @repo/mobile web",
     "mobile": "pnpm --filter @repo/mobile start",
     "api": "pnpm --filter @repo/api dev",
+    "api:build": "pnpm --filter @repo/api build",
+    "api:start": "pnpm --filter @repo/api start",
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",

@@ -1,4 +1,7 @@
 export * from './status';
+export * from './errors';
+export * from './confirmation';
+export * from './health.schema';
 export * from './money';
 export * from './calculator';
 export * from './transactions.schema';
@@ -10,3 +13,7 @@ export * from './recurring.schema';
 export * from './presets.schema';
 export * from './sinking-funds.schema';
 export * from './portability.schema';
+export * from './auth.schema';
+export * from './sync.schema';
+export * from './api-capabilities.schema';
+export * from './state-reducer';

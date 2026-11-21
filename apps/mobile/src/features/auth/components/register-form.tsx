@@ -7,11 +7,18 @@ import {
   View,
 } from 'react-native';
 
+import { Colors } from '@/constants/theme';
+import { useTheme } from '@/hooks/use-theme';
+import { useAuth } from '../context/auth-context';
+
 export type RegisterFormProps = {
   onSuccess: (user: { name: string; email: string }) => void;
 };
 
 export function RegisterForm({ onSuccess }: RegisterFormProps) {
+  const theme = useTheme();
+  const { signUp } = useAuth();
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,8 +65,11 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
     setIsLoading(true);
 
     try {
-      // Simulate network account creation delay
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await signUp({
+        name: trimmedName,
+        email: trimmedEmail,
+        password,
+      });
       onSuccess({ name: trimmedName, email: trimmedEmail });
     } catch (error: unknown) {
       const message =
@@ -75,7 +85,9 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
   return (
     <View className="w-full gap-4">
       {isGeneralError ? (
-        <View className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 p-3.5">
+        <View
+          accessibilityRole="alert"
+          className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 p-3.5">
           <Text className="text-xs font-medium text-rose-600 dark:text-rose-400">
             {errorMessage}
           </Text>
@@ -93,7 +105,8 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             if (errorMessage) setErrorMessage(null);
           }}
           placeholder="Jane Doe"
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={theme.textSecondary}
+          accessibilityLabel="Full Name"
           autoCapitalize="words"
           autoComplete="name"
           textContentType="name"
@@ -105,7 +118,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
           } text-slate-900 dark:text-slate-100 text-base`}
         />
         {isNameError ? (
-          <Text className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
             {errorMessage}
           </Text>
         ) : null}
@@ -122,7 +135,8 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             if (errorMessage) setErrorMessage(null);
           }}
           placeholder="you@example.com"
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={theme.textSecondary}
+          accessibilityLabel="Email address"
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
@@ -135,7 +149,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
           } text-slate-900 dark:text-slate-100 text-base`}
         />
         {isEmailError ? (
-          <Text className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
             {errorMessage}
           </Text>
         ) : null}
@@ -158,7 +172,8 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
               if (errorMessage) setErrorMessage(null);
             }}
             placeholder="At least 6 characters"
-            placeholderTextColor="#94a3b8"
+            placeholderTextColor={theme.textSecondary}
+            accessibilityLabel="Password"
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoComplete="new-password"
@@ -178,7 +193,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
           </Pressable>
         </View>
         {isPasswordError ? (
-          <Text className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
             {errorMessage}
           </Text>
         ) : null}
@@ -195,7 +210,8 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             if (errorMessage) setErrorMessage(null);
           }}
           placeholder="Re-enter password"
-          placeholderTextColor="#94a3b8"
+          placeholderTextColor={theme.textSecondary}
+          accessibilityLabel="Confirm Password"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           autoComplete="new-password"
@@ -208,7 +224,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
           } text-slate-900 dark:text-slate-100 text-base`}
         />
         {isConfirmError ? (
-          <Text className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
             {errorMessage}
           </Text>
         ) : null}
@@ -223,7 +239,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
           isLoading ? 'opacity-70' : ''
         }`}>
         {isLoading ? (
-          <ActivityIndicator color="#ffffff" size="small" />
+          <ActivityIndicator color={Colors.dark.text} size="small" />
         ) : (
           <Text className="text-base font-semibold text-white">Create Account</Text>
         )}

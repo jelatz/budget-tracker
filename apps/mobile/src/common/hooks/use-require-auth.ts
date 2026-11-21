@@ -4,13 +4,13 @@ import { router } from 'expo-router';
 import { useAuth } from '@/features/auth/context/auth-context';
 
 export function useRequireAuth() {
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, isHydrating, user, logout } = useAuth();
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!isHydrating && !isAuthenticated) {
       router.replace('/');
     }
-  }, [isAuthenticated]);
+  }, [isHydrating, isAuthenticated]);
 
-  return { isAuthenticated, user, logout };
+  return { isAuthenticated, isHydrating, user, logout };
 }

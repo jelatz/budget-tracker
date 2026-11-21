@@ -16,6 +16,7 @@ import { Colors } from '@/constants/theme';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
 import { ExternalLink } from './external-link';
+import { SyncStatusBadge } from './sync-status-badge';
 import { ThemedText } from './themed-text';
 
 type SidebarIconName =
@@ -84,20 +85,23 @@ export default function AppTabs() {
               </ThemedText>
             </View>
 
-            <Pressable
-              onPress={() => {
-                setDrawerOpen(false);
-                logout();
-                router.replace('/');
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Sign Out"
-              hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-              className="px-3 py-1.5 rounded-full bg-rose-50 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/50 active:opacity-75">
-              <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                Sign Out
-              </ThemedText>
-            </Pressable>
+            <View className="flex-row items-center gap-2">
+              <SyncStatusBadge compact />
+              <Pressable
+                onPress={async () => {
+                  setDrawerOpen(false);
+                  await logout();
+                  router.replace('/');
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Sign Out"
+                hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                className="px-3 py-1.5 rounded-full bg-rose-50 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/50 active:opacity-75">
+                <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                  Sign Out
+                </ThemedText>
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -323,6 +327,9 @@ export function SidebarTabList({
 
       {/* Account & Sign Out Footer */}
       <View className="p-3 border-t border-slate-200/70 dark:border-slate-800 gap-2.5">
+        <View className="items-start">
+          <SyncStatusBadge />
+        </View>
         <View className="px-3 py-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70 flex-row items-center gap-2.5">
           <View className="w-8 h-8 rounded-full bg-brand-500/15 border border-brand-500/30 items-center justify-center shrink-0">
             <ThemedText className="text-xs font-bold text-brand-600 dark:text-brand-400">
@@ -344,9 +351,9 @@ export function SidebarTabList({
         </View>
 
         <Pressable
-          onPress={() => {
+          onPress={async () => {
             onClose();
-            logout();
+            await logout();
             router.replace('/');
           }}
           accessibilityRole="button"

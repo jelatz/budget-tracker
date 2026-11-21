@@ -21,8 +21,17 @@ import {
   type ParseTransactionsCsvResult,
 } from '@repo/contracts';
 
+import { SyncStatusBadge } from '@/common/components/sync-status-badge';
 import { ThemedText } from '@/common/components/themed-text';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
+import { useTheme } from '@/common/hooks/use-theme';
+import { Colors } from '@/common/constants/theme';
+import {
+  copyTextToClipboard,
+  downloadTextFile,
+  pickTextFile,
+} from '@/common/lib/file-portability';
+import { syncNow, useSyncStatus } from '@/features/transactions/sync-engine';
 import {
   useAccounts,
   useAllCategories,
@@ -37,7 +46,9 @@ type ImportFormat = 'json' | 'csv';
 type ImportMode = 'merge' | 'overwrite';
 
 export function PortabilityScreen() {
-  const { isAuthenticated } = useRequireAuth();
+  const { isAuthenticated, user } = useRequireAuth();
+  const theme = useTheme();
+  const syncStatus = useSyncStatus();
   const [activeTab, setActiveTab] = useState<PortabilityTab>('export');
   const [importFormat, setImportFormat] = useState<ImportFormat>('json');
   const [importMode, setImportMode] = useState<ImportMode>('merge');
@@ -63,63 +74,35 @@ export function PortabilityScreen() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // File Download Helper
-  const downloadFile = (content: string, filename: string, mimeType: string) => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+  const downloadFile = async (content: string, filename: string, mimeType: string) => {
+    if (downloadTextFile(content, filename, mimeType)) {
       setToastMessage(`✓ Downloaded ${filename}`);
     } else {
-      copyToClipboard(content, filename);
+      await copyToClipboard(content, filename);
     }
   };
 
   // Clipboard Helper
   const copyToClipboard = async (text: string, label: string) => {
-    try {
-      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        setToastMessage(`✓ ${label} copied to clipboard!`);
-        return;
-      }
-    } catch {
-      // Fallback
-    }
-    setToastMessage(`✓ ${label} ready`);
+    const copied = await copyTextToClipboard(text);
+    setToastMessage(copied ? `✓ ${label} copied to clipboard!` : `✓ ${label} ready`);
   };
 
   // File Upload Handler (Web)
-  const handleSelectFile = (format: 'json' | 'csv') => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = format === 'json' ? '.json,application/json' : '.csv,text/csv,text/plain';
-      input.onchange = (e: any) => {
-        const file = e.target.files?.[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const content = event.target?.result as string;
-            if (format === 'json') {
-              setJsonInput(content);
-              setValidatedBackup(null);
-            } else {
-              setCsvInput(content);
-              setCsvPreviewResult(null);
-            }
-            setToastMessage(`Loaded file: ${file.name}`);
-          };
-          reader.readAsText(file);
-        }
-      };
-      input.click();
+  const handleSelectFile = async (format: 'json' | 'csv') => {
+    const accept = format === 'json' ? '.json,application/json' : '.csv,text/csv,text/plain';
+    const picked = await pickTextFile(accept);
+    if (!picked) {
+      return;
     }
+    if (format === 'json') {
+      setJsonInput(picked.content);
+      setValidatedBackup(null);
+    } else {
+      setCsvInput(picked.content);
+      setCsvPreviewResult(null);
+    }
+    setToastMessage(`Loaded file: ${picked.name}`);
   };
 
   // Export Handlers
@@ -131,7 +114,7 @@ export function PortabilityScreen() {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
       if (action === 'download') {
-        downloadFile(jsonString, `budget-tracker-backup-${timestamp}.json`, 'application/json');
+        await downloadFile(jsonString, `budget-tracker-backup-${timestamp}.json`, 'application/json');
       } else {
         await copyToClipboard(jsonString, 'Full JSON Backup');
       }
@@ -147,7 +130,7 @@ export function PortabilityScreen() {
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 
       if (action === 'download') {
-        downloadFile(
+        await downloadFile(
           csvString,
           `budget-tracker-transactions-${timestamp}.csv`,
           'text/csv;charset=utf-8;',
@@ -372,6 +355,69 @@ export function PortabilityScreen() {
               </View>
             )}
 
+            {/* Cloud Sync Status Card */}
+            <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-3">
+              <View className="flex-row items-center justify-between gap-2">
+                <View className="flex-1 min-w-0">
+                  <ThemedText className="text-base font-extrabold text-slate-900 dark:text-white">
+                    Cloud Sync
+                  </ThemedText>
+                  <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
+                    {user?.email ? `Signed in as ${user.email}` : 'Multi-device sync'}
+                  </ThemedText>
+                </View>
+                <SyncStatusBadge />
+              </View>
+
+              <View className="flex-row flex-wrap gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
+                  <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    Revision #{syncStatus.serverRevision}
+                  </ThemedText>
+                </View>
+                <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
+                  <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                    {syncStatus.pendingCount} Pending Offline Changes
+                  </ThemedText>
+                </View>
+                {syncStatus.lastSyncedAt ? (
+                  <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
+                    <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                      Last Synced: {new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}
+                    </ThemedText>
+                  </View>
+                ) : null}
+              </View>
+
+              {syncStatus.errorMessage ? (
+                <ThemedText
+                  accessibilityRole="alert"
+                  className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                  {syncStatus.errorMessage}
+                </ThemedText>
+              ) : null}
+
+              <Pressable
+                onPress={() => {
+                  void syncNow();
+                }}
+                disabled={syncStatus.phase === 'syncing'}
+                accessibilityRole="button"
+                accessibilityLabel="Sync Now"
+                className={`min-h-[44px] py-3 px-4 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm shadow-brand-500/20 ${
+                  syncStatus.phase === 'syncing' ? 'opacity-70' : ''
+                }`}
+              >
+                {syncStatus.phase === 'syncing' ? (
+                  <ActivityIndicator color={Colors.dark.text} size="small" />
+                ) : (
+                  <ThemedText className="text-white text-xs font-bold">
+                    Sync Now
+                  </ThemedText>
+                )}
+              </Pressable>
+            </View>
+
             {/* Main Section Selector Tabs: [ Export ] vs [ Import ] */}
             <View className="flex-row rounded-2xl bg-slate-200/70 dark:bg-slate-800/80 p-1">
               <Pressable
@@ -464,7 +510,7 @@ export function PortabilityScreen() {
                       className="flex-1 py-3 px-4 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm shadow-brand-500/20"
                     >
                       {exportBackupMutation.isPending ? (
-                        <ActivityIndicator color="white" size="small" />
+                        <ActivityIndicator color={Colors.dark.text} size="small" />
                       ) : (
                         <ThemedText className="text-white text-xs font-bold">
                           Export JSON Backup
@@ -628,7 +674,7 @@ export function PortabilityScreen() {
                           setValidatedBackup(null);
                         }}
                         placeholder={`{\n  "version": 1,\n  "exportedAt": "...",\n  "data": { ... }\n}`}
-                        placeholderTextColor="#94a3b8"
+                        placeholderTextColor={theme.textSecondary}
                         style={{
                           minHeight: 140,
                           textAlignVertical: 'top',
@@ -773,7 +819,7 @@ export function PortabilityScreen() {
                           }`}
                         >
                           {importBackupMutation.isPending ? (
-                            <ActivityIndicator color="white" size="small" />
+                            <ActivityIndicator color={Colors.dark.text} size="small" />
                           ) : (
                             <ThemedText className="text-white text-xs font-bold">
                               {importMode === 'overwrite'
@@ -836,7 +882,7 @@ export function PortabilityScreen() {
                           setCsvPreviewResult(null);
                         }}
                         placeholder={`Date,Type,Amount,Currency,Account,ToAccount,Category,Merchant,Notes,Tags\n2026-11-01,EXPENSE,45.50,${DEFAULT_CURRENCY},"Main Bank",,"Groceries","Supermarket","Dinner groceries","food"`}
-                        placeholderTextColor="#94a3b8"
+                        placeholderTextColor={theme.textSecondary}
                         style={{
                           minHeight: 140,
                           textAlignVertical: 'top',
@@ -912,7 +958,7 @@ export function PortabilityScreen() {
                               className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 active:bg-emerald-700 items-center justify-center"
                             >
                               {batchCreateMutation.isPending ? (
-                                <ActivityIndicator color="white" size="small" />
+                                <ActivityIndicator color={Colors.dark.text} size="small" />
                               ) : (
                                 <ThemedText className="text-white text-xs font-bold">
                                   Import {csvPreviewResult.valid.length} Transactions 🚀

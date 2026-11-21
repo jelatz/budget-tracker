@@ -1,0 +1,13 @@
+node_modules
+.git
+.github
+.expo
+.neon
+.turbo
+.vscode
+dist
+apps/mobile
+*.log
+.env
+.env.*
+!.env.example
