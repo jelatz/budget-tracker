@@ -1,20 +1,16 @@
 {
-  "extends": "expo/tsconfig.base",
-  "compilerOptions": {
-    "strict": true,
-    "paths": {
-      "@/*": [
-        "./src/*"
-      ],
-      "@/assets/*": [
-        "./assets/*"
-      ]
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/contracts"
+    },
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./apps/mobile"
     }
-  },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
-  ]
+  ],
+  "compilerOptions": {},
+  "extends": "expo/tsconfig.base"
 }
