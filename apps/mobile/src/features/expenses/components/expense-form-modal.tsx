@@ -29,7 +29,6 @@ import {
   type CommitmentFrequency,
   type CreateCategoryInput,
   type CreateTransactionInput,
-  type QuickPreset,
   type RecurringCommitment,
   type RecurringCommitmentInput,
   type Transaction,
@@ -50,9 +49,6 @@ export interface ExpenseFormModalProps {
   editingCommitment?: RecurringCommitment | null;
   accounts: readonly Account[];
   expenseCategories: readonly Category[];
-  presets: readonly QuickPreset[];
-  recentMerchants: readonly string[];
-  knownTags: readonly string[];
   defaultAccountId?: string;
   defaultCategoryId?: string;
   draftSplits: TransactionSplit[];
@@ -72,7 +68,6 @@ export interface ExpenseFormModalProps {
   onClearExternalAmountSync?: () => void;
 }
 
-const QUICK_AMOUNT_PRESETS = [5000, 10000, 25000, 50000, 100000] as const;
 const QUICK_DAY_PRESETS = [1, 5, 10, 15, 20, 25, 30] as const;
 const CUSTOM_CATEGORY_ICONS = ['🏷️', '🏠', '🛒', '🚕', '🎬', '💊', '🏦', '📅', '📱', '✨'] as const;
 const DEFAULT_CUSTOM_CATEGORY_COLOR = DEFAULT_CATEGORIES[0].color;
@@ -99,9 +94,6 @@ export function ExpenseFormModal({
   editingCommitment = null,
   accounts,
   expenseCategories,
-  presets,
-  recentMerchants,
-  knownTags,
   defaultAccountId,
   defaultCategoryId,
   draftSplits,
@@ -130,8 +122,6 @@ export function ExpenseFormModal({
   const [merchantInput, setMerchantInput] = useState('');
   const [dateInput, setDateInput] = useState(() => formatDateInputValue(new Date().toISOString()));
   const [noteInput, setNoteInput] = useState('');
-  const [tags, setTags] = useState<string[]>([]);
-  const [newTagInput, setNewTagInput] = useState('');
 
   // Scheduled / Loan fields
   const [scheduleNameInput, setScheduleNameInput] = useState('');
@@ -206,7 +196,6 @@ export function ExpenseFormModal({
       setNoteInput(editingCommitment.notes ?? '');
       setMerchantInput('');
       setDateInput(formatDateInputValue(new Date().toISOString()));
-      setTags([]);
     } else if (editingExpense) {
       setMode('ONE_TIME');
       setAmountInput(minorUnitsToDecimalInput(editingExpense.amountMinor));
@@ -220,7 +209,6 @@ export function ExpenseFormModal({
       setMerchantInput(editingExpense.merchant ?? '');
       setDateInput(formatDateInputValue(editingExpense.occurredAt));
       setNoteInput(editingExpense.note ?? '');
-      setTags([...editingExpense.tags]);
       setScheduleNameInput('');
       setFrequency('MONTHLY');
       setDueDayInput('15');
@@ -238,7 +226,6 @@ export function ExpenseFormModal({
       setMerchantInput('');
       setDateInput(formatDateInputValue(new Date().toISOString()));
       setNoteInput('');
-      setTags([]);
       setScheduleNameInput('');
       setFrequency('MONTHLY');
       setDueDayInput('15');
@@ -249,7 +236,6 @@ export function ExpenseFormModal({
       setRemainingTermsInput('');
     }
 
-    setNewTagInput('');
     setShowCustomCategoryForm(false);
     setCustomCategoryName('');
     setCustomCategoryIcon(CUSTOM_CATEGORY_ICONS[0]);
@@ -269,16 +255,6 @@ export function ExpenseFormModal({
   }, [externalAmountSync, onClearExternalAmountSync]);
 
   const isEditing = Boolean(editingExpense || editingCommitment);
-
-  const expensePresets = useMemo(
-    () => presets.filter((p) => p.type === 'EXPENSE'),
-    [presets],
-  );
-
-  const selectableTags = useMemo(() => {
-    const merged = new Set<string>([...knownTags, ...tags]);
-    return Array.from(merged);
-  }, [knownTags, tags]);
 
   const parsedAmountMinor = useMemo(
     () => parseDecimalToMinorUnits(amountInput),
@@ -349,44 +325,6 @@ export function ExpenseFormModal({
     }
   };
 
-  const handleApplyPreset = (preset: QuickPreset) => {
-    setAmountInput(minorUnitsToDecimalInput(preset.amountMinor));
-    if (preset.accountId && accounts.some((a) => a.id === preset.accountId)) {
-      setSelectedAccountId(preset.accountId);
-    }
-    if (preset.categoryId) {
-      setSelectedCategoryId(preset.categoryId);
-    }
-    if (preset.merchant) {
-      setMerchantInput(preset.merchant);
-    }
-    if (preset.tags.length > 0) {
-      setTags([...preset.tags]);
-    }
-    onChangeDraftSplits([]);
-    setFormError(null);
-  };
-
-  const handleToggleTag = (tag: string) => {
-    setTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
-    );
-  };
-
-  const handleAddCustomTag = () => {
-    const normalized = newTagInput.trim().replace(/^#+/, '');
-    if (!normalized) {
-      return;
-    }
-    const alreadyPresent = tags.some(
-      (t) => t.toLowerCase() === normalized.toLowerCase(),
-    );
-    if (!alreadyPresent) {
-      setTags((prev) => [...prev, normalized]);
-    }
-    setNewTagInput('');
-  };
-
   const handleCreateCustomCategory = async () => {
     const trimmed = customCategoryName.trim();
     if (!trimmed) {
@@ -450,14 +388,6 @@ export function ExpenseFormModal({
         return;
       }
 
-      const normalizedTags = Array.from(
-        new Set(
-          tags
-            .map((t) => t.trim().replace(/^#+/, ''))
-            .filter((t) => t.length > 0),
-        ),
-      );
-
       const trimmedMerchant = merchantInput.trim();
       const trimmedNote = noteInput.trim();
 
@@ -473,7 +403,7 @@ export function ExpenseFormModal({
             categoryId: hasSplits ? undefined : selectedCategoryId,
             splits: hasSplits ? draftSplits : undefined,
             merchant: trimmedMerchant.length > 0 ? trimmedMerchant : undefined,
-            tags: normalizedTags,
+            tags: editingExpense?.tags ?? [],
             note: trimmedNote.length > 0 ? trimmedNote : undefined,
             receiptUri: editingExpense?.receiptUri,
             occurredAt: occurredAtIso,
@@ -749,32 +679,6 @@ export function ExpenseFormModal({
               </View>
             ) : null}
 
-            {/* Quick Expense Presets (One-Time Add mode) */}
-            {!isEditing && mode === 'ONE_TIME' && expensePresets.length > 0 && (
-              <View className="gap-1.5">
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                  Quick Presets
-                </ThemedText>
-                <View className="flex-row flex-wrap gap-2">
-                  {expensePresets.map((preset) => (
-                    <Pressable
-                      key={preset.id}
-                      onPress={() => handleApplyPreset(preset)}
-                      disabled={isBusy}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Use ${preset.label} preset`}
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-row items-center gap-1.5 active:opacity-75"
-                    >
-                      <ThemedText className="text-sm">{preset.icon}</ThemedText>
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {preset.label} • {formatMinorUnits(preset.amountMinor, activeCurrency)}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-            )}
-
             {/* Primary Row: Amount + (Date for One-Time OR Name for Recurring/Loan) */}
             <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
               {mode !== 'ONE_TIME' && (
@@ -801,7 +705,7 @@ export function ExpenseFormModal({
                 </View>
               )}
 
-              {/* Amount Input & Quick Amounts */}
+              {/* Amount Input */}
               <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
                 <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                   {mode === 'INSTALLMENT' ? 'Payment Per Term' : 'Amount'}
@@ -823,25 +727,6 @@ export function ExpenseFormModal({
                     editable={!isBusy}
                     className="flex-1 h-full text-slate-900 dark:text-slate-100 text-base font-bold"
                   />
-                </View>
-                <View className="flex-row flex-wrap gap-2 pt-0.5">
-                  {QUICK_AMOUNT_PRESETS.map((minor) => (
-                    <Pressable
-                      key={minor}
-                      onPress={() => {
-                        setAmountInput(minorUnitsToDecimalInput(minor));
-                        if (formError) setFormError(null);
-                      }}
-                      disabled={isBusy}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Set amount ${formatMinorUnits(minor, activeCurrency)}`}
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
-                    >
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                        {formatMinorUnits(minor, activeCurrency)}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
                 </View>
               </View>
 
@@ -1484,136 +1369,41 @@ export function ExpenseFormModal({
               </>
             )}
 
-            {/* One-Time Specific Fields (Merchant, Note, Tags) */}
+            {/* One-Time Specific Fields (Merchant, Note) */}
             {mode === 'ONE_TIME' && (
-              <>
-                <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
-                  {/* Merchant / Payee */}
-                  <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Merchant / Payee (Optional)
-                    </ThemedText>
-                    <TextInput
-                      value={merchantInput}
-                      onChangeText={setMerchantInput}
-                      placeholder="e.g. Whole Foods, Starbucks, Grab"
-                      placeholderTextColor={theme.textSecondary}
-                      accessibilityLabel="Merchant or payee"
-                      editable={!isBusy}
-                      className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
-                    />
-                    {recentMerchants.length > 0 && (
-                      <View className="flex-row flex-wrap gap-1.5 pt-0.5">
-                        {recentMerchants.slice(0, 6).map((merchant) => {
-                          const selected =
-                            merchantInput.trim().toLowerCase() === merchant.toLowerCase();
-                          return (
-                            <Pressable
-                              key={merchant}
-                              onPress={() => setMerchantInput(merchant)}
-                              disabled={isBusy}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Use merchant ${merchant}`}
-                              accessibilityState={{ selected }}
-                              className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
-                                selected
-                                  ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                                  : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
-                              }`}
-                            >
-                              <ThemedText
-                                className={`text-xs font-semibold ${
-                                  selected
-                                    ? 'text-brand-700 dark:text-brand-300'
-                                    : 'text-slate-700 dark:text-slate-300'
-                                }`}
-                              >
-                                {merchant}
-                              </ThemedText>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    )}
-                  </View>
-
-                  {/* Note Input */}
-                  <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Note (Optional)
-                    </ThemedText>
-                    <TextInput
-                      value={noteInput}
-                      onChangeText={setNoteInput}
-                      placeholder="Add details or reminder..."
-                      placeholderTextColor={theme.textSecondary}
-                      accessibilityLabel="Expense note"
-                      editable={!isBusy}
-                      className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
-                    />
-                  </View>
-                </View>
-
-                {/* Tags Selector */}
-                <View className="gap-1.5">
+              <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
+                {/* Merchant / Payee */}
+                <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
                   <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Tags (Optional)
+                    Merchant / Payee (Optional)
                   </ThemedText>
-                  <View className="flex-row flex-wrap gap-2">
-                    {selectableTags.map((tag) => {
-                      const isSelected = tags.includes(tag);
-                      return (
-                        <Pressable
-                          key={tag}
-                          onPress={() => handleToggleTag(tag)}
-                          disabled={isBusy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Toggle tag ${tag}`}
-                          accessibilityState={{ selected: isSelected }}
-                          className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
-                            isSelected
-                              ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
-                          }`}
-                        >
-                          <ThemedText
-                            className={`text-xs font-semibold ${
-                              isSelected
-                                ? 'text-brand-700 dark:text-brand-300'
-                                : 'text-slate-700 dark:text-slate-300'
-                            }`}
-                          >
-                            {isSelected ? `✓ #${tag}` : `#${tag}`}
-                          </ThemedText>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <View className="flex-row items-center gap-2 pt-1">
-                    <TextInput
-                      value={newTagInput}
-                      onChangeText={setNewTagInput}
-                      onSubmitEditing={handleAddCustomTag}
-                      placeholder="Add custom tag..."
-                      placeholderTextColor={theme.textSecondary}
-                      accessibilityLabel="New custom tag"
-                      editable={!isBusy}
-                      className="flex-1 h-12 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm"
-                    />
-                    <Pressable
-                      onPress={handleAddCustomTag}
-                      disabled={isBusy || !newTagInput.trim()}
-                      accessibilityRole="button"
-                      accessibilityLabel="Add tag"
-                      className={`min-h-[44px] px-4 py-2 rounded-xl bg-slate-900 dark:bg-slate-700 items-center justify-center ${
-                        !newTagInput.trim() ? 'opacity-50' : 'active:opacity-80'
-                      }`}
-                    >
-                      <ThemedText className="text-xs font-bold text-white">Add</ThemedText>
-                    </Pressable>
-                  </View>
+                  <TextInput
+                    value={merchantInput}
+                    onChangeText={setMerchantInput}
+                    placeholder="e.g. Whole Foods, Starbucks, Grab"
+                    placeholderTextColor={theme.textSecondary}
+                    accessibilityLabel="Merchant or payee"
+                    editable={!isBusy}
+                    className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
+                  />
                 </View>
-              </>
+
+                {/* Note Input */}
+                <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
+                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Note (Optional)
+                  </ThemedText>
+                  <TextInput
+                    value={noteInput}
+                    onChangeText={setNoteInput}
+                    placeholder="Add details or reminder..."
+                    placeholderTextColor={theme.textSecondary}
+                    accessibilityLabel="Expense note"
+                    editable={!isBusy}
+                    className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
+                  />
+                </View>
+              </View>
             )}
 
             {/* Modal Actions */}

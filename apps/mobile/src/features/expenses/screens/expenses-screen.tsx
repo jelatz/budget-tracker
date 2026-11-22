@@ -42,7 +42,6 @@ import {
   useDeleteRecurringCommitment,
   useDeleteTransaction,
   usePayRecurringCommitment,
-  useQuickPresets,
   useRecurringCommitments,
   useSmartDefaults,
   useTransactions,
@@ -106,7 +105,6 @@ export function ExpensesScreen({
   const categoriesQuery = useCategories('EXPENSE', 12);
   const { categories: allCategories } = useAllCategories();
   const smartDefaultsQuery = useSmartDefaults();
-  const quickPresetsQuery = useQuickPresets();
   const commitmentsQuery = useRecurringCommitments();
 
   const createTransactionMutation = useCreateTransaction();
@@ -122,7 +120,6 @@ export function ExpensesScreen({
   const accounts = accountsQuery.data ?? [];
   const expenseCategories = categoriesQuery.rankedCategories;
   const smartDefaults = smartDefaultsQuery.data;
-  const quickPresets = quickPresetsQuery.data ?? [];
   const commitments = commitmentsQuery.data ?? [];
 
   // View Tab, Display Mode & Filter State
@@ -1389,9 +1386,6 @@ export function ExpensesScreen({
           editingCommitment={editingCommitment}
           accounts={accounts}
           expenseCategories={expenseCategories}
-          presets={quickPresets}
-          recentMerchants={smartDefaults?.recentMerchants ?? []}
-          knownTags={smartDefaults?.knownTags ?? []}
           defaultAccountId={defaultModalAccountId}
           defaultCategoryId={defaultModalCategoryId}
           draftSplits={draftSplits}
