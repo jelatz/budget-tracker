@@ -75,18 +75,26 @@ export function getApiBaseUrl(): string {
         ? extraApiUrl.trim()
         : '';
 
-  if (!raw) {
-    throw new ApiClientError(
-      'API URL is not configured (EXPO_PUBLIC_API_URL).',
-      {
-        status: 0,
-        code: 'CONFIG_ERROR',
-        isNetworkError: false,
-      },
-    );
+  if (raw) {
+    return raw.replace(/\/+$/, '');
   }
 
-  return raw.replace(/\/+$/, '');
+  if (
+    typeof window !== 'undefined' &&
+    typeof window.location?.origin === 'string' &&
+    /^https?:\/\//i.test(window.location.origin)
+  ) {
+    return window.location.origin.replace(/\/+$/, '');
+  }
+
+  throw new ApiClientError(
+    'API URL is not configured (EXPO_PUBLIC_API_URL).',
+    {
+      status: 0,
+      code: 'CONFIG_ERROR',
+      isNetworkError: false,
+    },
+  );
 }
 
 export async function apiFetch<T>(

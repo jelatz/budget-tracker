@@ -50,3 +50,6 @@ example
 # neon cli & api build
 .neon
 apps/api/dist/
+
+# vercel build output
+.vercel

@@ -34,13 +34,14 @@ export function getEnv(): ApiEnv {
   if (cachedEnv) {
     return cachedEnv;
   }
+  const defaultPoolMax = process.env.VERCEL === '1' ? '2' : '5';
   const parsed = envSchema.safeParse({
     NODE_ENV: process.env.NODE_ENV ?? 'development',
     HOST: process.env.HOST ?? '0.0.0.0',
     PORT: process.env.PORT ?? '3000',
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
-    DB_POOL_MAX: process.env.DB_POOL_MAX ?? '5',
+    DB_POOL_MAX: process.env.DB_POOL_MAX ?? defaultPoolMax,
     MIN_SUPPORTED_VERSION: process.env.MIN_SUPPORTED_VERSION ?? '1.0.0',
     CORS_ORIGINS: process.env.CORS_ORIGINS ?? '',
     ALLOW_UNAUTHENTICATED_DEMO: process.env.ALLOW_UNAUTHENTICATED_DEMO ?? 'false',
@@ -63,18 +64,50 @@ export function getMinSupportedVersion(): string {
   return process.env.MIN_SUPPORTED_VERSION?.trim() || '1.0.0';
 }
 
+function normalizeOrigin(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim().replace(/\/+$/, '');
+  if (!trimmed) return null;
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+export function getVercelDeploymentOrigins(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const candidates = [
+    env.VERCEL_URL,
+    env.VERCEL_BRANCH_URL,
+    env.VERCEL_PROJECT_PRODUCTION_URL,
+  ];
+  const origins: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeOrigin(candidate);
+    if (normalized) {
+      origins.push(normalized);
+    }
+  }
+  return Array.from(new Set(origins));
+}
+
 export function parseAllowedCorsOrigins(
   rawOrigins: string | undefined = process.env.CORS_ORIGINS,
   nodeEnv: string | undefined = process.env.NODE_ENV,
+  env: NodeJS.ProcessEnv = process.env,
 ): string[] {
   const configured = (rawOrigins ?? '')
     .split(',')
     .map((item) => item.trim().replace(/\/+$/, ''))
     .filter((item) => item.length > 0);
+  const vercelOrigins = getVercelDeploymentOrigins(env);
 
   if (nodeEnv === 'production') {
-    return Array.from(new Set(configured));
+    return Array.from(new Set([...configured, ...vercelOrigins]));
   }
 
-  return Array.from(new Set([...DEFAULT_DEV_CORS_ORIGINS, ...configured]));
+  return Array.from(
+    new Set([...DEFAULT_DEV_CORS_ORIGINS, ...configured, ...vercelOrigins]),
+  );
 }
