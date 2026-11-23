@@ -19,19 +19,31 @@ import {
   minorUnitsToDecimalInput,
   parseDecimalToMinorUnits,
   type Account,
+  type BalanceReconciliation,
 } from '@repo/contracts';
 
 import { ThemedText } from '@/common/components/themed-text';
+import { Colors } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
+import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAccounts,
   useApplyReconciliation,
   useReconciliations,
 } from '@/features/transactions/hooks/use-transactions';
 
+const EMPTY_ACCOUNTS: Account[] = [];
+const EMPTY_HISTORY: BalanceReconciliation[] = [];
+
 export function ReconciliationScreen() {
-  const { isAuthenticated } = useRequireAuth();
-  const { data: accounts = [], isLoading: isAccountsLoading } = useAccounts();
+  const { isAuthenticated, isHydrating } = useRequireAuth();
+  const theme = useTheme();
+  const {
+    data: accounts = EMPTY_ACCOUNTS,
+    isLoading: isAccountsLoading,
+    isError: isAccountsError,
+    refetch: refetchAccounts,
+  } = useAccounts();
   const applyMutation = useApplyReconciliation();
 
   // Selected account state
@@ -64,9 +76,12 @@ export function ReconciliationScreen() {
   };
 
   // Reconciliations history query for selected account
-  const { data: history = [], isLoading: isHistoryLoading } = useReconciliations(
-    selectedAccount?.id,
-  );
+  const {
+    data: history = EMPTY_HISTORY,
+    isLoading: isHistoryLoading,
+    isError: isHistoryError,
+    refetch: refetchHistory,
+  } = useReconciliations(selectedAccount?.id);
 
   // Live calculation of discrepancy
   const currentAppBalanceMinor = selectedAccount?.balanceMinor ?? 0;
@@ -115,15 +130,26 @@ export function ReconciliationScreen() {
     }
   };
 
+  if (isHydrating) {
+    return (
+      <View className="flex-1 bg-slate-50 dark:bg-slate-950 items-center justify-center">
+        <SafeAreaView style={{ flex: 1 }} className="flex-1 items-center justify-center">
+          <ActivityIndicator size="large" color={theme.text} />
+        </SafeAreaView>
+      </View>
+    );
+  }
+
   if (!isAuthenticated) {
     return null;
   }
 
   return (
     <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1 }} className="flex-1" edges={['top', 'left', 'right']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
           className="flex-1"
         >
           {/* Top Bar Header */}
@@ -134,12 +160,12 @@ export function ReconciliationScreen() {
                   if (router.canGoBack()) {
                     router.back();
                   } else {
-                    router.replace('/dashboard' as any);
+                    router.replace('/dashboard');
                   }
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="Go back"
-                className="py-1.5 px-3 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 flex-row items-center gap-1"
+                className="min-h-[44px] py-2 px-3 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 flex-row items-center gap-1"
               >
                 <ThemedText className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                   ← Back
@@ -167,6 +193,7 @@ export function ReconciliationScreen() {
 
           <ScrollView
             className="flex-1"
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               width: '100%',
               paddingHorizontal: 16,
@@ -214,7 +241,44 @@ export function ReconciliationScreen() {
               </ThemedText>
 
               {isAccountsLoading ? (
-                <ActivityIndicator size="small" />
+                <ActivityIndicator size="small" color={theme.text} />
+              ) : isAccountsError ? (
+                <View className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 gap-2.5 items-start">
+                  <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    Unable to load accounts right now.
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => {
+                      void refetchAccounts();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading accounts"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-100 dark:bg-rose-900/50 items-center justify-center active:opacity-75"
+                  >
+                    <ThemedText className="text-xs font-bold text-rose-700 dark:text-rose-200">
+                      Retry
+                    </ThemedText>
+                  </Pressable>
+                </View>
+              ) : accounts.length === 0 ? (
+                <View className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 items-center gap-2.5">
+                  <ThemedText className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    No accounts available
+                  </ThemedText>
+                  <ThemedText className="text-xs text-slate-500 text-center">
+                    Add an account first to start reconciling balances.
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => router.push('/accounts')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Add account"
+                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                  >
+                    <ThemedText className="text-xs font-bold text-white">
+                      Add Account
+                    </ThemedText>
+                  </Pressable>
+                </View>
               ) : (
                 <ScrollView
                   horizontal
@@ -324,7 +388,7 @@ export function ReconciliationScreen() {
                       setToastMessage(null);
                     }}
                     placeholder="0.00"
-                    placeholderTextColor="#94a3b8"
+                    placeholderTextColor={theme.textSecondary}
                     keyboardType="numeric"
                     className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-2xl font-extrabold tracking-tight"
                   />
@@ -336,8 +400,8 @@ export function ReconciliationScreen() {
                       onPress={() => handleQuickDelta(-5000)}
                       accessibilityRole="button"
                       accessibilityLabel="Subtract 50 pesos"
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
                     >
                       <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         -{DEFAULT_CURRENCY_SYMBOL}50
@@ -347,8 +411,8 @@ export function ReconciliationScreen() {
                       onPress={() => handleQuickDelta(-1000)}
                       accessibilityRole="button"
                       accessibilityLabel="Subtract 10 pesos"
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
                     >
                       <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         -{DEFAULT_CURRENCY_SYMBOL}10
@@ -358,8 +422,8 @@ export function ReconciliationScreen() {
                       onPress={() => handleQuickDelta(1000)}
                       accessibilityRole="button"
                       accessibilityLabel="Add 10 pesos"
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
                     >
                       <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         +{DEFAULT_CURRENCY_SYMBOL}10
@@ -369,8 +433,8 @@ export function ReconciliationScreen() {
                       onPress={() => handleQuickDelta(5000)}
                       accessibilityRole="button"
                       accessibilityLabel="Add 50 pesos"
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
                     >
                       <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
                         +{DEFAULT_CURRENCY_SYMBOL}50
@@ -445,7 +509,7 @@ export function ReconciliationScreen() {
                             value={notes}
                             onChangeText={setNotes}
                             placeholder="e.g. Month-end statement sanity check"
-                            placeholderTextColor="#94a3b8"
+                            placeholderTextColor={theme.textSecondary}
                             className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs"
                           />
                         </View>
@@ -454,10 +518,12 @@ export function ReconciliationScreen() {
                         <Pressable
                           onPress={handleApplyAdjustment}
                           disabled={applyMutation.isPending}
-                          className="w-full py-3 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm"
+                          accessibilityRole="button"
+                          accessibilityLabel="Apply reconciliation adjustment"
+                          className="w-full min-h-[44px] py-3 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm"
                         >
                           {applyMutation.isPending ? (
-                            <ActivityIndicator size="small" color="#ffffff" />
+                            <ActivityIndicator size="small" color={Colors.dark.text} />
                           ) : (
                             <ThemedText className="text-white font-bold text-sm">
                               Apply Reconciliation Adjustment (
@@ -486,7 +552,25 @@ export function ReconciliationScreen() {
               </View>
 
               {isHistoryLoading ? (
-                <ActivityIndicator size="small" className="my-3" />
+                <ActivityIndicator size="small" color={theme.text} className="my-3" />
+              ) : isHistoryError ? (
+                <View className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 gap-2.5 items-start">
+                  <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                    Unable to load reconciliation history.
+                  </ThemedText>
+                  <Pressable
+                    onPress={() => {
+                      void refetchHistory();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Retry loading reconciliation history"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-100 dark:bg-rose-900/50 items-center justify-center active:opacity-75"
+                  >
+                    <ThemedText className="text-xs font-bold text-rose-700 dark:text-rose-200">
+                      Retry
+                    </ThemedText>
+                  </Pressable>
+                </View>
               ) : history.length === 0 ? (
                 <View className="py-6 items-center justify-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
                   <ThemedText className="text-xl mb-1">⚖️</ThemedText>
@@ -516,7 +600,7 @@ export function ReconciliationScreen() {
                               {dateFormatted}
                             </ThemedText>
                             {record.adjustmentTransactionId && (
-                              <View className="px-1.5 py-0.2 rounded bg-brand-100 dark:bg-brand-900/40">
+                              <View className="px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-900/40">
                                 <ThemedText className="text-[10px] font-semibold text-brand-700 dark:text-brand-300">
                                   Auto-Adjusted
                                 </ThemedText>

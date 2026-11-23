@@ -11,6 +11,8 @@ import AppTabs from '@/components/app-tabs';
 import { SyncCoordinator } from '@/common/components/sync-coordinator';
 import { AuthProvider } from '@/features/auth/context/auth-context';
 
+export { RouteErrorBoundary as ErrorBoundary } from '@/common/components/route-error-boundary';
+
 SplashScreen.preventAutoHideAsync();
 
 export default function TabLayout() {

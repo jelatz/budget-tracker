@@ -2,13 +2,15 @@ import '../global.css';
 
 import { useEffect, useState } from 'react';
 import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import { useColorScheme } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import AppTabs from '@/components/app-tabs';
 import { SyncCoordinator } from '@/common/components/sync-coordinator';
+import { useColorScheme } from '@/common/hooks/use-color-scheme';
 import { useWebAutoReload } from '@/common/hooks/use-web-auto-reload';
 import { AuthProvider } from '@/features/auth/context/auth-context';
+
+export { RouteErrorBoundary as ErrorBoundary } from '@/common/components/route-error-boundary';
 
 export default function TabLayout() {
   useWebAutoReload();

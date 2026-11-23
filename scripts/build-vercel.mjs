@@ -157,7 +157,13 @@ writeJson(path.join(vercelOutputDir, 'config.json'), {
       headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
       continue: true,
     },
+    {
+      src: '^/_expo/static/.*',
+      headers: { 'Cache-Control': 'public, max-age=31536000, immutable' },
+      continue: true,
+    },
     { handle: 'filesystem' },
+    { src: '^/(?:_expo|assets)/.*$', status: 404 },
     { src: '^/([^/.]+)$', dest: '/$1.html', check: true },
     { src: '/(.*)', dest: '/index.html' },
   ],

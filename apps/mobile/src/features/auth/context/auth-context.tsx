@@ -6,7 +6,6 @@ import React, {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { ApiClientError } from '@/common/lib/api-client';
@@ -61,26 +60,8 @@ export const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const queryClient = useQueryClient();
-  const initialSnapshotRef = useRef<ReturnType<typeof getInitialAuthSnapshotSync> | undefined>(
-    undefined,
-  );
-  if (initialSnapshotRef.current === undefined) {
-    initialSnapshotRef.current = getInitialAuthSnapshotSync();
-    if (initialSnapshotRef.current?.token && initialSnapshotRef.current?.user) {
-      setActiveSyncUser(initialSnapshotRef.current.user.id);
-    }
-  }
-
-  const hasSyncSession = Boolean(
-    initialSnapshotRef.current?.token && initialSnapshotRef.current?.user,
-  );
-
-  const [user, setUser] = useState<User | null>(
-    hasSyncSession ? initialSnapshotRef.current!.user : null,
-  );
-  const [isHydrating, setIsHydrating] = useState<boolean>(
-    initialSnapshotRef.current === null,
-  );
+  const [user, setUser] = useState<User | null>(null);
+  const [isHydrating, setIsHydrating] = useState<boolean>(true);
 
   const migrateLegacyWebDataIfPresent = useCallback(async (email: string) => {
     const backup = readUnmigratedLegacyWebBackup(email);
@@ -112,10 +93,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function hydrateAndVerifySession() {
-      let token = initialSnapshotRef.current?.token ?? null;
-      let cachedUser = initialSnapshotRef.current?.user ?? null;
+      const syncSnapshot = getInitialAuthSnapshotSync();
+      let token = syncSnapshot?.token ?? null;
+      let cachedUser = syncSnapshot?.user ?? null;
 
-      if (!token || !cachedUser) {
+      if (token && cachedUser) {
+        setActiveSyncUser(cachedUser.id);
+        setUser(cachedUser);
+        setIsHydrating(false);
+      } else if (syncSnapshot !== null) {
+        if (token && !cachedUser) {
+          await clearAuthToken();
+        }
+        if (cancelled) return;
+        setActiveSyncUser(null);
+        setUser(null);
+        setIsHydrating(false);
+        return;
+      } else {
         const [storedToken, storedUser] = await Promise.all([
           getAuthToken(),
           getCachedUser(),
@@ -128,18 +123,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token && cachedUser) {
           setActiveSyncUser(cachedUser.id);
           setUser(cachedUser);
+          setIsHydrating(false);
         } else {
           if (token && !cachedUser) {
             await clearAuthToken();
           }
+          if (cancelled) return;
           setActiveSyncUser(null);
           setUser(null);
           setIsHydrating(false);
           return;
         }
       }
-
-      setIsHydrating(false);
 
       // Validate token in background; stay signed in offline when network is unreachable
       try {

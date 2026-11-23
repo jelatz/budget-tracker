@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import {
+  Platform,
   Pressable,
   ScrollView,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -48,6 +50,9 @@ function formatTxDate(isoString: string): string {
 
 export function DashboardScreen() {
   const { isAuthenticated, user, logout } = useRequireAuth();
+  const { width } = useWindowDimensions();
+  const isMobileWebView = Platform.OS === 'web' && width < 768;
+  const showOverviewAccountMeta = isAuthenticated && !isMobileWebView;
   const [period, setPeriod] = useState<DashboardPeriod>('THIS_MONTH');
 
   const { metrics, accounts, categories } = useDashboardMetrics(period);
@@ -97,7 +102,7 @@ export function DashboardScreen() {
                   </ThemedText>
                 </Pressable>
 
-                {isAuthenticated && (
+                {showOverviewAccountMeta && (
                   <Pressable
                     onPress={async () => {
                       await logout();
@@ -127,7 +132,7 @@ export function DashboardScreen() {
               </View>
             </View>
 
-            {isAuthenticated && (
+            {showOverviewAccountMeta && (
               <View className="flex-row flex-wrap items-center gap-2">
                 <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700/80">
                   <ThemedText className="text-xs font-medium text-slate-600 dark:text-slate-300">
