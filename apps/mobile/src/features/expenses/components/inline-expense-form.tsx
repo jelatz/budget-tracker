@@ -14,6 +14,7 @@ import {
   formatMinorUnits,
   getAccountTypeLabel,
   getNextDueDatePreset,
+  normalizeDecimalInput,
   parseCalendarDate,
   parseDateInputToIso,
   parseDecimalToMinorUnits,
@@ -392,13 +393,17 @@ export function InlineExpenseForm({
           <TextInput
             value={amountInput}
             onChangeText={(text) => {
-              setAmountInput(text);
+              setAmountInput(normalizeDecimalInput(text));
               if (formError) setFormError(null);
             }}
             placeholder="0.00"
             placeholderTextColor={theme.textSecondary}
             accessibilityLabel="Expense amount"
             keyboardType="decimal-pad"
+            inputMode="decimal"
+            autoCorrect={false}
+            spellCheck={false}
+            autoComplete="off"
             editable={!isSaving}
             className="h-12 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm font-bold font-mono"
           />

@@ -15,6 +15,7 @@ import {
   DEFAULT_CURRENCY_SYMBOL,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type CategoryBudget,
   type CategoryBudgetStatus,
@@ -551,10 +552,14 @@ export function EnvelopeBudgetsCard() {
                       className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
                       value={assignedInput}
                       onChangeText={(t) => {
-                        setAssignedInput(t);
+                        setAssignedInput(normalizeDecimalInput(t));
                         if (formError) setFormError(null);
                       }}
                       keyboardType="decimal-pad"
+                      inputMode="decimal"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      autoComplete="off"
                       placeholder="100"
                       placeholderTextColor="#94A3B8"
                       editable={!isSubmitting}

@@ -16,11 +16,13 @@ import {
   DEFAULT_CURRENCY_SYMBOL,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type CommitmentFrequency,
   type RecurringCommitment,
 } from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
+import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAccounts,
   useAllCategories,
@@ -44,6 +46,7 @@ const QUICK_AMOUNT_PRESETS = [1500, 5000, 10000, 50000, 150000]; // $15, $50, $1
 const QUICK_DAY_PRESETS = [1, 5, 10, 15, 20, 25, 30];
 
 export function SafeToSpendCard() {
+  const theme = useTheme();
   const { data: metrics, isLoading: isMetricsLoading } = useSafeToSpendMetrics();
   const { data: commitments = [], isLoading: isCommitmentsLoading } = useRecurringCommitments();
   const { data: accounts = [] } = useAccounts();
@@ -707,10 +710,18 @@ export function SafeToSpendCard() {
                 </ThemedText>
                 <TextInput
                   value={amountInput}
-                  onChangeText={setAmountInput}
+                  onChangeText={(text) => {
+                    setAmountInput(normalizeDecimalInput(text));
+                    if (formError) setFormError(null);
+                  }}
                   placeholder="0.00"
-                  placeholderTextColor="#94a3b8"
-                  keyboardType="numeric"
+                  placeholderTextColor={theme.textSecondary}
+                  accessibilityLabel="Bill amount"
+                  keyboardType="decimal-pad"
+                  inputMode="decimal"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  autoComplete="off"
                   className="px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-base font-bold"
                 />
                 <View className="flex-row items-center gap-2 flex-wrap pt-1">

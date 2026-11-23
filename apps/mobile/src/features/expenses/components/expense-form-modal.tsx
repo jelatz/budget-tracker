@@ -21,6 +21,7 @@ import {
   getAccountTypeLabel,
   getNextDueDatePreset,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseCalendarDate,
   parseDateInputToIso,
   parseDecimalToMinorUnits,
@@ -717,13 +718,17 @@ export function ExpenseFormModal({
                   <TextInput
                     value={amountInput}
                     onChangeText={(text) => {
-                      setAmountInput(text);
+                      setAmountInput(normalizeDecimalInput(text));
                       if (formError) setFormError(null);
                     }}
                     placeholder="0.00"
                     placeholderTextColor={theme.textSecondary}
                     accessibilityLabel="Expense amount"
                     keyboardType="decimal-pad"
+                    inputMode="decimal"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    autoComplete="off"
                     editable={!isBusy}
                     className="flex-1 h-full text-slate-900 dark:text-slate-100 text-base font-bold"
                   />

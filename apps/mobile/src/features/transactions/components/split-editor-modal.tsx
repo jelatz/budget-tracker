@@ -14,6 +14,7 @@ import {
   DEFAULT_CURRENCY,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   rebalanceTwoWaySplit,
   splitEvenly,
@@ -524,8 +525,12 @@ export function SplitEditorModal({
                         <TextInput
                           className="h-12 rounded-xl border border-slate-200 dark:border-slate-700 px-3 text-base font-mono font-bold bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-slate-100"
                           keyboardType="decimal-pad"
+                          inputMode="decimal"
+                          autoCorrect={false}
+                          spellCheck={false}
+                          autoComplete="off"
                           value={row.amountInput}
-                          onChangeText={(val) => handleAmountChange(index, val)}
+                          onChangeText={(val) => handleAmountChange(index, normalizeDecimalInput(val))}
                           placeholder="0.00"
                           placeholderTextColor={theme.textSecondary}
                         />

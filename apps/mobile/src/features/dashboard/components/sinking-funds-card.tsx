@@ -14,6 +14,7 @@ import {
   DEFAULT_CURRENCY_SYMBOL,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type SinkingFund,
 } from '@repo/contracts';
@@ -630,10 +631,14 @@ export function SinkingFundsCard() {
                       className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
                       value={targetAmountInput}
                       onChangeText={(t) => {
-                        setTargetAmountInput(t);
+                        setTargetAmountInput(normalizeDecimalInput(t));
                         if (editError) setEditError(null);
                       }}
                       keyboardType="decimal-pad"
+                      inputMode="decimal"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      autoComplete="off"
                       placeholder="1000"
                       placeholderTextColor="#94A3B8"
                       editable={!isSubmitting}
@@ -970,10 +975,14 @@ export function SinkingFundsCard() {
                   className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
                   value={stashAmountInput}
                   onChangeText={(t) => {
-                    setStashAmountInput(t);
+                    setStashAmountInput(normalizeDecimalInput(t));
                     if (stashError) setStashError(null);
                   }}
                   keyboardType="decimal-pad"
+                  inputMode="decimal"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  autoComplete="off"
                   placeholder="50"
                   placeholderTextColor="#94A3B8"
                   autoFocus

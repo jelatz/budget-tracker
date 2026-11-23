@@ -19,6 +19,7 @@ import {
   isTransactionInPeriod,
   mapKeyboardKeyToCalculatorKey,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   normalizeLegacyAccountType,
   normalizeLegacyCategoryId,
   parseDecimalToMinorUnits,
@@ -67,6 +68,37 @@ describe('Money Math & Helpers', () => {
     expect(parseDecimalToMinorUnits('12.555')).toBeNull(); // exceeds 2 decimals
     expect(parseDecimalToMinorUnits('abc')).toBeNull();
     expect(parseDecimalToMinorUnits('1.2.3')).toBeNull();
+  });
+
+  it('normalizes live decimal input across dot/comma locales and thousands separators', () => {
+    // Standard decimals remain intact
+    expect(normalizeDecimalInput('')).toBe('');
+    expect(normalizeDecimalInput('0')).toBe('0');
+    expect(normalizeDecimalInput('12.')).toBe('12.');
+    expect(normalizeDecimalInput('12.5')).toBe('12.5');
+    expect(normalizeDecimalInput('12.50')).toBe('12.50');
+    expect(normalizeDecimalInput('-12.50')).toBe('-12.50');
+    expect(normalizeDecimalInput('.')).toBe('.');
+    expect(normalizeDecimalInput('-.')).toBe('-.');
+
+    // Regional decimal commas convert to dots
+    expect(normalizeDecimalInput(',')).toBe('.');
+    expect(normalizeDecimalInput('-,')).toBe('-.');
+    expect(normalizeDecimalInput('12,')).toBe('12.');
+    expect(normalizeDecimalInput('12,5')).toBe('12.5');
+    expect(normalizeDecimalInput('12,50')).toBe('12.50');
+
+    // Thousands commas are stripped
+    expect(normalizeDecimalInput('1,234.56')).toBe('1234.56');
+    expect(normalizeDecimalInput('1,234,567')).toBe('1234567');
+    expect(normalizeDecimalInput('1,234')).toBe('1234');
+
+    // Whitespace is stripped
+    expect(normalizeDecimalInput(' 12.50 ')).toBe('12.50');
+
+    // Invalid inputs pass through so parseDecimalToMinorUnits can reject them
+    expect(normalizeDecimalInput('12.345')).toBe('12.345');
+    expect(normalizeDecimalInput('abc')).toBe('abc');
   });
 
   it('computes split remainder and rebalances two-way splits', () => {

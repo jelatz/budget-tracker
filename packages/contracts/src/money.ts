@@ -64,6 +64,27 @@ export function minorUnitsToDecimalInput(amountMinor: number): string {
 }
 
 /**
+ * Normalizes live decimal input strings across mobile/web locales:
+ * - Strips whitespace
+ * - Converts a regional decimal comma (e.g. "12,", "12,5", "12,50", ",") to "."
+ * - Strips thousands commas when commas appear alongside "." or in 3-digit groups (e.g. "1,234.56", "1,234")
+ */
+export function normalizeDecimalInput(input: string): string {
+  const compact = input.replace(/\s+/g, '');
+  if (!compact.includes(',')) {
+    return compact;
+  }
+  if (compact.includes('.')) {
+    return compact.replace(/,/g, '');
+  }
+  const commaCount = (compact.match(/,/g) ?? []).length;
+  if (commaCount === 1 && /,\d{0,2}$/.test(compact)) {
+    return compact.replace(',', '.');
+  }
+  return compact.replace(/,/g, '');
+}
+
+/**
  * Parses a decimal string (up to 2 decimal places, optional leading -) into integer minor units
  * using exact string/integer math without float drift.
  * Returns null if invalid or exceeds 2 decimal places.

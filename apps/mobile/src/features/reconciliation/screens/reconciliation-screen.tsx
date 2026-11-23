@@ -17,6 +17,7 @@ import {
   formatMinorUnits,
   getAccountTypeLabel,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type Account,
   type BalanceReconciliation,
@@ -394,12 +395,18 @@ export function ReconciliationScreen() {
                   <TextInput
                     value={actualBalanceInput}
                     onChangeText={(val) => {
-                      setActualBalanceInput(val);
+                      setActualBalanceInput(normalizeDecimalInput(val));
                       setToastMessage(null);
+                      if (errorText) setErrorText(null);
                     }}
                     placeholder="0.00"
                     placeholderTextColor={theme.textSecondary}
-                    keyboardType="numeric"
+                    accessibilityLabel="Actual account balance"
+                    keyboardType="decimal-pad"
+                    inputMode="decimal"
+                    autoCorrect={false}
+                    spellCheck={false}
+                    autoComplete="off"
                     className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-2xl font-extrabold tracking-tight"
                   />
 

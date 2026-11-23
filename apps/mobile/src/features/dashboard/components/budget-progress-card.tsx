@@ -13,6 +13,7 @@ import {
   DEFAULT_CURRENCY_SYMBOL,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type BudgetSummary,
 } from '@repo/contracts';
@@ -195,10 +196,14 @@ export function BudgetProgressCard({
                 className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
                 value={targetInput}
                 onChangeText={(text) => {
-                  setTargetInput(text);
+                  setTargetInput(normalizeDecimalInput(text));
                   if (errorMessage) setErrorMessage(null);
                 }}
                 keyboardType="decimal-pad"
+                inputMode="decimal"
+                autoCorrect={false}
+                spellCheck={false}
+                autoComplete="off"
                 placeholder="2500"
                 placeholderTextColor="#94A3B8"
                 autoFocus

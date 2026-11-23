@@ -17,6 +17,7 @@ import {
   DEFAULT_CURRENCY_SYMBOL,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type Account,
   type AccountType,
@@ -735,13 +736,17 @@ export function AccountsScreen() {
                     <TextInput
                       value={balanceInput}
                       onChangeText={(text) => {
-                        setBalanceInput(text);
+                        setBalanceInput(normalizeDecimalInput(text));
                         if (formError) setFormError(null);
                       }}
                       placeholder="0.00"
                       placeholderTextColor={theme.textSecondary}
-                      accessibilityLabel="Starting balance"
+                      accessibilityLabel={editingAccount ? 'Current balance' : 'Starting balance'}
                       keyboardType="decimal-pad"
+                      inputMode="decimal"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      autoComplete="off"
                       editable={!isBusy}
                       className="flex-1 h-full text-slate-900 dark:text-slate-100 text-base font-bold"
                     />

@@ -13,6 +13,7 @@ import {
   DEFAULT_CURRENCY,
   formatMinorUnits,
   minorUnitsToDecimalInput,
+  normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type QuickPreset,
   type TransactionType,
@@ -484,8 +485,12 @@ export function QuickPresetBar({
                     <TextInput
                       className="h-12 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-base font-mono font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
                       keyboardType="decimal-pad"
+                      inputMode="decimal"
+                      autoCorrect={false}
+                      spellCheck={false}
+                      autoComplete="off"
                       value={amountInput}
-                      onChangeText={setAmountInput}
+                      onChangeText={(text) => setAmountInput(normalizeDecimalInput(text))}
                       placeholder="0.00"
                       placeholderTextColor={theme.textSecondary}
                     />
