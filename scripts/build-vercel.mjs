@@ -11,10 +11,14 @@ const apiDir = path.join(rootDir, 'apps', 'api');
 const apiDistDir = path.join(apiDir, 'dist');
 const mobileDistDir = path.join(rootDir, 'apps', 'mobile', 'dist');
 
-function run(command, cwd = rootDir) {
+function run(command, cwd = rootDir, extraEnv = {}) {
   execSync(command, {
     cwd,
     stdio: 'inherit',
+    env: {
+      ...process.env,
+      ...extraEnv,
+    },
   });
 }
 
@@ -76,6 +80,11 @@ function copyFlatRuntimeDeps(rootPkgNames, startDir, targetNodeModulesDir) {
   return Array.from(collected.keys());
 }
 
+const buildId =
+  process.env.VERCEL_DEPLOYMENT_ID?.trim() ||
+  process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
+  `build-${Date.now()}`;
+
 // 1. Reset .vercel/output
 fs.rmSync(vercelOutputDir, { recursive: true, force: true });
 fs.mkdirSync(staticOutputDir, { recursive: true });
@@ -85,13 +94,19 @@ fs.mkdirSync(funcDir, { recursive: true });
 run('pnpm --filter @repo/api build');
 
 // 3. Export @repo/mobile static web bundle (produces apps/mobile/dist)
-run('pnpm --filter @repo/mobile exec npx expo export --platform web');
+run('pnpm --filter @repo/mobile exec npx expo export --platform web', rootDir, {
+  EXPO_PUBLIC_BUILD_ID: buildId,
+});
 
-// 4. Copy static frontend assets into .vercel/output/static
+// 4. Copy static frontend assets into .vercel/output/static and write version manifest
 if (!fs.existsSync(mobileDistDir)) {
   throw new Error(`Expected Expo web export directory at ${mobileDistDir}`);
 }
 fs.cpSync(mobileDistDir, staticOutputDir, { recursive: true });
+writeJson(path.join(staticOutputDir, 'version.json'), {
+  buildId,
+  builtAt: new Date().toISOString(),
+});
 
 // 5. Assemble .vercel/output/functions/api/index.func
 const funcNodeModules = path.join(funcDir, 'node_modules');
@@ -132,6 +147,16 @@ writeJson(path.join(vercelOutputDir, 'config.json'), {
   routes: [
     { src: '^/(health)$', dest: '/api/index?__path=/$1' },
     { src: '^/(v1(?:/.*)?)$', dest: '/api/index?__path=/$1' },
+    {
+      src: '^/version\\.json$',
+      headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
+      continue: true,
+    },
+    {
+      src: '^/(?:|[^/.]+(?:\\.html)?)$',
+      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
+      continue: true,
+    },
     { handle: 'filesystem' },
     { src: '^/([^/.]+)$', dest: '/$1.html', check: true },
     { src: '/(.*)', dest: '/index.html' },
@@ -139,5 +164,5 @@ writeJson(path.join(vercelOutputDir, 'config.json'), {
 });
 
 console.log(
-  `Vercel Build Output API v3 assembled at .vercel/output (${copiedDeps.length} external packages copied for pg)`,
+  `Vercel Build Output API v3 assembled at .vercel/output (buildId: ${buildId}, ${copiedDeps.length} external packages copied for pg)`,
 );

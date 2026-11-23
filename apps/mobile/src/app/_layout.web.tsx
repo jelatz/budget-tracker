@@ -7,9 +7,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import AppTabs from '@/components/app-tabs';
 import { SyncCoordinator } from '@/common/components/sync-coordinator';
+import { useWebAutoReload } from '@/common/hooks/use-web-auto-reload';
 import { AuthProvider } from '@/features/auth/context/auth-context';
 
 export default function TabLayout() {
+  useWebAutoReload();
   const colorScheme = useColorScheme();
 
   useEffect(() => {
