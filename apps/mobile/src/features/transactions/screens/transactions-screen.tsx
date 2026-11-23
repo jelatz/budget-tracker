@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   Text,
@@ -16,6 +17,7 @@ import {
   type TransactionType,
 } from '@repo/contracts';
 
+import { WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 
 import {
@@ -86,6 +88,9 @@ export function TransactionsScreen() {
             paddingHorizontal: 16,
             paddingTop: 16,
             paddingBottom: 80,
+            ...(Platform.OS === 'web'
+              ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
+              : {}),
           }}
           showsVerticalScrollIndicator={false}
         >

@@ -23,7 +23,7 @@ import {
 } from '@repo/contracts';
 
 import { ThemedText } from '@/common/components/themed-text';
-import { Colors } from '@/common/constants/theme';
+import { Colors, WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
 import {
@@ -154,7 +154,14 @@ export function ReconciliationScreen() {
         >
           {/* Top Bar Header */}
           <View className="px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70">
-            <View className="flex-row items-center justify-between">
+            <View
+              style={
+                Platform.OS === 'web'
+                  ? { width: '100%', maxWidth: WebMaxPageWidth, alignSelf: 'center' }
+                  : undefined
+              }
+              className="flex-row items-center justify-between"
+            >
               <Pressable
                 onPress={() => {
                   if (router.canGoBack()) {
@@ -200,6 +207,9 @@ export function ReconciliationScreen() {
               paddingTop: 16,
               paddingBottom: 96,
               gap: 18,
+              ...(Platform.OS === 'web'
+                ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
+                : {}),
             }}
             showsVerticalScrollIndicator={false}
           >
@@ -510,7 +520,7 @@ export function ReconciliationScreen() {
                             onChangeText={setNotes}
                             placeholder="e.g. Month-end statement sanity check"
                             placeholderTextColor={theme.textSecondary}
-                            className="px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-xs"
+                            className="min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-base sm:text-xs"
                           />
                         </View>
 

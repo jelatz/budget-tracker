@@ -16,6 +16,7 @@ import {
 
 import { SyncStatusBadge } from '@/common/components/sync-status-badge';
 import { ThemedText } from '@/common/components/themed-text';
+import { WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 
 import {
@@ -75,6 +76,9 @@ export function DashboardScreen() {
             paddingHorizontal: 16,
             paddingTop: 16,
             paddingBottom: 80,
+            ...(Platform.OS === 'web'
+              ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
+              : {}),
           }}
           showsVerticalScrollIndicator={false}
         >

@@ -23,7 +23,7 @@ import {
 } from '@repo/contracts';
 
 import { ThemedText } from '@/common/components/themed-text';
-import { BottomTabInset, Colors } from '@/common/constants/theme';
+import { BottomTabInset, Colors, WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
 import {
@@ -374,6 +374,9 @@ export function AccountsScreen() {
             paddingTop: 16,
             paddingBottom: Math.max(96, BottomTabInset + 32),
             gap: 20,
+            ...(Platform.OS === 'web'
+              ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
+              : {}),
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

@@ -25,7 +25,7 @@ import { SyncStatusBadge } from '@/common/components/sync-status-badge';
 import { ThemedText } from '@/common/components/themed-text';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
-import { Colors } from '@/common/constants/theme';
+import { Colors, WebMaxPageWidth } from '@/common/constants/theme';
 import {
   copyTextToClipboard,
   downloadTextFile,
@@ -263,7 +263,14 @@ export function PortabilityScreen() {
         >
           {/* Top Bar Header */}
           <View className="px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70">
-            <View className="flex-row items-center justify-between">
+            <View
+              style={
+                Platform.OS === 'web'
+                  ? { width: '100%', maxWidth: WebMaxPageWidth, alignSelf: 'center' }
+                  : undefined
+              }
+              className="flex-row items-center justify-between"
+            >
               <Pressable
                 onPress={() => {
                   if (router.canGoBack()) {
@@ -308,6 +315,9 @@ export function PortabilityScreen() {
               paddingTop: 16,
               paddingBottom: 96,
               gap: 18,
+              ...(Platform.OS === 'web'
+                ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
+                : {}),
             }}
             showsVerticalScrollIndicator={false}
           >

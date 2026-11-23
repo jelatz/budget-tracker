@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   TextInput,
@@ -29,7 +30,7 @@ import {
 } from '@repo/contracts';
 
 import { ThemedText } from '@/common/components/themed-text';
-import { BottomTabInset } from '@/common/constants/theme';
+import { BottomTabInset, WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
 import { SplitEditorModal } from '@/features/transactions/components/split-editor-modal';
@@ -618,6 +619,9 @@ export function ExpensesScreen({
             paddingTop: 16,
             paddingBottom: Math.max(96, BottomTabInset + 32),
             gap: 20,
+            ...(Platform.OS === 'web'
+              ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
+              : {}),
           }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -940,7 +944,7 @@ export function ExpensesScreen({
                       })}
                 </View>
 
-                <View className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row items-center gap-2">
+                <View className="min-h-[44px] px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row items-center gap-2">
                   <ThemedText className="text-sm text-slate-400">🔍</ThemedText>
                   <TextInput
                     value={searchQuery}
@@ -952,7 +956,9 @@ export function ExpensesScreen({
                     }
                     placeholderTextColor={theme.textSecondary}
                     accessibilityLabel="Search expenses"
-                    className="flex-1 h-10 text-sm text-slate-900 dark:text-slate-100"
+                    autoCorrect={false}
+                    autoCapitalize="none"
+                    className="flex-1 min-h-[44px] text-base text-slate-900 dark:text-slate-100"
                   />
                   {searchQuery.length > 0 && (
                     <Pressable

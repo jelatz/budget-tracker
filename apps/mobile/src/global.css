@@ -12,3 +12,11 @@
   --font-rounded: 'SF Pro Rounded', 'Hiragino Maru Gothic ProN', Meiryo, 'MS PGothic', sans-serif;
   --font-serif: Georgia, 'Times New Roman', serif;
 }
+
+@media (pointer: coarse) {
+  input:not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl),
+  textarea:not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl),
+  select:not(.text-lg, .text-xl, .text-2xl, .text-3xl, .text-4xl) {
+    font-size: max(1rem, 1em);
+  }
+}
