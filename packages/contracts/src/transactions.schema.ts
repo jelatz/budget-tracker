@@ -231,7 +231,7 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     icon: '🏦',
     color: '#208AEF',
     currency: DEFAULT_CURRENCY,
-    balanceMinor: 245000,
+    balanceMinor: 0,
   },
   {
     id: 'account-card',
@@ -249,7 +249,7 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     icon: '💵',
     color: '#10B981',
     currency: DEFAULT_CURRENCY,
-    balanceMinor: 18000,
+    balanceMinor: 0,
   },
   {
     id: 'account-savings',
@@ -258,7 +258,7 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     icon: '🐷',
     color: '#F59E0B',
     currency: DEFAULT_CURRENCY,
-    balanceMinor: 850000,
+    balanceMinor: 0,
   },
 ];
 

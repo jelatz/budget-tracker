@@ -8,7 +8,7 @@ import {
   TabListProps,
 } from 'expo-router/ui';
 import { SymbolView } from 'expo-symbols';
-import { router } from 'expo-router';
+import { router, Slot } from 'expo-router';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 
 import { DEFAULT_CURRENCY_SYMBOL } from '@repo/contracts';
@@ -39,19 +39,7 @@ export default function AppTabs() {
   if (!isAuthenticated) {
     return (
       <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-        <Tabs key="guest-tabs">
-          <TabSlot style={{ height: '100%', paddingTop: 64 }} />
-          <TabList asChild>
-            <CustomTabList>
-              <TabTrigger name="home" href="/" asChild>
-                <TabButton>Login</TabButton>
-              </TabTrigger>
-              <TabTrigger name="register" href="/register" asChild>
-                <TabButton>Register</TabButton>
-              </TabTrigger>
-            </CustomTabList>
-          </TabList>
-        </Tabs>
+        <Slot />
       </View>
     );
   }
@@ -376,72 +364,6 @@ export function SidebarTabList({
             hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
             className="flex-row items-center justify-center gap-1.5 py-1.5 active:opacity-70">
             <ThemedText className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              Docs
-            </ThemedText>
-            <SymbolView
-              tintColor={theme.textSecondary}
-              name={{ ios: 'arrow.up.right.square', web: 'link' }}
-              size={12}
-            />
-          </Pressable>
-        </ExternalLink>
-      </View>
-    </View>
-  );
-}
-
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
-  const { ref: _ref, ...pressableProps } = props as Omit<
-    TabTriggerSlotProps,
-    'children' | 'isFocused'
-  >;
-  return (
-    <Pressable
-      {...pressableProps}
-      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-      className="rounded-full active:opacity-75">
-      <View
-        className={`px-3 py-1.5 rounded-full flex-row items-center justify-center transition-colors ${
-          isFocused
-            ? 'bg-brand-500 shadow-sm'
-            : 'bg-zinc-100/70 hover:bg-zinc-200/70 dark:bg-zinc-800/60 dark:hover:bg-zinc-700/60'
-        }`}>
-        <ThemedText
-          className={`text-xs font-semibold ${
-            isFocused ? 'text-white' : 'text-zinc-600 dark:text-zinc-300'
-          }`}>
-          {children}
-        </ThemedText>
-      </View>
-    </Pressable>
-  );
-}
-
-export function CustomTabList({ style, children, ...restProps }: TabListProps) {
-  const theme = useTheme();
-
-  return (
-    <View
-      {...restProps}
-      style={[style, { justifyContent: 'center' }]}
-      className="absolute top-0 left-0 right-0 z-50 w-full flex-row justify-center items-center p-3">
-      <View className="mx-auto flex-row items-center w-full max-w-[800px] px-4 py-2 rounded-full bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md border border-zinc-200/60 dark:border-zinc-800/80 shadow-md shadow-black/5 gap-2">
-        <View className="flex-row items-center gap-2 mr-auto pl-1">
-          <View className="w-2.5 h-2.5 rounded-full bg-brand-500 shadow-sm shadow-brand-500/50" />
-          <ThemedText className="text-sm font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
-            Budget Tracker
-          </ThemedText>
-        </View>
-
-        {children}
-
-        <ExternalLink href="https://docs.expo.dev" asChild>
-          <Pressable
-            accessibilityRole="link"
-            accessibilityLabel="Expo Documentation"
-            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-            className="flex-row items-center gap-1.5 ml-2 pl-3 border-l border-zinc-200 dark:border-zinc-800 py-1 active:opacity-70">
-            <ThemedText className="text-xs font-medium text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200">
               Docs
             </ThemedText>
             <SymbolView

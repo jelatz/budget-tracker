@@ -446,6 +446,23 @@ describe('Railway Hono API capabilities & production guardrails', () => {
       state.accounts.find((a) => a.id === 'account-bank')!.balanceMinor,
     ).toBe(startingBalance);
 
+    // Create a transaction to verify bulk clear removes persisted entries
+    const secondCreateRes = await app.request('/v1/transactions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        type: 'EXPENSE',
+        amountMinor: 1200,
+        currency: DEFAULT_CURRENCY,
+        accountId: 'account-bank',
+        categoryId: 'cat-daily-living',
+        merchant: 'Corner Store',
+        tags: [],
+        occurredAt: new Date().toISOString(),
+      }),
+    });
+    expect(secondCreateRes.status).toBe(201);
+
     // Bulk clear requires explicit confirmation
     const unconfirmedClear = await app.request('/v1/transactions/clear', {
       method: 'POST',

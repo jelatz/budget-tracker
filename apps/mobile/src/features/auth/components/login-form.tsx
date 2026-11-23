@@ -31,16 +31,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const handleUseDemoCredentials = () => {
-    const demoEmail = 'demo@budgettracker.app';
-    const demoPassword = 'password123';
-    setEmail(demoEmail);
-    setPassword(demoPassword);
-    setEmailError(null);
-    setPasswordError(null);
-    setFormError(null);
-  };
-
   const handleSignIn = async () => {
     const trimmedEmail = email.trim();
     const nextEmailError = EMAIL_PATTERN.test(trimmedEmail)
@@ -187,19 +177,6 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
             Sign In
           </Text>
         )}
-      </Pressable>
-
-      <Pressable
-        onPress={handleUseDemoCredentials}
-        disabled={isLoading}
-        accessibilityRole="button"
-        accessibilityLabel="Use Demo Credentials"
-        className={`h-11 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75 ${
-          isLoading ? 'opacity-70' : ''
-        }`}>
-        <Text className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-          Use Demo Credentials
-        </Text>
       </Pressable>
     </View>
   );

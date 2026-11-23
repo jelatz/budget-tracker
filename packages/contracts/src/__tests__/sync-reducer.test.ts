@@ -203,6 +203,23 @@ describe('Sync State Reducer', () => {
 
     const afterFundAndRec = applySyncMutations(afterUnpay, [
       {
+        opId: 'op-sf-upsert',
+        clientTimestamp: '2026-11-10T12:12:30.000Z',
+        type: 'sinkingFund.upsert',
+        fund: {
+          id: 'fund-car-insurance',
+          name: 'Car Insurance',
+          icon: '🚗',
+          color: '#3B82F6',
+          targetAmountMinor: 60000,
+          currentSavedMinor: 20000,
+          targetDate: '2026-12-31',
+          accountId: 'account-savings',
+          monthlyContributionMinor: 10000,
+          isCompleted: false,
+        },
+      },
+      {
         opId: 'op-sf-1',
         clientTimestamp: '2026-11-10T12:13:00.000Z',
         type: 'sinkingFund.contribute',

@@ -83,18 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const migrateLegacyWebDataIfPresent = useCallback(async (email: string) => {
-    if (email.trim().toLowerCase() === 'demo@budgettracker.app') {
-      return;
-    }
     const backup = readUnmigratedLegacyWebBackup(email);
     if (!backup) {
       return;
     }
 
     const currentState = getCurrentSyncState();
-    const hasOnlySeedTransactions = currentState.transactions.every((tx) =>
-      tx.id.startsWith('tx-seed-'),
-    );
+    const hasOnlySeedTransactions =
+      currentState.transactions.length === 0 ||
+      currentState.transactions.every((tx) => tx.id.startsWith('tx-seed-'));
     const mode =
       getCurrentSyncRevision() <= 1 && hasOnlySeedTransactions
         ? 'overwrite'

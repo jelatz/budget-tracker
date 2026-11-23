@@ -261,23 +261,18 @@ describe('Auth & Sync API', () => {
     });
     expect(meAfterLogout.status).toBe(401);
 
-    // Public registration cannot reserve demo@budgettracker.app
-    const demoRegRes = await app.request('/v1/auth/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: 'Hijacker',
-        email: 'demo@budgettracker.app',
-        password: 'evilpassword',
-      }),
-    });
-    expect(demoRegRes.status).toBe(409);
-
-    // Unauthenticated /v1/auth/demo is disabled by default
+    // Unauthenticated /v1/auth/demo is disabled by default and even when flag is set
     const disabledDemoRes = await app.request('/v1/auth/demo', { method: 'POST' });
     expect(disabledDemoRes.status).toBe(403);
 
-    // Demo login works cleanly via explicit demo credentials on /v1/auth/login
+    const demoApp = createApp({
+      ...repos,
+      allowDemoEndpoint: () => true,
+    });
+    const enabledDemoRes = await demoApp.request('/v1/auth/demo', { method: 'POST' });
+    expect(enabledDemoRes.status).toBe(403);
+
+    // Nonexistent demo@budgettracker.app does NOT auto-seed or authenticate on login
     const demoLoginRes = await app.request('/v1/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -286,17 +281,31 @@ describe('Auth & Sync API', () => {
         password: 'password123',
       }),
     });
-    expect(demoLoginRes.status).toBe(200);
-    const demoData = authSessionResponseSchema.parse(await demoLoginRes.json());
-    expect(demoData.user.email).toBe('demo@budgettracker.app');
+    expect(demoLoginRes.status).toBe(401);
 
-    // /v1/auth/demo works only when explicitly enabled
-    const demoApp = createApp({
-      ...repos,
-      allowDemoEndpoint: () => true,
+    // Newly registered user without initialBackup gets clean zeroed starter state
+    const cleanRegRes = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Clean User',
+        email: 'clean@example.com',
+        password: 'password123',
+      }),
     });
-    const enabledDemoRes = await demoApp.request('/v1/auth/demo', { method: 'POST' });
-    expect(enabledDemoRes.status).toBe(200);
+    expect(cleanRegRes.status).toBe(201);
+    const cleanSession = authSessionResponseSchema.parse(await cleanRegRes.json());
+    const cleanPullRes = await app.request('/v1/sync', {
+      headers: { Authorization: `Bearer ${cleanSession.token}` },
+    });
+    expect(cleanPullRes.status).toBe(200);
+    const cleanPull = syncPullResponseSchema.parse(await cleanPullRes.json());
+    expect(cleanPull.state?.transactions).toEqual([]);
+    expect(cleanPull.state?.recurringCommitments).toEqual([]);
+    expect(cleanPull.state?.sinkingFunds).toEqual([]);
+    expect(cleanPull.state?.quickPresets).toEqual([]);
+    expect(cleanPull.state?.categoryBudgets).toEqual([]);
+    expect(cleanPull.state?.accounts.every((a) => a.balanceMinor === 0)).toBe(true);
   });
 
   it('enforces idempotent sync pushes, sinceRevision short-circuit, and strict user isolation', async () => {

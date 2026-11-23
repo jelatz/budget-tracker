@@ -7,6 +7,7 @@ import {
   computeDashboardMetrics,
   computeSplitRemainder,
   createDefaultTransactions,
+  createInitialSyncDataState,
   createTransactionInputSchema,
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
@@ -27,6 +28,7 @@ import {
   smartDefaultsSchema,
   transactionSchema,
   upsertAccountInputSchema,
+  type Account,
   type Category,
 } from '../index';
 
@@ -405,11 +407,24 @@ describe('Category Ranking & Defaults', () => {
     expect(ranked.map((c) => c.id)).toEqual(['c2', 'c1', 'c3']);
   });
 
-  it('exposes valid default accounts and categories without Checking', () => {
+  it('exposes valid default accounts and categories without Checking and with zero starter data', () => {
     expect(DEFAULT_ACCOUNTS.length).toBe(4);
     expect(DEFAULT_ACCOUNTS.every((a) => a.currency === 'PHP')).toBe(true);
+    expect(DEFAULT_ACCOUNTS.every((a) => a.balanceMinor === 0)).toBe(true);
     expect(DEFAULT_ACCOUNTS.some((a) => a.name.toLowerCase() === 'checking')).toBe(false);
     expect(DEFAULT_ACCOUNTS.some((a) => a.id === 'wallet-checking')).toBe(false);
+
+    const initialState = createInitialSyncDataState();
+    expect(initialState.transactions).toEqual([]);
+    expect(initialState.recurringCommitments).toEqual([]);
+    expect(initialState.categoryBudgets).toEqual([]);
+    expect(initialState.sinkingFunds).toEqual([]);
+    expect(initialState.quickPresets).toEqual([]);
+    expect(initialState.reconciliations).toEqual([]);
+    expect(initialState.smartDefaults.recentMerchants).toEqual([]);
+    expect(initialState.smartDefaults.knownTags).toEqual([]);
+    expect(initialState.accounts.every((a) => a.balanceMinor === 0)).toBe(true);
+    expect(initialState.categories.every((c) => c.usageCount === 0)).toBe(true);
     expect(DEFAULT_ACCOUNTS.map((a) => a.accountType)).toEqual([
       'BANK',
       'CREDIT_CARD',
@@ -544,11 +559,17 @@ describe('Dashboard Starter Seeds & Period Filtering', () => {
 describe('Dashboard Aggregation Engine (computeDashboardMetrics)', () => {
   const fixedNow = new Date('2026-10-31T12:00:00Z');
   const starterTransactions = createDefaultTransactions(fixedNow);
+  const sampleAccounts: Account[] = [
+    { ...DEFAULT_ACCOUNTS[0]!, balanceMinor: 245000 },
+    { ...DEFAULT_ACCOUNTS[1]!, balanceMinor: 0 },
+    { ...DEFAULT_ACCOUNTS[2]!, balanceMinor: 18000 },
+    { ...DEFAULT_ACCOUNTS[3]!, balanceMinor: 850000 },
+  ];
 
   it('computes accurate high-level net worth and cashflow metrics', () => {
     const metrics = computeDashboardMetrics({
       transactions: starterTransactions,
-      accounts: DEFAULT_ACCOUNTS,
+      accounts: sampleAccounts,
       categories: DEFAULT_CATEGORIES,
       period: 'THIS_MONTH',
       monthlyBudgetMinor: 250000,

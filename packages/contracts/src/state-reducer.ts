@@ -1,6 +1,6 @@
 import { DEFAULT_CURRENCY, MAX_SAFE_MONEY_MINOR } from './money';
 import { categoryBudgetSchema } from './category-budget.schema';
-import { quickPresetSchema, DEFAULT_PRESETS } from './presets.schema';
+import { quickPresetSchema } from './presets.schema';
 import {
   balanceReconciliationSchema,
   computeReconciliationDelta,
@@ -14,10 +14,8 @@ import { sinkingFundSchema } from './sinking-funds.schema';
 import {
   accountSchema,
   categorySchema,
-  createDefaultTransactions,
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
-  DEFAULT_TAGS,
   smartDefaultsSchema,
   transactionSchema,
   type Account,
@@ -25,12 +23,6 @@ import {
   type Transaction,
 } from './transactions.schema';
 import type { SyncDataState, SyncMutation } from './sync.schema';
-
-function formatLocalPeriodMonth(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-}
 
 function formatUtcPeriodMonth(date: Date): string {
   const year = date.getUTCFullYear();
@@ -63,148 +55,31 @@ function deduplicateTransactionSplits(tx: Transaction): Transaction {
 }
 
 /**
- * Builds the default starter dataset used for new accounts and demo resets.
+ * Builds a clean zero-balance starter dataset for newly registered accounts.
  */
-export function createInitialSyncDataState(referenceDate = new Date()): SyncDataState {
+export function createInitialSyncDataState(_referenceDate = new Date()): SyncDataState {
   const firstAccountId = DEFAULT_ACCOUNTS[0]?.id ?? 'account-bank';
   const savingsAccountId =
     DEFAULT_ACCOUNTS[3]?.id ?? DEFAULT_ACCOUNTS[0]?.id ?? 'account-savings';
-
-  const initialCategoryUsage: Record<string, number> = {
-    'cat-salary': 1,
-    'cat-daily-living': 2,
-    'cat-home': 1,
-    'cat-transportation': 1,
-    'cat-dues': 1,
-  };
-
-  const year = referenceDate.getFullYear();
-  const currentPeriod = formatLocalPeriodMonth(referenceDate);
 
   return {
     accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
     categories: DEFAULT_CATEGORIES.map((c) => ({
       ...c,
-      usageCount: initialCategoryUsage[c.id] ?? 0,
+      usageCount: 0,
     })),
-    transactions: createDefaultTransactions(referenceDate),
+    transactions: [],
     smartDefaults: {
       lastAccountId: firstAccountId,
       lastTransferToAccountId: savingsAccountId,
-      recentMerchants: ['Whole Foods', 'Target', 'Shell', 'Starbucks', 'Amazon'],
-      knownTags: [...DEFAULT_TAGS],
+      recentMerchants: [],
+      knownTags: [],
       monthlyBudgetMinor: 250000,
     },
-    categoryBudgets: [
-      {
-        id: `budget-daily-living-${currentPeriod}`,
-        categoryId: 'cat-daily-living',
-        periodMonth: currentPeriod,
-        assignedMinor: 75000,
-        rolloverEnabled: true,
-        notes: 'Monthly daily living & groceries envelope',
-      },
-      {
-        id: `budget-home-${currentPeriod}`,
-        categoryId: 'cat-home',
-        periodMonth: currentPeriod,
-        assignedMinor: 40000,
-        rolloverEnabled: false,
-        notes: 'Monthly home & household envelope',
-      },
-      {
-        id: `budget-transportation-${currentPeriod}`,
-        categoryId: 'cat-transportation',
-        periodMonth: currentPeriod,
-        assignedMinor: 15000,
-        rolloverEnabled: true,
-        notes: 'Monthly transportation envelope',
-      },
-      {
-        id: `budget-entertainment-${currentPeriod}`,
-        categoryId: 'cat-entertainment',
-        periodMonth: currentPeriod,
-        assignedMinor: 10000,
-        rolloverEnabled: false,
-        notes: 'Monthly entertainment envelope',
-      },
-    ],
-    recurringCommitments: [
-      {
-        id: 'commitment-rent',
-        name: 'Apartment Rent',
-        kind: 'RECURRING',
-        amountMinor: 120000,
-        currency: DEFAULT_CURRENCY,
-        accountId: 'account-bank',
-        categoryId: 'cat-home',
-        frequency: 'MONTHLY',
-        dueDay: 1,
-        isAutoPaid: true,
-        isActive: true,
-        paidInstallments: 0,
-        notes: 'Monthly rent commitment',
-      },
-      {
-        id: 'commitment-electric',
-        name: 'Electric Bill',
-        kind: 'RECURRING',
-        amountMinor: 9500,
-        currency: DEFAULT_CURRENCY,
-        accountId: 'account-bank',
-        categoryId: 'cat-dues',
-        frequency: 'MONTHLY',
-        dueDay: 15,
-        isAutoPaid: false,
-        isActive: true,
-        paidInstallments: 0,
-        notes: 'Monthly electric utility',
-      },
-      {
-        id: 'commitment-netflix',
-        name: 'Netflix',
-        kind: 'RECURRING',
-        amountMinor: 1600,
-        currency: DEFAULT_CURRENCY,
-        accountId: 'account-card',
-        categoryId: 'cat-subscription',
-        frequency: 'MONTHLY',
-        dueDay: 20,
-        isAutoPaid: true,
-        isActive: true,
-        paidInstallments: 0,
-        notes: 'Streaming subscription',
-      },
-    ],
-    sinkingFunds: [
-      {
-        id: 'fund-car-insurance',
-        name: 'Car Insurance',
-        icon: '🚗',
-        color: '#3B82F6',
-        targetAmountMinor: 60000,
-        currentSavedMinor: 20000,
-        targetDate: `${year}-12-31`,
-        accountId: 'account-savings',
-        monthlyContributionMinor: 10000,
-        isCompleted: false,
-        notes: 'Semi-annual car insurance premium',
-      },
-      {
-        id: 'fund-holiday-gifts',
-        name: 'Holiday Gifts',
-        icon: '🎁',
-        color: '#EC4899',
-        targetAmountMinor: 40000,
-        currentSavedMinor: 10000,
-        targetDate: `${year}-12-25`,
-        accountId: 'account-savings',
-        monthlyContributionMinor: 7500,
-        isCompleted: false,
-        notes: 'Year-end holiday gifts',
-      },
-    ],
-    quickPresets: DEFAULT_PRESETS.map((p) => ({ ...p })),
+    categoryBudgets: [],
+    recurringCommitments: [],
+    sinkingFunds: [],
+    quickPresets: [],
     reconciliations: [],
   };
 }
@@ -588,8 +463,8 @@ export function applySyncMutation(
       return {
         ...state,
         transactions: [],
-        accounts: DEFAULT_ACCOUNTS.map((a) => ({ ...a })),
-        categories: DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+        accounts: state.accounts.map((a) => ({ ...a, balanceMinor: 0 })),
+        categories: state.categories.map((c) => ({ ...c, usageCount: 0 })),
         reconciliations: [],
       };
     }

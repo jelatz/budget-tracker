@@ -20,7 +20,6 @@ import {
   useClearAllTransactions,
   useDashboardMetrics,
   useDeleteTransaction,
-  useResetDemoData,
   useUpdateMonthlyBudget,
 } from '@/features/transactions/hooks/use-transactions';
 
@@ -54,7 +53,6 @@ export function DashboardScreen() {
   const { metrics, accounts, categories } = useDashboardMetrics(period);
   const updateBudgetMutation = useUpdateMonthlyBudget();
   const deleteTransactionMutation = useDeleteTransaction();
-  const resetDemoMutation = useResetDemoData();
   const clearAllMutation = useClearAllTransactions();
 
   if (!isAuthenticated) {
@@ -407,26 +405,14 @@ export function DashboardScreen() {
             )}
           </View>
 
-          {/* 8. Demo Data Controls Footer */}
+          {/* 8. Data Controls Footer */}
           <View className="flex-row gap-3 justify-center py-2">
-            <Pressable
-              onPress={() => resetDemoMutation.mutate()}
-              disabled={resetDemoMutation.isPending}
-              accessibilityRole="button"
-              accessibilityLabel="Restore demo data"
-              className="flex-1 py-3 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
-            >
-              <ThemedText className="text-xs font-semibold text-slate-600 dark:text-slate-300">
-                {resetDemoMutation.isPending ? 'Restoring...' : '🔄 Restore Demo Data'}
-              </ThemedText>
-            </Pressable>
-
             <Pressable
               onPress={() => clearAllMutation.mutate()}
               disabled={clearAllMutation.isPending}
               accessibilityRole="button"
               accessibilityLabel="Clear all entries"
-              className="flex-1 py-3 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+              className="flex-1 min-h-[44px] py-3 px-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
             >
               <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
                 {clearAllMutation.isPending ? 'Clearing...' : '🗑️ Clear All Entries'}
