@@ -112,6 +112,9 @@ export async function apiFetch<T>(
   if (!headers.has('Content-Type') && init?.body !== undefined) {
     headers.set('Content-Type', 'application/json');
   }
+  if (!headers.has('X-Requested-With')) {
+    headers.set('X-Requested-With', 'budget-tracker');
+  }
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);
   }
@@ -119,6 +122,7 @@ export async function apiFetch<T>(
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${path}`, {
+      credentials: 'include',
       ...init,
       headers,
     });

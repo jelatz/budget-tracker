@@ -96,9 +96,9 @@ export const baseCreateTransactionInputSchema = z.object({
   accountId: z.string().min(1),
   toAccountId: z.string().min(1).optional(),
   categoryId: z.string().min(1).optional(),
-  splits: z.array(transactionSplitSchema).optional(),
+  splits: z.array(transactionSplitSchema).max(50).optional(),
   merchant: z.string().trim().max(80).optional(),
-  tags: z.array(z.string().trim().min(1).max(32)).default([]),
+  tags: z.array(z.string().trim().min(1).max(32)).max(20).default([]),
   note: z.string().trim().max(280).optional(),
   receiptUri: z.string().trim().min(1).optional(),
   occurredAt: z.string().datetime(),
@@ -217,8 +217,8 @@ export type Transaction = z.infer<typeof transactionSchema>;
 export const smartDefaultsSchema = z.object({
   lastAccountId: z.string().min(1),
   lastTransferToAccountId: z.string().min(1).optional(),
-  recentMerchants: z.array(z.string()).default([]),
-  knownTags: z.array(z.string()).default([]),
+  recentMerchants: z.array(z.string().max(80)).max(50).default([]),
+  knownTags: z.array(z.string().max(32)).max(200).default([]),
   monthlyBudgetMinor: positiveAmountMinorSchema.default(250000),
 });
 export type SmartDefaults = z.infer<typeof smartDefaultsSchema>;

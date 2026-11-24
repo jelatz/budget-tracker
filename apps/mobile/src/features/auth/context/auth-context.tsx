@@ -1,4 +1,4 @@
-import type { AuthUser } from '@repo/contracts';
+import { createDestructiveConfirmation, type AuthUser } from '@repo/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import React, {
   createContext,
@@ -19,6 +19,7 @@ import {
   getAuthToken,
   getCachedUser,
   getInitialAuthSnapshotSync,
+  isCookieAuthMode,
   setAuthToken,
   setCachedUser,
 } from '@/common/lib/token-storage';
@@ -26,9 +27,9 @@ import {
   clearSyncCacheForUser,
   createSyncOpId,
   enqueueSyncMutation,
+  getActiveSyncUserId,
   getCurrentSyncRevision,
   getCurrentSyncState,
-  getSyncStatusSnapshot,
   setActiveSyncUser,
   syncNow,
 } from '@/features/transactions/sync-engine';
@@ -84,6 +85,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       type: 'backup.import',
       envelope: backup,
       mode,
+      ...(mode === 'overwrite'
+        ? { confirmation: createDestructiveConfirmation('overwrite-backup', 'all') }
+        : {}),
     });
     markLegacyWebBackupMigrated(email);
     await syncNow();
@@ -93,14 +97,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function hydrateAndVerifySession() {
+      const cookieMode = isCookieAuthMode();
       const syncSnapshot = getInitialAuthSnapshotSync();
       let token = syncSnapshot?.token ?? null;
       let cachedUser = syncSnapshot?.user ?? null;
 
-      if (token && cachedUser) {
+      if ((cookieMode || token) && cachedUser) {
         setActiveSyncUser(cachedUser.id);
         setUser(cachedUser);
         setIsHydrating(false);
+      } else if (cookieMode) {
+        // Web session cookie may still be valid even if cached user metadata is absent.
+        try {
+          const me = await meApi();
+          if (cancelled) return;
+          await setCachedUser(me.user);
+          setActiveSyncUser(me.user.id);
+          setUser(me.user);
+          setIsHydrating(false);
+          await syncNow();
+          if (!cancelled) {
+            queryClient.invalidateQueries();
+          }
+        } catch (error: unknown) {
+          if (cancelled) return;
+          await Promise.all([clearAuthToken(), clearCachedUser()]);
+          setActiveSyncUser(null);
+          setUser(null);
+          setIsHydrating(false);
+        }
+        return;
       } else if (syncSnapshot !== null) {
         if (token && !cachedUser) {
           await clearAuthToken();
@@ -136,9 +162,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      // Validate token in background; stay signed in offline when network is unreachable
+      // Validate token/cookie in background; stay signed in offline when network is unreachable
       try {
-        const me = await meApi(token);
+        const me = await meApi(cookieMode ? undefined : token);
         if (cancelled) return;
         await setCachedUser(me.user);
         setUser(me.user);
@@ -149,8 +175,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (error: unknown) {
         if (cancelled) return;
         if (error instanceof ApiClientError && error.status === 401) {
+          const userIdToClear = cachedUser?.id ?? getActiveSyncUserId();
           await Promise.all([clearAuthToken(), clearCachedUser()]);
           setActiveSyncUser(null);
+          if (userIdToClear) {
+            clearSyncCacheForUser(userIdToClear);
+          }
           setUser(null);
           queryClient.clear();
           return;
@@ -176,7 +206,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       ]);
       setActiveSyncUser(session.user.id);
       await syncNow();
+      if (getActiveSyncUserId() !== session.user.id) {
+        throw new Error('Session expired during initial sync.');
+      }
       await migrateLegacyWebDataIfPresent(session.user.email);
+      if (getActiveSyncUserId() !== session.user.id) {
+        throw new Error('Session expired during data migration.');
+      }
       setUser(session.user);
       setIsHydrating(false);
       queryClient.invalidateQueries();
@@ -204,6 +240,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setActiveSyncUser(session.user.id);
       await syncNow();
+      if (getActiveSyncUserId() !== session.user.id) {
+        throw new Error('Session expired during initial sync.');
+      }
       setUser(session.user);
       setIsHydrating(false);
       queryClient.invalidateQueries();
@@ -219,18 +258,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ]);
     setActiveSyncUser(session.user.id);
     await syncNow();
+    if (getActiveSyncUserId() !== session.user.id) {
+      throw new Error('Session expired during initial sync.');
+    }
     setUser(session.user);
     setIsHydrating(false);
     queryClient.invalidateQueries();
   }, [queryClient]);
 
   const logout = useCallback(async () => {
-    const currentUserId = user?.id ?? null;
-    const pendingCount = getSyncStatusSnapshot().pendingCount;
+    const currentUserId = user?.id ?? getActiveSyncUserId();
     const currentToken = await getAuthToken();
-    if (currentToken) {
+    if (currentToken || isCookieAuthMode()) {
       try {
-        await logoutApi(currentToken);
+        await logoutApi(currentToken ?? undefined);
       } catch (error: unknown) {
         // Ignore network errors during logout; always clear local credentials
       }
@@ -238,7 +279,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     await Promise.all([clearAuthToken(), clearCachedUser()]);
     setActiveSyncUser(null);
-    if (currentUserId && pendingCount === 0) {
+    if (currentUserId) {
       clearSyncCacheForUser(currentUserId);
     }
     setUser(null);

@@ -30,7 +30,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
   const isNameError = Boolean(errorMessage && errorMessage.toLowerCase().includes('name'));
   const isEmailError = Boolean(errorMessage && errorMessage.toLowerCase().includes('email'));
   const isPasswordError = Boolean(
-    errorMessage && errorMessage.toLowerCase().includes('at least 6 characters'),
+    errorMessage && errorMessage.toLowerCase().includes('at least 8 characters'),
   );
   const isConfirmError = Boolean(errorMessage && errorMessage.toLowerCase().includes('match'));
   const isGeneralError = Boolean(
@@ -51,8 +51,8 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMessage('Password must be at least 6 characters long.');
+    if (password.length < 8) {
+      setErrorMessage('Password must be at least 8 characters long.');
       return;
     }
 
@@ -171,7 +171,7 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
               setPassword(text);
               if (errorMessage) setErrorMessage(null);
             }}
-            placeholder="At least 6 characters"
+            placeholder="At least 8 characters"
             placeholderTextColor={theme.textSecondary}
             accessibilityLabel="Password"
             secureTextEntry={!showPassword}

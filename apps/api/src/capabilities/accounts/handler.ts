@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
   accountSchema,
-  formatConfirmationToken,
   verifyConfirmationToken,
   type AccountResponse,
   type AccountsListResponse,
@@ -85,10 +84,9 @@ export async function handleDeleteAccount(
       params.accountId,
     )
   ) {
-    const expected = formatConfirmationToken('delete-account', params.accountId);
     throw new AppError(
       'CONFIRMATION_REQUIRED',
-      `Explicit confirmation required. Provide confirmAction: true and confirmationToken "${expected}".`,
+      'Explicit confirmation required. Provide confirmAction: true and a valid confirmationToken.',
     );
   }
 

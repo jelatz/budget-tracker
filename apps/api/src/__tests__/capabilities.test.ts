@@ -27,7 +27,18 @@ import type { AccountsRepository } from '../capabilities/accounts/repository';
 import type { AuthRepository } from '../capabilities/auth/repository';
 import type { ReconcileRepository } from '../capabilities/reconcile/repository';
 import type { SyncRepository } from '../capabilities/sync/repository';
-import type { TransactionsRepository } from '../capabilities/transactions/repository';
+import {
+  createPgTransactionsRepository,
+  type TransactionsRepository,
+} from '../capabilities/transactions/repository';
+import type { AppDatabase } from '../core/db/client';
+import {
+  accounts as accountsTable,
+  balanceReconciliations as reconciliationsTable,
+  categories as categoriesTable,
+  transactions as transactionsTable,
+  transactionSplits as splitsTable,
+} from '../core/db/schema';
 import { AppError } from '../core/errors';
 
 function createCapabilityTestHarness() {
@@ -149,8 +160,12 @@ function createCapabilityTestHarness() {
       return tx ? { transaction: tx, revision } : null;
     },
     async createTransaction(_userId, txData) {
-      if (!state.accounts.some((a) => a.id === txData.accountId)) {
+      const source = state.accounts.find((a) => a.id === txData.accountId);
+      if (!source) {
         throw new AppError('NOT_FOUND', 'Account not found');
+      }
+      if (source.currency !== txData.currency) {
+        throw new AppError('VALIDATION_ERROR', 'Transaction currency must match account currency.');
       }
       state.transactions.unshift(txData);
       applyTxDelta(txData, 1);
@@ -184,6 +199,9 @@ function createCapabilityTestHarness() {
     async clearAllTransactions() {
       const clearedCount = state.transactions.length;
       state.transactions = [];
+      state.accounts = state.accounts.map((a) => ({ ...a, balanceMinor: 0 }));
+      state.categories = state.categories.map((c) => ({ ...c, usageCount: 0 }));
+      state.reconciliations = [];
       revision += 1;
       return { clearedCount, revision };
     },
@@ -367,6 +385,7 @@ describe('Railway Hono API capabilities & production guardrails', () => {
       await unconfirmedDelete.json(),
     );
     expect(errPayload.error.code).toBe('CONFIRMATION_REQUIRED');
+    expect(errPayload.error.message).not.toContain(`delete-account:${created.account.id}`);
 
     // Mismatched confirmation token must fail
     const wrongTokenDelete = await app.request(
@@ -484,6 +503,23 @@ describe('Railway Hono API capabilities & production guardrails', () => {
     );
     expect(cleared.clearedCount).toBeGreaterThan(0);
     expect(state.transactions).toHaveLength(0);
+    expect(state.accounts.every((a) => a.balanceMinor === 0)).toBe(true);
+
+    // Cross-currency REST transaction is rejected (F-05)
+    const badCurrencyRes = await app.request('/v1/transactions', {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        type: 'EXPENSE',
+        amountMinor: 500,
+        currency: 'USD',
+        accountId: 'account-bank',
+        categoryId: 'cat-daily-living',
+        tags: [],
+        occurredAt: new Date().toISOString(),
+      }),
+    });
+    expect(badCurrencyRes.status).toBe(400);
   });
 
   it('reconciles accounts by ID loading fresh balance and requiring confirmation', async () => {
@@ -546,5 +582,126 @@ describe('Railway Hono API capabilities & production guardrails', () => {
     expect(typeof rpcClient.v1.accounts.$get).toBe('function');
     expect(typeof rpcClient.v1.transactions.$get).toBe('function');
     expect(typeof rpcClient.v1.reconcile.$post).toBe('function');
+  });
+
+  it('createPgTransactionsRepository handles split transaction updates/deletes (F-07) and resets balances on clearAll (F-06)', async () => {
+    const now = new Date('2026-11-24T00:00:00.000Z');
+    const updatedTables: unknown[] = [];
+    const deletedTables: unknown[] = [];
+
+    const mockSelectQueue: unknown[][] = [
+      [{ stateRevision: 3 }],
+      [
+        {
+          userId: 'user-1',
+          id: 'tx-split-1',
+          type: 'EXPENSE',
+          amountMinor: 1000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          toAccountId: null,
+          categoryId: null,
+          merchant: 'Mart',
+          tags: [],
+          note: null,
+          receiptUri: null,
+          occurredAt: now,
+          createdAt: now,
+          sortOrder: 0,
+        },
+      ],
+      [
+        {
+          userId: 'user-1',
+          transactionId: 'tx-split-1',
+          id: 'sp-1',
+          categoryId: 'cat-daily-living',
+          amountMinor: 600,
+          note: null,
+          sortOrder: 0,
+        },
+        {
+          userId: 'user-1',
+          transactionId: 'tx-split-1',
+          id: 'sp-2',
+          categoryId: 'cat-transportation',
+          amountMinor: 400,
+          note: null,
+          sortOrder: 1,
+        },
+      ],
+      [
+        {
+          userId: 'user-1',
+          id: 'account-bank',
+          name: 'Bank',
+          accountType: 'BANK',
+          icon: '🏦',
+          color: '#208AEF',
+          currency: DEFAULT_CURRENCY,
+          balanceMinor: 4000,
+          sortOrder: 0,
+        },
+      ],
+    ];
+
+    const makeChain = (rows: unknown[]) => {
+      const chain: Record<string, unknown> = {
+        from: () => chain,
+        where: () => chain,
+        orderBy: () => chain,
+        limit: () => chain,
+        for: () => Promise.resolve(rows),
+        then: (resolve: (val: unknown[]) => void) => Promise.resolve(rows).then(resolve),
+      };
+      return chain;
+    };
+
+    const mockTx = {
+      select: () => makeChain(mockSelectQueue.shift() ?? []),
+      insert: () => ({ values: async () => undefined }),
+      update: (table: unknown) => {
+        updatedTables.push(table);
+        return {
+          set: () => ({
+            where: async () => undefined,
+          }),
+        };
+      },
+      delete: (table: unknown) => {
+        deletedTables.push(table);
+        return {
+          where: () => ({
+            returning: async () => [{ id: 'tx-split-1' }],
+            then: (resolve: (val: undefined) => void) =>
+              Promise.resolve(undefined).then(resolve),
+          }),
+        };
+      },
+    };
+
+    const mockDb = {
+      transaction: async <T>(fn: (tx: typeof mockTx) => Promise<T>) => fn(mockTx),
+    } as unknown as AppDatabase;
+
+    const pgRepo = createPgTransactionsRepository(mockDb);
+
+    // Split tx delete loads transactionSplits and succeeds without ZodError (F-07)
+    const deleted = await pgRepo.deleteTransactionById('user-1', 'tx-split-1');
+    expect(deleted?.deletedTransactionId).toBe('tx-split-1');
+    expect(deleted?.revision).toBe(4);
+    expect(deletedTables).toContain(transactionsTable);
+
+    // clearAllTransactions resets accounts & categories and deletes reconciliations (F-06)
+    updatedTables.length = 0;
+    deletedTables.length = 0;
+    mockSelectQueue.push([{ stateRevision: 4 }]);
+    const cleared = await pgRepo.clearAllTransactions('user-1');
+    expect(cleared.clearedCount).toBe(1);
+    expect(cleared.revision).toBe(5);
+    expect(updatedTables).toContain(accountsTable);
+    expect(updatedTables).toContain(categoriesTable);
+    expect(deletedTables).toContain(reconciliationsTable);
+    expect(splitsTable).toBeDefined();
   });
 });

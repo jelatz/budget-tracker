@@ -1,4 +1,5 @@
 import { execSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -141,10 +142,62 @@ writeJson(path.join(funcDir, '.vc-config.json'), {
   supportsResponseStreaming: true,
 });
 
+function collectInlineScriptHashes(htmlDir) {
+  const hashes = new Set();
+  if (!fs.existsSync(htmlDir)) {
+    return [];
+  }
+  const scriptRegex = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi;
+  for (const entry of fs.readdirSync(htmlDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.html')) {
+      continue;
+    }
+    const html = fs.readFileSync(path.join(htmlDir, entry.name), 'utf8');
+    let match;
+    while ((match = scriptRegex.exec(html)) !== null) {
+      const body = match[1];
+      if (body && body.length > 0) {
+        const digest = crypto
+          .createHash('sha256')
+          .update(body, 'utf8')
+          .digest('base64');
+        hashes.add(`'sha256-${digest}'`);
+      }
+    }
+  }
+  return Array.from(hashes);
+}
+
+const inlineScriptHashes = collectInlineScriptHashes(staticOutputDir);
+const scriptSrcDirective = ['\'self\'', ...inlineScriptHashes].join(' ');
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  `script-src ${scriptSrcDirective}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "font-src 'self' data:",
+  "connect-src 'self' https:",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
 // 6. Write Build Output API v3 routing config
 writeJson(path.join(vercelOutputDir, 'config.json'), {
   version: 3,
   routes: [
+    {
+      src: '^/.*',
+      headers: {
+        'Content-Security-Policy': contentSecurityPolicy,
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'strict-origin-when-cross-origin',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      },
+      continue: true,
+    },
     { src: '^/(health)$', dest: '/api/index?__path=/$1' },
     { src: '^/(v1(?:/.*)?)$', dest: '/api/index?__path=/$1' },
     {

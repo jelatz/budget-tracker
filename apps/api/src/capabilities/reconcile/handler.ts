@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  formatConfirmationToken,
   verifyConfirmationToken,
   type ApplyReconciliationRequest,
   type ApplyReconciliationResponse,
@@ -56,13 +55,9 @@ export async function handleApplyReconciliation(
       params.input.accountId,
     )
   ) {
-    const expected = formatConfirmationToken(
-      'reconcile-account',
-      params.input.accountId,
-    );
     throw new AppError(
       'CONFIRMATION_REQUIRED',
-      `Explicit confirmation required. Provide confirmAction: true and confirmationToken "${expected}".`,
+      'Explicit confirmation required. Provide confirmAction: true and a valid confirmationToken.',
     );
   }
 

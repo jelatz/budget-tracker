@@ -174,6 +174,24 @@ function updateSmartDefaultsForTransaction(
   };
 }
 
+function isTransactionAccountCompatible(
+  accounts: readonly Account[],
+  tx: Pick<Transaction, 'type' | 'currency' | 'accountId' | 'toAccountId'>,
+): boolean {
+  const source = accounts.find((a) => a.id === tx.accountId);
+  if (!source || source.currency !== tx.currency) {
+    return false;
+  }
+  if (tx.type === 'TRANSFER') {
+    if (!tx.toAccountId) return false;
+    const dest = accounts.find((a) => a.id === tx.toAccountId);
+    if (!dest || dest.currency !== tx.currency) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function addTransactionToState(
   state: SyncDataState,
   rawTx: Transaction,
@@ -184,6 +202,9 @@ function addTransactionToState(
   }
 
   const tx = transactionSchema.parse(deduplicateTransactionSplits(rawTx));
+  if (!isTransactionAccountCompatible(state.accounts, tx)) {
+    return state;
+  }
   const nextAccounts = applyTransactionToAccounts(state.accounts, tx, 1);
 
   const categoryIdsToIncrement = getTransactionCategoryIds(tx);
@@ -274,9 +295,13 @@ export function applySyncMutation(
   switch (mutation.type) {
     case 'account.upsert': {
       const saved = accountSchema.parse(mutation.account);
+      const existing = state.accounts.find((a) => a.id === saved.id);
+      const nextAccount = existing
+        ? { ...saved, balanceMinor: existing.balanceMinor }
+        : saved;
       return {
         ...state,
-        accounts: upsertById(state.accounts, saved),
+        accounts: upsertById(state.accounts, nextAccount),
       };
     }
 
@@ -369,6 +394,9 @@ export function applySyncMutation(
           continue;
         }
         const tx = transactionSchema.parse(deduplicateTransactionSplits(rawTx));
+        if (!isTransactionAccountCompatible(nextAccounts, tx)) {
+          continue;
+        }
         existingIds.add(tx.id);
         nextAccounts = applyTransactionToAccounts(nextAccounts, tx, 1);
         const categoryIdsToIncrement = getTransactionCategoryIds(tx);
@@ -409,6 +437,9 @@ export function applySyncMutation(
           createdAt: existingTx.createdAt,
         } as Transaction),
       );
+      if (!isTransactionAccountCompatible(state.accounts, updatedTx)) {
+        return state;
+      }
 
       const revertedAccounts = applyTransactionToAccounts(
         state.accounts,
@@ -536,8 +567,10 @@ export function applySyncMutation(
 
       const targetAccountId = mutation.accountId ?? commitment.accountId;
       const targetAccount = state.accounts.find((a) => a.id === targetAccountId);
-      const currency =
-        targetAccount?.currency ?? commitment.currency ?? DEFAULT_CURRENCY;
+      if (!targetAccount || targetAccount.currency !== commitment.currency) {
+        return state;
+      }
+      const currency = targetAccount.currency;
 
       const isInstallment = commitment.kind === 'INSTALLMENT';
       const hasTerms =
@@ -675,43 +708,56 @@ export function applySyncMutation(
         return state;
       }
 
-      const sourceCurrency =
-        state.accounts.find((a) => a.id === mutation.sourceAccountId)
-          ?.currency ?? DEFAULT_CURRENCY;
+      const sourceAccount = state.accounts.find(
+        (a) => a.id === mutation.sourceAccountId,
+      );
+      if (!sourceAccount) {
+        return state;
+      }
+      const isTransfer = mutation.sourceAccountId !== fund.accountId;
+      if (isTransfer) {
+        const destAccount = state.accounts.find((a) => a.id === fund.accountId);
+        if (!destAccount || destAccount.currency !== sourceAccount.currency) {
+          return state;
+        }
+      }
+      const sourceCurrency = sourceAccount.currency;
 
       const merchant = truncateText(fund.name, 80) || 'Sinking Fund';
       const note = truncateText(`Contribution to ${fund.name}`, 280);
 
-      const tx =
-        mutation.sourceAccountId !== fund.accountId
-          ? transactionSchema.parse({
-              id: mutation.transactionId,
-              type: 'TRANSFER',
-              amountMinor: mutation.amountMinor,
-              currency: sourceCurrency,
-              accountId: mutation.sourceAccountId,
-              toAccountId: fund.accountId,
-              merchant,
-              note,
-              tags: ['sinking-fund'],
-              occurredAt: mutation.occurredAt,
-              createdAt: mutation.occurredAt,
-            })
-          : transactionSchema.parse({
-              id: mutation.transactionId,
-              type: 'EXPENSE',
-              amountMinor: mutation.amountMinor,
-              currency: sourceCurrency,
-              accountId: mutation.sourceAccountId,
-              categoryId: 'cat-home',
-              merchant,
-              note,
-              tags: ['sinking-fund'],
-              occurredAt: mutation.occurredAt,
-              createdAt: mutation.occurredAt,
-            });
+      const tx = isTransfer
+        ? transactionSchema.parse({
+            id: mutation.transactionId,
+            type: 'TRANSFER',
+            amountMinor: mutation.amountMinor,
+            currency: sourceCurrency,
+            accountId: mutation.sourceAccountId,
+            toAccountId: fund.accountId,
+            merchant,
+            note,
+            tags: ['sinking-fund'],
+            occurredAt: mutation.occurredAt,
+            createdAt: mutation.occurredAt,
+          })
+        : transactionSchema.parse({
+            id: mutation.transactionId,
+            type: 'EXPENSE',
+            amountMinor: mutation.amountMinor,
+            currency: sourceCurrency,
+            accountId: mutation.sourceAccountId,
+            categoryId: 'cat-home',
+            merchant,
+            note,
+            tags: ['sinking-fund'],
+            occurredAt: mutation.occurredAt,
+            createdAt: mutation.occurredAt,
+          });
 
       const stateAfterTx = addTransactionToState(state, tx);
+      if (stateAfterTx === state) {
+        return state;
+      }
       const newSavedMinor = clampMinor(fund.currentSavedMinor + mutation.amountMinor);
       const updatedFund = sinkingFundSchema.parse({
         ...fund,

@@ -12,7 +12,7 @@ import { useSyncExternalStore } from 'react';
 import { z } from 'zod';
 import { ApiClientError, apiFetch } from '@/common/lib/api-client';
 import { getItemSync, removeItemSync, setItemSync } from '@/common/lib/kv-storage';
-import { getAuthToken } from '@/common/lib/token-storage';
+import { getAuthToken, isCookieAuthMode } from '@/common/lib/token-storage';
 
 const CLOUD_CACHE_PREFIX = 'budget_tracker_v4_cloud:';
 const MAX_SYNC_BATCH = 500;
@@ -219,7 +219,7 @@ export function enqueueSyncMutation(mutation: SyncMutation): SyncDataState {
   return activeComputedState;
 }
 
-async function performSyncPass(): Promise<void> {
+async function performSyncPass(allowConflictRetry = true): Promise<void> {
   const syncUserId = activeUserId;
   const syncGeneration = sessionGeneration;
   if (!syncUserId) {
@@ -228,7 +228,7 @@ async function performSyncPass(): Promise<void> {
 
   const token = await getAuthToken();
   if (
-    !token ||
+    (!isCookieAuthMode() && !token) ||
     activeUserId !== syncUserId ||
     sessionGeneration !== syncGeneration
   ) {
@@ -286,6 +286,41 @@ async function performSyncPass(): Promise<void> {
           activeUserId !== syncUserId ||
           sessionGeneration !== syncGeneration
         ) {
+          return;
+        }
+        if (pushError instanceof ApiClientError && pushError.status === 409 && allowConflictRetry) {
+          const pullRes = await apiFetch(
+            `/v1/sync?sinceRevision=${activeEnvelope.serverRevision}`,
+            syncPullResponseSchema,
+            { method: 'GET' },
+          );
+          if (
+            activeUserId !== syncUserId ||
+            sessionGeneration !== syncGeneration
+          ) {
+            return;
+          }
+          if (!pullRes.unchanged && pullRes.state) {
+            activeEnvelope = {
+              ...activeEnvelope,
+              serverRevision: pullRes.revision,
+              serverState: pullRes.state,
+              lastSyncedAt: pullRes.serverTime,
+            };
+          } else {
+            activeEnvelope = {
+              ...activeEnvelope,
+              serverRevision: pullRes.revision,
+              lastSyncedAt: pullRes.serverTime,
+            };
+          }
+          activeComputedState = applySyncMutations(
+            activeEnvelope.serverState,
+            activeEnvelope.pendingMutations,
+          );
+          saveEnvelope(syncUserId, activeEnvelope);
+          onRemoteStateUpdatedCallback?.();
+          await performSyncPass(false);
           return;
         }
         if (pushError instanceof ApiClientError && pushError.status === 400) {

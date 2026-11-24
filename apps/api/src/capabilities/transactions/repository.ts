@@ -9,6 +9,8 @@ import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { AppDatabase } from '../../core/db/client';
 import {
   accounts,
+  balanceReconciliations,
+  categories,
   transactions,
   transactionSplits,
   users,
@@ -245,8 +247,15 @@ export function createPgTransactionsRepository(
 
         const accountMap = new Map(matchedAccounts.map((a) => [a.id, a]));
         for (const reqId of requiredAccountIds) {
-          if (!accountMap.has(reqId)) {
+          const matched = accountMap.get(reqId);
+          if (!matched) {
             throw new AppError('NOT_FOUND', `Account "${reqId}" not found.`);
+          }
+          if (matched.currency !== txData.currency) {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              'Transaction currency must match account currency.',
+            );
           }
         }
 
@@ -330,7 +339,25 @@ export function createPgTransactionsRepository(
           return null;
         }
 
-        const existingTx = mapTransactionRow(existingRow, []);
+        const existingSplitRows = await tx
+          .select()
+          .from(transactionSplits)
+          .where(
+            and(
+              eq(transactionSplits.userId, userId),
+              eq(transactionSplits.transactionId, transactionId),
+            ),
+          )
+          .orderBy(asc(transactionSplits.sortOrder));
+
+        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) => ({
+          id: s.id,
+          categoryId: s.categoryId,
+          amountMinor: Number(s.amountMinor),
+          ...(s.note ? { note: s.note } : {}),
+        }));
+
+        const existingTx = mapTransactionRow(existingRow, existingSplits);
         const updatedTx = transactionSchema.parse({
           ...nextData,
           id: existingRow.id,
@@ -358,8 +385,15 @@ export function createPgTransactionsRepository(
         for (const reqId of [updatedTx.accountId, updatedTx.toAccountId].filter(
           (id): id is string => Boolean(id),
         )) {
-          if (!accountMap.has(reqId)) {
+          const matched = accountMap.get(reqId);
+          if (!matched) {
             throw new AppError('NOT_FOUND', `Account "${reqId}" not found.`);
+          }
+          if (matched.currency !== updatedTx.currency) {
+            throw new AppError(
+              'VALIDATION_ERROR',
+              'Transaction currency must match account currency.',
+            );
           }
         }
 
@@ -463,7 +497,25 @@ export function createPgTransactionsRepository(
           return null;
         }
 
-        const existingTx = mapTransactionRow(existingRow, []);
+        const existingSplitRows = await tx
+          .select()
+          .from(transactionSplits)
+          .where(
+            and(
+              eq(transactionSplits.userId, userId),
+              eq(transactionSplits.transactionId, transactionId),
+            ),
+          )
+          .orderBy(asc(transactionSplits.sortOrder));
+
+        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) => ({
+          id: s.id,
+          categoryId: s.categoryId,
+          amountMinor: Number(s.amountMinor),
+          ...(s.note ? { note: s.note } : {}),
+        }));
+
+        const existingTx = mapTransactionRow(existingRow, existingSplits);
         const reverseDeltas = computeAccountDeltas(existingTx, -1);
         const affectedAccountIds = Array.from(reverseDeltas.keys());
 
@@ -523,6 +575,20 @@ export function createPgTransactionsRepository(
           .delete(transactions)
           .where(eq(transactions.userId, userId))
           .returning({ id: transactions.id });
+
+        await tx
+          .update(accounts)
+          .set({ balanceMinor: 0 })
+          .where(eq(accounts.userId, userId));
+
+        await tx
+          .update(categories)
+          .set({ usageCount: 0 })
+          .where(eq(categories.userId, userId));
+
+        await tx
+          .delete(balanceReconciliations)
+          .where(eq(balanceReconciliations.userId, userId));
 
         const nextRevision = Number(userRow.stateRevision) + 1;
         await tx

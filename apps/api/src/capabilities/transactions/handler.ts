@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  formatConfirmationToken,
   transactionSchema,
   verifyConfirmationToken,
   type ClearTransactionsRequest,
@@ -111,10 +110,9 @@ export async function handleClearTransactions(
   if (
     !verifyConfirmationToken(params.confirmation, 'clear-transactions', 'all')
   ) {
-    const expected = formatConfirmationToken('clear-transactions', 'all');
     throw new AppError(
       'CONFIRMATION_REQUIRED',
-      `Explicit confirmation required. Provide confirmAction: true and confirmationToken "${expected}".`,
+      'Explicit confirmation required. Provide confirmAction: true and a valid confirmationToken.',
     );
   }
 

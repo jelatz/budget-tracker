@@ -614,6 +614,10 @@ export async function applyReconciliation(
     ...(validatedInput.notes ? { notes: validatedInput.notes } : {}),
     ...(adjustmentTransactionId ? { adjustmentTransactionId } : {}),
     reconciledAt,
+    confirmation: createDestructiveConfirmation(
+      'reconcile-account',
+      validatedInput.accountId,
+    ),
   });
 
   return {

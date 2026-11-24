@@ -44,8 +44,29 @@ export interface SyncRepository {
   pullState(userId: string): Promise<SyncPullResult | null>;
   pushMutations(params: {
     userId: string;
+    lastKnownRevision?: number;
     mutations: readonly SyncMutation[];
   }): Promise<SyncPushResult>;
+}
+
+export function isConflictingSyncMutation(
+  mutation: SyncMutation,
+  currentState: SyncDataState,
+): boolean {
+  switch (mutation.type) {
+    case 'transactions.clearAll':
+    case 'state.resetDemo':
+    case 'transaction.update':
+    case 'account.delete':
+    case 'reconciliation.apply':
+      return true;
+    case 'backup.import':
+      return mutation.mode === 'overwrite';
+    case 'account.upsert':
+      return currentState.accounts.some((a) => a.id === mutation.account.id);
+    default:
+      return false;
+  }
 }
 
 function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
@@ -529,7 +550,7 @@ export function createPgSyncRepository(db: AppDatabase): SyncRepository {
       );
     },
 
-    async pushMutations({ userId, mutations }) {
+    async pushMutations({ userId, lastKnownRevision, mutations }) {
       return db.transaction(async (tx) => {
         const lockedUsers = await tx
           .select({
@@ -582,6 +603,17 @@ export function createPgSyncRepository(db: AppDatabase): SyncRepository {
             appliedOpIds: mutations.map((m) => m.opId),
             state: currentState,
           };
+        }
+
+        if (
+          typeof lastKnownRevision === 'number' &&
+          Number(userRow.stateRevision) !== lastKnownRevision &&
+          newMutations.some((m) => isConflictingSyncMutation(m, currentState))
+        ) {
+          throw new AppError(
+            'CONFLICT',
+            'Sync state is stale. Pull latest changes before retrying.',
+          );
         }
 
         const nextState = applySyncMutations(currentState, newMutations);

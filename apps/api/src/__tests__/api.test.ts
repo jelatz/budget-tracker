@@ -12,7 +12,10 @@ import {
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../app';
 import type { AuthRepository } from '../capabilities/auth/repository';
-import type { SyncRepository } from '../capabilities/sync/repository';
+import {
+  isConflictingSyncMutation,
+  type SyncRepository,
+} from '../capabilities/sync/repository';
 import {
   generateSessionToken,
   hashPassword,
@@ -119,7 +122,7 @@ function createMemoryRepos(): {
       return { revision: rec.revision, state: rec.state };
     },
 
-    async pushMutations({ userId, mutations }) {
+    async pushMutations({ userId, lastKnownRevision, mutations }) {
       const rec = usersById.get(userId);
       if (!rec) {
         throw new AppError('UNAUTHORIZED', 'Account not found.');
@@ -132,6 +135,17 @@ function createMemoryRepos(): {
           appliedOpIds: mutations.map((m) => m.opId),
           state: rec.state,
         };
+      }
+
+      if (
+        typeof lastKnownRevision === 'number' &&
+        rec.revision !== lastKnownRevision &&
+        freshMutations.some((m) => isConflictingSyncMutation(m, rec.state))
+      ) {
+        throw new AppError(
+          'CONFLICT',
+          'Sync state is stale. Pull latest changes before retrying.',
+        );
       }
 
       const nextState = applySyncMutations(rec.state, freshMutations);
@@ -430,5 +444,206 @@ describe('Auth & Sync API', () => {
     expect(pullB.state?.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
       bankBefore,
     );
+  });
+
+  it('enforces HttpOnly cookie auth with CSRF header, rate limits, body limits, sync confirmations, and stale-revision conflict checks', async () => {
+    const repos = createMemoryRepos();
+    const app = createApp(repos);
+
+    // Weak 7-char password rejected on register (F-01)
+    const weakReg = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Short Pw',
+        email: 'short@example.com',
+        password: '1234567',
+      }),
+    });
+    expect(weakReg.status).toBe(400);
+
+    // Valid registration sets HttpOnly bt_session cookie + security headers (F-08, F-11)
+    const regRes = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Cookie User',
+        email: 'cookie@example.com',
+        password: 'password123',
+      }),
+    });
+    expect(regRes.status).toBe(201);
+    expect(regRes.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(regRes.headers.get('x-frame-options')).toBe('DENY');
+    expect(regRes.headers.get('cache-control')).toBe('private, no-store');
+    const setCookieHeader = regRes.headers.get('set-cookie') ?? '';
+    expect(setCookieHeader).toContain('bt_session=');
+    expect(setCookieHeader).toContain('HttpOnly');
+    expect(setCookieHeader).toContain('SameSite=Lax');
+    const cookiePair = setCookieHeader.split(';')[0]!;
+
+    // Cookie auth works for GET /v1/auth/me without Authorization header
+    const meCookie = await app.request('/v1/auth/me', {
+      headers: { Cookie: cookiePair },
+    });
+    expect(meCookie.status).toBe(200);
+
+    // Cookie auth POST without X-Requested-With is blocked by CSRF guard (403)
+    const csrfBlocked = await app.request('/v1/sync', {
+      method: 'POST',
+      headers: {
+        Cookie: cookiePair,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ lastKnownRevision: 1, mutations: [] }),
+    });
+    expect(csrfBlocked.status).toBe(403);
+
+    // Unconfirmed destructive sync mutation returns 400 CONFIRMATION_REQUIRED without leaking token (F-03)
+    const unconfirmedSync = await app.request('/v1/sync', {
+      method: 'POST',
+      headers: {
+        Cookie: cookiePair,
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'budget-tracker',
+      },
+      body: JSON.stringify({
+        lastKnownRevision: 1,
+        mutations: [
+          {
+            opId: 'op-clear-unconfirmed',
+            clientTimestamp: '2026-11-21T07:00:00.000Z',
+            type: 'transactions.clearAll',
+          },
+        ],
+      }),
+    });
+    expect(unconfirmedSync.status).toBe(400);
+    const unconfirmedJson = (await unconfirmedSync.json()) as {
+      error: { code: string; message: string };
+    };
+    expect(unconfirmedJson.error.code).toBe('CONFIRMATION_REQUIRED');
+    expect(unconfirmedJson.error.message).not.toContain('clear-transactions:all');
+
+    // Valid transaction push bumps revision 1 -> 2
+    const txPush = await app.request('/v1/sync', {
+      method: 'POST',
+      headers: {
+        Cookie: cookiePair,
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'budget-tracker',
+      },
+      body: JSON.stringify({
+        lastKnownRevision: 1,
+        mutations: [
+          {
+            opId: 'op-cookie-tx',
+            clientTimestamp: '2026-11-21T07:01:00.000Z',
+            type: 'transaction.create',
+            transaction: {
+              id: 'tx-cookie-1',
+              type: 'EXPENSE',
+              amountMinor: 500,
+              currency: DEFAULT_CURRENCY,
+              accountId: 'account-bank',
+              categoryId: 'cat-daily-living',
+              tags: [],
+              occurredAt: '2026-11-21T07:01:00.000Z',
+              createdAt: '2026-11-21T07:01:00.000Z',
+            },
+          },
+        ],
+      }),
+    });
+    expect(txPush.status).toBe(200);
+
+    // Stale lastKnownRevision (1) on conflicting update returns 409 CONFLICT (F-04)
+    const staleConflict = await app.request('/v1/sync', {
+      method: 'POST',
+      headers: {
+        Cookie: cookiePair,
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'budget-tracker',
+      },
+      body: JSON.stringify({
+        lastKnownRevision: 1,
+        mutations: [
+          {
+            opId: 'op-stale-update',
+            clientTimestamp: '2026-11-21T07:02:00.000Z',
+            type: 'transaction.update',
+            input: {
+              id: 'tx-cookie-1',
+              type: 'EXPENSE',
+              amountMinor: 900,
+              currency: DEFAULT_CURRENCY,
+              accountId: 'account-bank',
+              categoryId: 'cat-daily-living',
+              tags: [],
+              occurredAt: '2026-11-21T07:01:00.000Z',
+            },
+          },
+        ],
+      }),
+    });
+    expect(staleConflict.status).toBe(409);
+
+    // Oversized body (> 64 KiB on login) returns 413 (F-02)
+    const oversizedLogin = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: 'cookie@example.com',
+        password: 'password123',
+        pad: 'x'.repeat(70_000),
+      }),
+    });
+    expect(oversizedLogin.status).toBe(413);
+
+    // Auth rate limit triggers 429 after 20 requests on /v1/auth/* from same IP (F-01)
+    let rateLimitedStatus = 200;
+    for (let i = 0; i < 20; i += 1) {
+      const res = await app.request('/v1/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-forwarded-for': '203.0.113.99',
+        },
+        body: JSON.stringify({
+          email: 'nobody@example.com',
+          password: 'wrong-password',
+        }),
+      });
+      rateLimitedStatus = res.status;
+    }
+    const overLimit = await app.request('/v1/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-forwarded-for': '203.0.113.99',
+      },
+      body: JSON.stringify({
+        email: 'nobody@example.com',
+        password: 'wrong-password',
+      }),
+    });
+    expect(rateLimitedStatus).toBe(401);
+    expect(overLimit.status).toBe(429);
+
+    // Logout clears cookie and revokes session
+    const logoutRes = await app.request('/v1/auth/logout', {
+      method: 'POST',
+      headers: {
+        Cookie: cookiePair,
+        'X-Requested-With': 'budget-tracker',
+      },
+    });
+    expect(logoutRes.status).toBe(200);
+    expect(logoutRes.headers.get('set-cookie') ?? '').toContain('Max-Age=0');
+
+    const meAfterLogout = await app.request('/v1/auth/me', {
+      headers: { Cookie: cookiePair },
+    });
+    expect(meAfterLogout.status).toBe(401);
   });
 });

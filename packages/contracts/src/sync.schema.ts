@@ -158,6 +158,7 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
     notes: z.string().trim().max(280).optional(),
     adjustmentTransactionId: z.string().min(1).optional(),
     reconciledAt: z.string().datetime(),
+    confirmation: destructiveConfirmationSchema.optional(),
   }),
   z.object({
     ...baseMutationFields,
@@ -175,10 +176,38 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
 ]);
 export type SyncMutation = z.infer<typeof syncMutationSchema>;
 
-export const syncPushRequestSchema = z.object({
-  lastKnownRevision: z.number().int().nonnegative(),
-  mutations: z.array(syncMutationSchema).max(500),
-});
+export const syncPushRequestSchema = z
+  .object({
+    lastKnownRevision: z.number().int().nonnegative(),
+    mutations: z.array(syncMutationSchema).max(500),
+  })
+  .superRefine((req, ctx) => {
+    let backupImportCount = 0;
+    let txCount = 0;
+    for (const mutation of req.mutations) {
+      if (mutation.type === 'backup.import') {
+        backupImportCount += 1;
+      } else if (mutation.type === 'transaction.create') {
+        txCount += 1;
+      } else if (mutation.type === 'transaction.createBatch') {
+        txCount += mutation.transactions.length;
+      }
+    }
+    if (backupImportCount > 2) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At most 2 backup.import mutations are allowed per sync push.',
+        path: ['mutations'],
+      });
+    }
+    if (txCount > 2000) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'At most 2000 transactions may be created in a single sync push.',
+        path: ['mutations'],
+      });
+    }
+  });
 export type SyncPushRequest = z.infer<typeof syncPushRequestSchema>;
 
 export const syncPullResponseSchema = z.object({

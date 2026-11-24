@@ -1,6 +1,8 @@
 import type { AppErrorCode } from '@repo/contracts';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { cors } from 'hono/cors';
+import { isSecureCookieRequest } from './core/auth/cookie';
 import {
   createPgAccountsRepository,
   type AccountsRepository,
@@ -36,6 +38,7 @@ import {
   createRequestLoggerMiddleware,
   type RequestLogVariables,
 } from './core/logger';
+import { createRateLimitMiddleware } from './core/rate-limit';
 
 export interface AppDependencies {
   authRepo?: AuthRepository;
@@ -47,6 +50,7 @@ export interface AppDependencies {
   getMinSupportedVersion?: () => string;
   allowDemoEndpoint?: () => boolean;
   allowedOrigins?: readonly string[];
+  disableRateLimit?: boolean;
 }
 
 export function createApp(deps?: AppDependencies) {
@@ -146,8 +150,51 @@ export function createApp(deps?: AppDependencies) {
     authRepo.verifySessionTokenHash(tokenHash),
   );
 
+  const bodyTooLargeHandler = (c: {
+    get: (key: 'requestId') => unknown;
+    json: (data: unknown, status: 413) => Response;
+  }) => {
+    const rawRequestId: unknown = c.get('requestId');
+    const requestId = typeof rawRequestId === 'string' ? rawRequestId : undefined;
+    return c.json(
+      {
+        error: {
+          code: 'VALIDATION_ERROR' satisfies AppErrorCode,
+          message: 'Request body exceeds maximum allowed size.',
+          ...(requestId ? { requestId } : {}),
+        },
+      },
+      413,
+    );
+  };
+
+  const largeJsonBodyLimit = bodyLimit({
+    maxSize: 1024 * 1024,
+    onError: bodyTooLargeHandler,
+  });
+
+  const standardJsonBodyLimit = bodyLimit({
+    maxSize: 64 * 1024,
+    onError: bodyTooLargeHandler,
+  });
+
+  const rateLimitDisabled = Boolean(deps?.disableRateLimit);
+
   const app = new Hono<{ Variables: RequestLogVariables }>()
     .use('*', createRequestLoggerMiddleware())
+    .use('*', async (c, next) => {
+      await next();
+      c.header('X-Content-Type-Options', 'nosniff');
+      c.header('X-Frame-Options', 'DENY');
+      c.header('Referrer-Policy', 'no-referrer');
+      c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+      if (isSecureCookieRequest(c)) {
+        c.header(
+          'Strict-Transport-Security',
+          'max-age=31536000; includeSubDomains',
+        );
+      }
+    })
     .use(
       '*',
       cors({
@@ -158,12 +205,60 @@ export function createApp(deps?: AppDependencies) {
           const normalized = origin.trim().replace(/\/+$/, '');
           return allowedOriginSet.has(normalized) ? origin : null;
         },
+        credentials: true,
         allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
+        allowHeaders: [
+          'Content-Type',
+          'Authorization',
+          'X-Request-Id',
+          'X-Requested-With',
+        ],
         exposeHeaders: ['X-Request-Id'],
         maxAge: 86400,
       }),
     )
+    .use('/v1/*', async (c, next) => {
+      await next();
+      c.header('Cache-Control', 'private, no-store');
+      c.header('Pragma', 'no-cache');
+    })
+    .use(
+      '/health',
+      createRateLimitMiddleware({
+        keyPrefix: 'health-db',
+        windowMs: 60_000,
+        maxRequests: 30,
+        skip: (c) => rateLimitDisabled || c.req.query('check') !== 'db',
+      }),
+    )
+    .use(
+      '/v1/auth/*',
+      createRateLimitMiddleware({
+        keyPrefix: 'auth',
+        windowMs: 15 * 60_000,
+        maxRequests: 20,
+        skip: () => rateLimitDisabled,
+      }),
+    )
+    .use(
+      '/v1/*',
+      createRateLimitMiddleware({
+        keyPrefix: 'api',
+        windowMs: 60_000,
+        maxRequests: 240,
+        skip: () => rateLimitDisabled,
+      }),
+    )
+    .use('/v1/sync', largeJsonBodyLimit)
+    .use('/v1/auth/register', largeJsonBodyLimit)
+    .use('/v1/auth/login', standardJsonBodyLimit)
+    .use('/v1/auth/logout', standardJsonBodyLimit)
+    .use('/v1/accounts', standardJsonBodyLimit)
+    .use('/v1/accounts/*', standardJsonBodyLimit)
+    .use('/v1/transactions', standardJsonBodyLimit)
+    .use('/v1/transactions/*', standardJsonBodyLimit)
+    .use('/v1/reconcile', standardJsonBodyLimit)
+    .use('/v1/reconcile/*', standardJsonBodyLimit)
     .onError((error, c) => handleApiError(error, c))
     .notFound((c) => {
       const requestId = c.get('requestId');

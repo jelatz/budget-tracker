@@ -5,6 +5,10 @@ import {
   registerInputSchema,
 } from '@repo/contracts';
 import { Hono, type MiddlewareHandler } from 'hono';
+import {
+  clearSessionCookie,
+  setSessionCookie,
+} from '../../core/auth/cookie';
 import type { AuthEnvVariables } from '../../core/auth/middleware';
 import { AppError } from '../../core/errors';
 import { parseJsonBody } from '../../core/validation';
@@ -20,11 +24,13 @@ export function createAuthRoutes(
     .post('/v1/auth/register', async (c) => {
       const body = await parseJsonBody(c, registerInputSchema);
       const session = await handleRegister(authRepo, body);
+      setSessionCookie(c, session.token);
       return c.json(session, 201);
     })
     .post('/v1/auth/login', async (c) => {
       const body = await parseJsonBody(c, loginInputSchema);
       const session = await handleLogin(authRepo, body);
+      setSessionCookie(c, session.token);
       return c.json(session);
     })
     .post('/v1/auth/demo', async (c) => {
@@ -44,6 +50,7 @@ export function createAuthRoutes(
     .post('/v1/auth/logout', requireAuth, async (c) => {
       const session = c.get('authSession');
       await authRepo.revokeSession(session.sessionId, session.user.id);
+      clearSessionCookie(c);
       return c.json(logoutResponseSchema.parse({ success: true }));
     });
 }

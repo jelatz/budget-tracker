@@ -19,6 +19,7 @@ COPY apps/api ./apps/api
 
 RUN pnpm --filter @repo/api build
 RUN pnpm --filter @repo/api deploy --prod --legacy /prod/api
+RUN rm -f /prod/api/.env /prod/api/.env.*
 RUN cp -r /app/apps/api/dist /prod/api/dist
 
 FROM node:22-alpine AS runner

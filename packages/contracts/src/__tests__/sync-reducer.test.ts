@@ -3,6 +3,7 @@ import {
   applySyncMutations,
   createInitialSyncDataState,
   DEFAULT_CURRENCY,
+  syncPushRequestSchema,
   type SyncMutation,
 } from '../index';
 
@@ -389,5 +390,102 @@ describe('Sync State Reducer', () => {
       base.accounts.find((a) => a.id === 'account-bank')!.balanceMinor - 10000,
     );
     expect(updated.transactions.find((t) => t.id === 'tx-long-fund')!.merchant!.length).toBe(80);
+  });
+
+  it('preserves existing balance on account.upsert, rejects cross-currency or orphan txs, and caps sync push batches', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+    const seeded = applySyncMutations(base, [
+      {
+        opId: 'op-seed-income',
+        clientTimestamp: '2026-11-10T12:00:30.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-seed-income',
+          type: 'INCOME',
+          amountMinor: 50000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-salary',
+          tags: [],
+          occurredAt: '2026-11-10T12:00:30.000Z',
+          createdAt: '2026-11-10T12:00:30.000Z',
+        },
+      },
+    ]);
+
+    const afterUpsertAndBadTxs = applySyncMutations(seeded, [
+      {
+        opId: 'op-upsert-existing',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'account.upsert',
+        account: {
+          ...seeded.accounts.find((a) => a.id === 'account-bank')!,
+          name: 'Renamed Bank',
+          balanceMinor: 9999999,
+        },
+      },
+      {
+        opId: 'op-bad-currency',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-bad-usd',
+          type: 'EXPENSE',
+          amountMinor: 10000,
+          currency: 'USD',
+          accountId: 'account-bank',
+          categoryId: 'cat-daily-living',
+          tags: [],
+          occurredAt: '2026-11-10T12:02:00.000Z',
+          createdAt: '2026-11-10T12:02:00.000Z',
+        },
+      },
+      {
+        opId: 'op-orphan-acc',
+        clientTimestamp: '2026-11-10T12:03:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-orphan',
+          type: 'EXPENSE',
+          amountMinor: 1000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-does-not-exist',
+          categoryId: 'cat-daily-living',
+          tags: [],
+          occurredAt: '2026-11-10T12:03:00.000Z',
+          createdAt: '2026-11-10T12:03:00.000Z',
+        },
+      },
+    ]);
+
+    const bank = afterUpsertAndBadTxs.accounts.find((a) => a.id === 'account-bank')!;
+    expect(bank.name).toBe('Renamed Bank');
+    expect(bank.balanceMinor).toBe(50000);
+    expect(afterUpsertAndBadTxs.transactions.some((t) => t.id === 'tx-bad-usd')).toBe(false);
+    expect(afterUpsertAndBadTxs.transactions.some((t) => t.id === 'tx-orphan')).toBe(false);
+
+    const oversizedPush = syncPushRequestSchema.safeParse({
+      lastKnownRevision: 1,
+      mutations: [1, 2, 3].map((i) => ({
+        opId: `op-imp-${i}`,
+        clientTimestamp: '2026-11-10T12:04:00.000Z',
+        type: 'backup.import',
+        mode: 'merge',
+        envelope: {
+          version: 1,
+          exportedAt: '2026-11-10T12:04:00.000Z',
+          data: {
+            accounts: [],
+            categories: [],
+            transactions: [],
+            categoryBudgets: [],
+            recurringCommitments: [],
+            sinkingFunds: [],
+            quickPresets: [],
+          },
+        },
+      })),
+    });
+    expect(oversizedPush.success).toBe(false);
   });
 });

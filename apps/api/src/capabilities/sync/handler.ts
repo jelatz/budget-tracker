@@ -1,12 +1,70 @@
 import {
   syncPullResponseSchema,
   syncPushResponseSchema,
+  verifyConfirmationToken,
+  type SyncMutation,
   type SyncPullResponse,
   type SyncPushRequest,
   type SyncPushResponse,
 } from '@repo/contracts';
 import { AppError } from '../../core/errors';
 import type { SyncRepository } from './repository';
+
+function assertSyncMutationConfirmed(mutation: SyncMutation): void {
+  switch (mutation.type) {
+    case 'account.delete':
+      if (!verifyConfirmationToken(mutation.confirmation, 'delete-account', mutation.id)) {
+        throw new AppError(
+          'CONFIRMATION_REQUIRED',
+          'Explicit confirmation required for destructive sync mutation.',
+        );
+      }
+      return;
+    case 'transactions.clearAll':
+      if (!verifyConfirmationToken(mutation.confirmation, 'clear-transactions', 'all')) {
+        throw new AppError(
+          'CONFIRMATION_REQUIRED',
+          'Explicit confirmation required for destructive sync mutation.',
+        );
+      }
+      return;
+    case 'state.resetDemo':
+      if (!verifyConfirmationToken(mutation.confirmation, 'reset-demo', 'all')) {
+        throw new AppError(
+          'CONFIRMATION_REQUIRED',
+          'Explicit confirmation required for destructive sync mutation.',
+        );
+      }
+      return;
+    case 'backup.import':
+      if (
+        mutation.mode === 'overwrite' &&
+        !verifyConfirmationToken(mutation.confirmation, 'overwrite-backup', 'all')
+      ) {
+        throw new AppError(
+          'CONFIRMATION_REQUIRED',
+          'Explicit confirmation required for destructive sync mutation.',
+        );
+      }
+      return;
+    case 'reconciliation.apply':
+      if (
+        !verifyConfirmationToken(
+          mutation.confirmation,
+          'reconcile-account',
+          mutation.accountId,
+        )
+      ) {
+        throw new AppError(
+          'CONFIRMATION_REQUIRED',
+          'Explicit confirmation required for destructive sync mutation.',
+        );
+      }
+      return;
+    default:
+      return;
+  }
+}
 
 export async function handleSyncPull(
   repo: SyncRepository,
@@ -45,8 +103,13 @@ export async function handleSyncPush(
   repo: SyncRepository,
   params: { userId: string; body: SyncPushRequest },
 ): Promise<SyncPushResponse> {
+  for (const mutation of params.body.mutations) {
+    assertSyncMutationConfirmed(mutation);
+  }
+
   const result = await repo.pushMutations({
     userId: params.userId,
+    lastKnownRevision: params.body.lastKnownRevision,
     mutations: params.body.mutations,
   });
 

@@ -14,7 +14,7 @@ export const registerInputSchema = z.object({
   email: z.string().trim().toLowerCase().email('Please enter a valid email address.'),
   password: z
     .string()
-    .min(6, 'Password must be at least 6 characters long.')
+    .min(8, 'Password must be at least 8 characters long.')
     .max(128),
   initialBackup: backupEnvelopeSchema.optional(),
 });

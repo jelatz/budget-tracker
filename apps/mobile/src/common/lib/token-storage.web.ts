@@ -1,6 +1,6 @@
 import { authUserSchema, type AuthUser } from '@repo/contracts';
 
-const AUTH_TOKEN_KEY = 'budget_tracker_auth_token';
+const LEGACY_AUTH_TOKEN_KEY = 'budget_tracker_auth_token';
 const AUTH_USER_KEY = 'budget_tracker_auth_user';
 
 export interface AuthSnapshot {
@@ -8,12 +8,24 @@ export interface AuthSnapshot {
   user: AuthUser | null;
 }
 
+export function isCookieAuthMode(): boolean {
+  return true;
+}
+
+function purgeLegacyLocalStorageToken(): void {
+  try {
+    globalThis.localStorage?.removeItem(LEGACY_AUTH_TOKEN_KEY);
+  } catch (error: unknown) {
+    // Ignore localStorage failure
+  }
+}
+
 export function getInitialAuthSnapshotSync(): AuthSnapshot | null {
   try {
     if (typeof globalThis === 'undefined' || !globalThis.localStorage) {
       return null;
     }
-    const token = globalThis.localStorage.getItem(AUTH_TOKEN_KEY);
+    purgeLegacyLocalStorageToken();
     const rawUser = globalThis.localStorage.getItem(AUTH_USER_KEY);
     let user: AuthUser | null = null;
     if (rawUser) {
@@ -22,34 +34,24 @@ export function getInitialAuthSnapshotSync(): AuthSnapshot | null {
         user = parsed.data;
       }
     }
-    return { token, user };
+    return { token: null, user };
   } catch (error: unknown) {
     return null;
   }
 }
 
 export async function getAuthToken(): Promise<string | null> {
-  try {
-    return globalThis.localStorage?.getItem(AUTH_TOKEN_KEY) ?? null;
-  } catch (error: unknown) {
-    return null;
-  }
+  purgeLegacyLocalStorageToken();
+  return null;
 }
 
-export async function setAuthToken(token: string): Promise<void> {
-  try {
-    globalThis.localStorage?.setItem(AUTH_TOKEN_KEY, token);
-  } catch (error: unknown) {
-    // Ignore localStorage failure
-  }
+export async function setAuthToken(_token: string): Promise<void> {
+  // Web sessions authenticate via HttpOnly cookie; never persist bearer tokens in localStorage.
+  purgeLegacyLocalStorageToken();
 }
 
 export async function clearAuthToken(): Promise<void> {
-  try {
-    globalThis.localStorage?.removeItem(AUTH_TOKEN_KEY);
-  } catch (error: unknown) {
-    // Ignore localStorage failure
-  }
+  purgeLegacyLocalStorageToken();
 }
 
 export async function getCachedUser(): Promise<AuthUser | null> {
