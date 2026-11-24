@@ -34,6 +34,7 @@ import {
 import { ThemedText } from '@/common/components/themed-text';
 import { Colors, TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 
 import {
   useCreateCustomCategory,
@@ -148,6 +149,7 @@ export function TransactionFormModal({
   const createCategoryMutation = useCreateCustomCategory();
 
   const wasVisibleRef = useRef(false);
+  const modalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
 
   const [type, setType] = useState<TransactionType>('EXPENSE');
   const [amountInput, setAmountInput] = useState('');
@@ -322,16 +324,21 @@ export function TransactionFormModal({
     }
   };
 
+  const showModalError = (message: string) => {
+    setFormError(message);
+    modalScrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
   const handleOpenSplitEditor = () => {
     if (parsedAmountMinor === null || parsedAmountMinor <= 0) {
       const msg = 'Enter an amount greater than 0 before splitting across categories.';
       setAmountTouched(true);
       setAmountError(msg);
-      setFormError(msg);
+      showModalError(msg);
       return;
     }
     if (filteredCategories.length === 0) {
-      setFormError('Create or select at least one category before splitting.');
+      showModalError('Create or select at least one category before splitting.');
       return;
     }
     setFormError(null);
@@ -363,7 +370,7 @@ export function TransactionFormModal({
       setShowCustomCategoryForm(false);
     } catch (error: unknown) {
       setCustomCategoryError(
-        error instanceof Error ? error.message : 'Failed to create category.',
+        getUserErrorMessage(error, 'Failed to create category.'),
       );
     }
   };
@@ -377,38 +384,38 @@ export function TransactionFormModal({
     setDateError(nextDateErr);
 
     if (nextAmountErr) {
-      setFormError(nextAmountErr);
+      showModalError(nextAmountErr);
       return;
     }
     if (nextDateErr) {
-      setFormError(nextDateErr);
+      showModalError(nextDateErr);
       return;
     }
 
     if (parsedAmountMinor === null || parsedAmountMinor <= 0) {
-      setFormError('Please enter an amount greater than 0.');
+      showModalError('Please enter an amount greater than 0.');
       return;
     }
 
     const sourceAccount = accounts.find((a) => a.id === accountId);
     if (!sourceAccount) {
-      setFormError('Please select an account.');
+      showModalError('Please select an account.');
       return;
     }
 
     if (type === 'TRANSFER') {
       const destAccount = accounts.find((a) => a.id === toAccountId);
       if (!destAccount) {
-        setFormError('Please select a destination account for this transfer.');
+        showModalError('Please select a destination account for this transfer.');
         return;
       }
       if (destAccount.id === sourceAccount.id) {
-        setFormError('From and To accounts must be different.');
+        showModalError('From and To accounts must be different.');
         return;
       }
     } else if (hasSplits) {
       if (splitRemainderMinor !== 0) {
-        setFormError(
+        showModalError(
           `Split amounts differ from total by ${formatMinorUnits(
             Math.abs(splitRemainderMinor),
             activeCurrency,
@@ -417,7 +424,7 @@ export function TransactionFormModal({
         return;
       }
     } else if (!categoryId || !filteredCategories.some((c) => c.id === categoryId)) {
-      setFormError('Please select a category.');
+      showModalError('Please select a category.');
       return;
     }
 
@@ -432,7 +439,7 @@ export function TransactionFormModal({
     const occurredAtIso = parseDateInputToIso(dateInput, preserveIso);
 
     if (!occurredAtIso) {
-      setFormError('Please enter a valid date in YYYY-MM-DD format.');
+      showModalError('Please enter a valid date in YYYY-MM-DD format.');
       return;
     }
 
@@ -457,22 +464,24 @@ export function TransactionFormModal({
 
     setFormError(null);
     try {
+      const formattedAmount = formatMinorUnits(payload.amountMinor, activeCurrency);
       if (editingTransaction) {
         await updateTransactionMutation.mutateAsync({
           ...payload,
           id: editingTransaction.id,
         });
-        onSaved('Transaction updated.');
+        onSaved(`Transaction updated (${formattedAmount}).`);
       } else {
         await createTransactionMutation.mutateAsync(payload);
-        onSaved('Transaction added.');
+        onSaved(`Transaction added (${formattedAmount}).`);
       }
       onClose();
     } catch (error: unknown) {
-      setFormError(
-        error instanceof Error
-          ? error.message
-          : 'Failed to save transaction. Please try again.',
+      showModalError(
+        getUserErrorMessage(
+          error,
+          'Failed to save transaction. Please try again.',
+        ),
       );
     }
   };
@@ -484,13 +493,14 @@ export function TransactionFormModal({
     setFormError(null);
     try {
       await deleteTransactionMutation.mutateAsync(editingTransaction.id);
-      onDeleted('Transaction deleted.');
+      onDeleted('Transaction deleted and account balance restored.');
       onClose();
     } catch (error: unknown) {
-      setFormError(
-        error instanceof Error
-          ? error.message
-          : 'Could not delete transaction. Please try again.',
+      showModalError(
+        getUserErrorMessage(
+          error,
+          'Could not delete transaction. Please try again.',
+        ),
       );
     }
   };
@@ -538,6 +548,7 @@ export function TransactionFormModal({
               className="relative z-10 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden"
             >
               <ScrollView
+                ref={modalScrollRef}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{

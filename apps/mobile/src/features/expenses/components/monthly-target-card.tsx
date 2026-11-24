@@ -18,9 +18,11 @@ import {
   parseDecimalToMinorUnits,
   type BudgetSummary,
 } from '@repo/contracts';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 
 export interface MonthlyTargetCardProps {
   budget: BudgetSummary;
@@ -36,6 +38,7 @@ export function MonthlyTargetCard({
   isUpdating = false,
 }: MonthlyTargetCardProps) {
   const theme = useTheme();
+  const { showSuccess } = useFeedback();
   const [modalVisible, setModalVisible] = useState(false);
   const [targetInput, setTargetInput] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -88,10 +91,16 @@ export function MonthlyTargetCard({
       setErrorMessage(null);
       await onUpdateBudget(parsedMinor);
       setModalVisible(false);
+      showSuccess(
+        `Monthly spending target updated to ${formatMinorUnits(parsedMinor, currency)}.`,
+      );
     } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to update target. Please try again.';
-      setErrorMessage(message);
+      setErrorMessage(
+        getUserErrorMessage(
+          error,
+          'Failed to update target. Please try again.',
+        ),
+      );
     } finally {
       setIsSaving(false);
     }

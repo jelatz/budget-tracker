@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -27,6 +27,7 @@ import {
 } from '@repo/contracts';
 
 import { AppIcon, type AppIconName } from '@/common/components/app-icon';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import {
   BottomTabInset,
@@ -35,6 +36,7 @@ import {
 } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 import {
   useAccounts,
   useDeleteAccount,
@@ -208,6 +210,8 @@ export interface AccountsScreenProps {
 export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   const { isAuthenticated, logout } = useRequireAuth();
   const theme = useTheme();
+  const { showSuccess, showError } = useFeedback();
+  const modalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
   const accountsQuery = useAccounts();
   const accounts = accountsQuery.data ?? [];
   const transactionsQuery = useTransactions();
@@ -236,6 +240,8 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
     try {
       await logout();
       router.replace('/');
+    } catch (error: unknown) {
+      showError(getUserErrorMessage(error, 'Could not sign out. Please try again.'));
     } finally {
       setIsSigningOut(false);
     }
@@ -335,22 +341,30 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
     setFormError(null);
   };
 
+  const showModalError = (message: string) => {
+    setFormError(message);
+    modalScrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
   const handleSave = async () => {
     const trimmedName = nameInput.trim();
     if (!trimmedName) {
-      setFormError('Please enter an account name.');
+      showModalError('Please enter an account name.');
       return;
     }
 
     const parsedBalanceMinor = parseDecimalToMinorUnits(balanceInput);
     if (parsedBalanceMinor === null) {
-      setFormError('Please enter a valid numeric balance (up to 2 decimal places).');
+      showModalError('Please enter a valid numeric balance (up to 2 decimal places).');
       return;
     }
 
+    const wasEditing = Boolean(editingAccount);
+    const previousBalanceMinor = editingAccount?.balanceMinor;
+
     setFormError(null);
     try {
-      await upsertAccountMutation.mutateAsync({
+      const saved = await upsertAccountMutation.mutateAsync({
         ...(editingAccount ? { id: editingAccount.id } : {}),
         name: trimmedName,
         accountType,
@@ -360,23 +374,36 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
         balanceMinor: parsedBalanceMinor,
       });
       setModalVisible(false);
+      if (!wasEditing) {
+        showSuccess(
+          `Added account "${saved.name}" (${formatMinorUnits(saved.balanceMinor, saved.currency)}).`,
+        );
+      } else if (previousBalanceMinor !== saved.balanceMinor) {
+        showSuccess(
+          `Updated "${saved.name}" balance to ${formatMinorUnits(saved.balanceMinor, saved.currency)}.`,
+        );
+      } else {
+        showSuccess(`Saved changes to "${saved.name}".`);
+      }
     } catch (error: unknown) {
-      setFormError(
-        error instanceof Error ? error.message : 'Failed to save account. Please try again.',
+      showModalError(
+        getUserErrorMessage(error, 'Failed to save account. Please try again.'),
       );
     }
   };
 
   const handleDelete = async () => {
     if (!editingAccount) return;
+    const deletedName = editingAccount.name;
     setFormError(null);
     try {
       await deleteAccountMutation.mutateAsync(editingAccount.id);
       setConfirmingDelete(false);
       setModalVisible(false);
+      showSuccess(`Deleted account "${deletedName}".`);
     } catch (error: unknown) {
-      setFormError(
-        error instanceof Error ? error.message : 'Could not delete this account.',
+      showModalError(
+        getUserErrorMessage(error, 'Could not delete this account.'),
       );
     }
   };
@@ -749,6 +776,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
             />
             <View className="relative z-10 w-full max-w-[480px] max-h-[90%] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
               <ScrollView
+                ref={modalScrollRef}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ padding: 24, gap: 16 }}

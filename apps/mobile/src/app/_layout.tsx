@@ -7,6 +7,7 @@ import { useColorScheme } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import AppTabs from '@/components/app-tabs';
+import { FeedbackProvider } from '@/common/components/feedback-provider';
 import { SyncCoordinator } from '@/common/components/sync-coordinator';
 import { Colors } from '@/constants/theme';
 import { AuthProvider } from '@/features/auth/context/auth-context';
@@ -64,8 +65,10 @@ export default function TabLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ThemeProvider value={colorScheme === 'dark' ? LedgerDarkTheme : LedgerLightTheme}>
-          <SyncCoordinator />
-          <AppTabs />
+          <FeedbackProvider>
+            <SyncCoordinator />
+            <AppTabs />
+          </FeedbackProvider>
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

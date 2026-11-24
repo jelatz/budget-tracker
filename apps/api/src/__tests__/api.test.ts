@@ -1,6 +1,7 @@
 import {
   applySyncMutations,
   authSessionResponseSchema,
+  createDestructiveConfirmation,
   DEFAULT_CATEGORIES,
   DEFAULT_CURRENCY,
   metaResponseSchema,
@@ -645,5 +646,92 @@ describe('Auth & Sync API', () => {
       headers: { Cookie: cookiePair },
     });
     expect(meAfterLogout.status).toBe(401);
+  });
+
+  it('persists account metadata and balance updates via account.updateMetadata + confirmed reconciliation.apply without adjustment transactions', async () => {
+    const repos = createMemoryRepos();
+    const app = createApp(repos);
+
+    const regRes = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Account Editor',
+        email: 'editor@example.com',
+        password: 'password123',
+      }),
+    });
+    expect(regRes.status).toBe(201);
+    const session = authSessionResponseSchema.parse(await regRes.json());
+
+    const pullInitial = syncPullResponseSchema.parse(
+      await (
+        await app.request('/v1/sync', {
+          headers: { Authorization: `Bearer ${session.token}` },
+        })
+      ).json(),
+    );
+
+    const pushEditRes = await app.request('/v1/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify({
+        lastKnownRevision: pullInitial.revision,
+        mutations: [
+          {
+            opId: 'op-acc-meta-1',
+            clientTimestamp: '2026-11-24T10:00:00.000Z',
+            type: 'account.updateMetadata',
+            account: {
+              id: 'account-bank',
+              name: 'Updated Payroll Bank',
+              accountType: 'BANK',
+              icon: '🏛️',
+              color: '#1E6F4E',
+              currency: DEFAULT_CURRENCY,
+            },
+          },
+          {
+            opId: 'op-acc-bal-1',
+            clientTimestamp: '2026-11-24T10:00:00.000Z',
+            type: 'reconciliation.apply',
+            reconciliationId: 'rec-acc-edit-1',
+            accountId: 'account-bank',
+            actualBalanceMinor: 84525,
+            createAdjustment: false,
+            notes: 'Account balance updated',
+            reconciledAt: '2026-11-24T10:00:00.000Z',
+            confirmation: createDestructiveConfirmation(
+              'reconcile-account',
+              'account-bank',
+            ),
+          },
+        ],
+      }),
+    });
+    expect(pushEditRes.status).toBe(200);
+    const pushEditBody = syncPushResponseSchema.parse(await pushEditRes.json());
+
+    const updatedAccount = pushEditBody.state.accounts.find(
+      (a) => a.id === 'account-bank',
+    );
+    expect(updatedAccount?.name).toBe('Updated Payroll Bank');
+    expect(updatedAccount?.balanceMinor).toBe(84525);
+    expect(pushEditBody.state.transactions).toHaveLength(0);
+
+    const pullAfterRes = await app.request('/v1/sync', {
+      headers: { Authorization: `Bearer ${session.token}` },
+    });
+    expect(pullAfterRes.status).toBe(200);
+    const pullAfter = syncPullResponseSchema.parse(await pullAfterRes.json());
+    const persistedAccount = pullAfter.state?.accounts.find(
+      (a) => a.id === 'account-bank',
+    );
+    expect(persistedAccount?.name).toBe('Updated Payroll Bank');
+    expect(persistedAccount?.balanceMinor).toBe(84525);
+    expect(pullAfter.state?.transactions).toHaveLength(0);
   });
 });

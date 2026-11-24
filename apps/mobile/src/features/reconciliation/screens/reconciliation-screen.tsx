@@ -25,6 +25,7 @@ import {
 } from '@repo/contracts';
 
 import { AppIcon } from '@/common/components/app-icon';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import {
   BottomTabInset,
@@ -33,6 +34,7 @@ import {
 } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 import {
   useAccounts,
   useApplyReconciliation,
@@ -45,6 +47,7 @@ const EMPTY_HISTORY: BalanceReconciliation[] = [];
 export function ReconciliationScreen() {
   const { isAuthenticated, isHydrating } = useRequireAuth();
   const theme = useTheme();
+  const { showSuccess, showError } = useFeedback();
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= 768;
 
@@ -66,7 +69,6 @@ export function ReconciliationScreen() {
   const [actualBalanceInput, setActualBalanceInput] = useState<string>('');
   const [createAdjustment, setCreateAdjustment] = useState<boolean>(true);
   const [notes, setNotes] = useState<string>('Balance adjustment');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorText, setErrorText] = useState<string | null>(null);
 
   // Initialize selected account and actual balance input
@@ -81,7 +83,6 @@ export function ReconciliationScreen() {
   const handleSelectAccount = (account: Account) => {
     setSelectedAccountId(account.id);
     setActualBalanceInput(minorUnitsToDecimalInput(account.balanceMinor));
-    setToastMessage(null);
     setErrorText(null);
   };
 
@@ -105,7 +106,9 @@ export function ReconciliationScreen() {
   const handleApplyAdjustment = async () => {
     if (!selectedAccount) return;
     if (parsedActualMinor === null) {
-      setErrorText('Please enter a valid numeric actual balance.');
+      const msg = 'Please enter a valid numeric actual balance.';
+      setErrorText(msg);
+      showError(msg);
       return;
     }
 
@@ -122,9 +125,11 @@ export function ReconciliationScreen() {
       const adjustmentNotice = result.adjustmentTransaction
         ? ' (Adjustment transaction recorded)'
         : '';
-      setToastMessage(`Account reconciled to ${formattedActual}${adjustmentNotice}`);
+      showSuccess(`Account reconciled to ${formattedActual}${adjustmentNotice}`);
     } catch (err: unknown) {
-      setErrorText(err instanceof Error ? err.message : 'Failed to apply reconciliation.');
+      const msg = getUserErrorMessage(err, 'Failed to apply reconciliation.');
+      setErrorText(msg);
+      showError(msg);
     }
   };
 
@@ -232,24 +237,6 @@ export function ReconciliationScreen() {
                 <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   Compare actual statement balances with your ledger records
                 </ThemedText>
-              </View>
-            )}
-
-            {/* Non-blocking Success Toast Banner */}
-            {toastMessage && (
-              <View className="px-4 py-3 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5">
-                <AppIcon name="checkCircle" size={16} color={theme.positive} />
-                <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
-                  {toastMessage}
-                </ThemedText>
-                <Pressable
-                  onPress={() => setToastMessage(null)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss message"
-                  className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
-                >
-                  <AppIcon name="close" size={15} color={theme.positive} />
-                </Pressable>
               </View>
             )}
 
@@ -444,7 +431,6 @@ export function ReconciliationScreen() {
                         value={actualBalanceInput}
                         onChangeText={(val) => {
                           setActualBalanceInput(normalizeDecimalInput(val));
-                          setToastMessage(null);
                           if (errorText) setErrorText(null);
                         }}
                         placeholder="0.00"

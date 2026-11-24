@@ -19,9 +19,11 @@ import {
   type CategoryBudget,
   type CategoryBudgetStatus,
 } from '@repo/contracts';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 import {
   useAllCategories,
   useCategoryBudgets,
@@ -79,6 +81,7 @@ function getCategoryMonogram(name: string): string {
 
 export function CategoryEnvelopesPanel() {
   const theme = useTheme();
+  const { showSuccess } = useFeedback();
   const [periodMonth, setPeriodMonth] = useState<string>(getCurrentPeriod);
 
   // Queries & Mutations
@@ -174,6 +177,10 @@ export function CategoryEnvelopesPanel() {
       return;
     }
 
+    const wasEditing = Boolean(editingEnvelope);
+    const categoryName =
+      categoryMap.get(selectedCategoryId)?.name ?? 'Envelope';
+
     try {
       setFormError(null);
       const budgetPayload: Omit<CategoryBudget, 'id'> & { id?: string } = {
@@ -192,14 +199,22 @@ export function CategoryEnvelopesPanel() {
       setModalVisible(false);
       setEditingEnvelope(null);
       setConfirmingDelete(false);
+      showSuccess(
+        wasEditing
+          ? `Updated "${categoryName}" budget (${formatMinorUnits(minorUnits)}).`
+          : `Created "${categoryName}" budget (${formatMinorUnits(minorUnits)}).`,
+      );
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Failed to save envelope budget.';
-      setFormError(msg);
+      setFormError(
+        getUserErrorMessage(error, 'Failed to save envelope budget.'),
+      );
     }
   };
 
   const handleConfirmDeleteEnvelope = async () => {
     if (!editingEnvelope) return;
+    const categoryName =
+      categoryMap.get(editingEnvelope.categoryId)?.name ?? 'Envelope';
     try {
       setFormError(null);
       if (editingEnvelope.id) {
@@ -208,9 +223,9 @@ export function CategoryEnvelopesPanel() {
       setModalVisible(false);
       setEditingEnvelope(null);
       setConfirmingDelete(false);
+      showSuccess(`Deleted "${categoryName}" envelope.`);
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : 'Failed to delete envelope.';
-      setFormError(msg);
+      setFormError(getUserErrorMessage(error, 'Failed to delete envelope.'));
     }
   };
 

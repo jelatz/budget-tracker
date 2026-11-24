@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applySyncMutations,
+  createDestructiveConfirmation,
   createInitialSyncDataState,
   DEFAULT_CURRENCY,
   formatAccountLinkedErrorMessage,
@@ -807,5 +808,94 @@ describe('Sync State Reducer', () => {
     ]);
 
     expect(afterTxDeleted.accounts.some((a) => a.id === 'account-savings')).toBe(false);
+  });
+
+  it('updates both metadata and positive, zero, or negative balance via account.updateMetadata and reconciliation.apply without creating adjustment transactions', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+
+    const afterPositiveEdit = applySyncMutations(base, [
+      {
+        opId: 'op-edit-meta-1',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'account.updateMetadata',
+        account: {
+          id: 'account-bank',
+          name: 'Main BPI',
+          accountType: 'BANK',
+          icon: '🏛️',
+          color: '#1E6F4E',
+          currency: DEFAULT_CURRENCY,
+        },
+      },
+      {
+        opId: 'op-edit-bal-1',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'reconciliation.apply',
+        reconciliationId: 'rec-edit-1',
+        accountId: 'account-bank',
+        actualBalanceMinor: 125075,
+        createAdjustment: false,
+        notes: 'Account balance updated',
+        reconciledAt: '2026-11-10T12:01:00.000Z',
+        confirmation: createDestructiveConfirmation('reconcile-account', 'account-bank'),
+      },
+    ]);
+
+    const bankPositive = afterPositiveEdit.accounts.find((a) => a.id === 'account-bank')!;
+    expect(bankPositive.name).toBe('Main BPI');
+    expect(bankPositive.icon).toBe('🏛️');
+    expect(bankPositive.balanceMinor).toBe(125075);
+    expect(afterPositiveEdit.transactions).toHaveLength(0);
+    expect(afterPositiveEdit.reconciliations).toHaveLength(1);
+
+    const afterNegativeAndZeroEdit = applySyncMutations(afterPositiveEdit, [
+      {
+        opId: 'op-edit-bal-neg',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'reconciliation.apply',
+        reconciliationId: 'rec-edit-2',
+        accountId: 'account-bank',
+        actualBalanceMinor: -4500,
+        createAdjustment: false,
+        notes: 'Account balance updated',
+        reconciledAt: '2026-11-10T12:02:00.000Z',
+        confirmation: createDestructiveConfirmation('reconcile-account', 'account-bank'),
+      },
+      {
+        opId: 'op-edit-bal-zero',
+        clientTimestamp: '2026-11-10T12:03:00.000Z',
+        type: 'reconciliation.apply',
+        reconciliationId: 'rec-edit-3',
+        accountId: 'account-cash',
+        actualBalanceMinor: 0,
+        createAdjustment: false,
+        notes: 'Account balance updated',
+        reconciledAt: '2026-11-10T12:03:00.000Z',
+        confirmation: createDestructiveConfirmation('reconcile-account', 'account-cash'),
+      },
+    ]);
+
+    expect(afterNegativeAndZeroEdit.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
+      -4500,
+    );
+    expect(afterNegativeAndZeroEdit.accounts.find((a) => a.id === 'account-cash')!.balanceMinor).toBe(
+      0,
+    );
+    expect(afterNegativeAndZeroEdit.transactions).toHaveLength(0);
+    expect(afterNegativeAndZeroEdit.reconciliations).toHaveLength(3);
+
+    // account.upsert for an existing account still preserves balanceMinor
+    const afterUpsert = applySyncMutations(afterNegativeAndZeroEdit, [
+      {
+        opId: 'op-upsert-guard',
+        clientTimestamp: '2026-11-10T12:04:00.000Z',
+        type: 'account.upsert',
+        account: {
+          ...afterNegativeAndZeroEdit.accounts.find((a) => a.id === 'account-bank')!,
+          balanceMinor: 999999,
+        },
+      },
+    ]);
+    expect(afterUpsert.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(-4500);
   });
 });

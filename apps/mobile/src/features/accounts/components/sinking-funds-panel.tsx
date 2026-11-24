@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -18,9 +18,11 @@ import {
   parseDecimalToMinorUnits,
   type SinkingFund,
 } from '@repo/contracts';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import { Colors, TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 import {
   useAccounts,
   useContributeToSinkingFund,
@@ -57,6 +59,9 @@ function getDefaultTargetDate(): string {
 
 export function SinkingFundsPanel() {
   const theme = useTheme();
+  const { showSuccess } = useFeedback();
+  const editModalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
+  const stashModalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
   const {
     data: sinkingFunds = [],
     isLoading,
@@ -193,30 +198,41 @@ export function SinkingFundsPanel() {
     }
   };
 
+  const showEditModalError = (message: string) => {
+    setEditError(message);
+    editModalScrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
+  const showStashModalError = (message: string) => {
+    setStashError(message);
+    stashModalScrollRef.current?.scrollTo({ y: 0, animated: true });
+  };
+
   const handleSaveFund = async () => {
     if (!name.trim()) {
-      setEditError('Please enter a fund name.');
+      showEditModalError('Please enter a fund name.');
       return;
     }
 
     const minor = parseDecimalToMinorUnits(targetAmountInput);
     if (minor === null || minor <= 0) {
-      setEditError('Please enter a valid positive target amount.');
+      showEditModalError('Please enter a valid positive target amount.');
       return;
     }
 
     const trimmedDate = targetDate.trim();
     if (!/^\d{4}-\d{2}(-\d{2})?$/.test(trimmedDate)) {
-      setEditError('Target date must be in YYYY-MM or YYYY-MM-DD format.');
+      showEditModalError('Target date must be in YYYY-MM or YYYY-MM-DD format.');
       return;
     }
 
     if (!accountId) {
-      setEditError('Please select a holding account.');
+      showEditModalError('Please select a holding account.');
       return;
     }
 
     const monogram = getFundMonogram(name);
+    const wasEditing = Boolean(editingFund);
 
     try {
       setEditError(null);
@@ -239,31 +255,36 @@ export function SinkingFundsPanel() {
         payload.id = editingFund.id;
       }
 
-      await upsertMutation.mutateAsync(payload);
+      const saved = await upsertMutation.mutateAsync(payload);
       setEditModalVisible(false);
       setEditingFund(null);
       setConfirmingDelete(false);
+      showSuccess(
+        wasEditing
+          ? `Updated sinking fund "${saved.name}".`
+          : `Created sinking fund "${saved.name}".`,
+      );
     } catch (error: unknown) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : 'Failed to save sinking fund.';
-      setEditError(msg);
+      showEditModalError(
+        getUserErrorMessage(error, 'Failed to save sinking fund.'),
+      );
     }
   };
 
   const handleDeleteFund = async () => {
     if (!editingFund) return;
+    const deletedName = editingFund.name;
     try {
       setEditError(null);
       await deleteMutation.mutateAsync(editingFund.id);
       setEditModalVisible(false);
       setEditingFund(null);
       setConfirmingDelete(false);
+      showSuccess(`Deleted sinking fund "${deletedName}".`);
     } catch (error: unknown) {
-      const msg =
-        error instanceof Error ? error.message : 'Failed to delete fund.';
-      setEditError(msg);
+      showEditModalError(
+        getUserErrorMessage(error, 'Failed to delete fund.'),
+      );
     }
   };
 
@@ -272,30 +293,32 @@ export function SinkingFundsPanel() {
 
     const minor = parseDecimalToMinorUnits(stashAmountInput);
     if (minor === null || minor <= 0) {
-      setStashError('Please enter a valid positive amount.');
+      showStashModalError('Please enter a valid positive amount.');
       return;
     }
 
     if (!stashSourceAccountId) {
-      setStashError('Please select a source account.');
+      showStashModalError('Please select a source account.');
       return;
     }
 
+    const fundName = stashingFund.name;
     try {
       setStashError(null);
-      await contributeMutation.mutateAsync({
+      const result = await contributeMutation.mutateAsync({
         fundId: stashingFund.id,
         amountMinor: minor,
         sourceAccountId: stashSourceAccountId,
       });
       setStashModalVisible(false);
       setStashingFund(null);
+      showSuccess(
+        `Stashed ${formatMinorUnits(result.transaction.amountMinor, result.transaction.currency)} into "${fundName}".`,
+      );
     } catch (error: unknown) {
-      const msg =
-        error instanceof Error
-          ? error.message
-          : 'Failed to contribute to sinking fund.';
-      setStashError(msg);
+      showStashModalError(
+        getUserErrorMessage(error, 'Failed to contribute to sinking fund.'),
+      );
     }
   };
 
@@ -564,6 +587,7 @@ export function SinkingFundsPanel() {
             className="relative z-10 w-full max-w-[440px] max-h-[90%] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden"
           >
             <ScrollView
+              ref={editModalScrollRef}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ padding: 24, gap: 16 }}
@@ -898,6 +922,7 @@ export function SinkingFundsPanel() {
             className="relative z-10 w-full max-w-[420px] max-h-[90%] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden"
           >
             <ScrollView
+              ref={stashModalScrollRef}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={{ padding: 24, gap: 16 }}

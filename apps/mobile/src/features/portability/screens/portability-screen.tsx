@@ -22,6 +22,7 @@ import {
 } from '@repo/contracts';
 
 import { AppIcon } from '@/common/components/app-icon';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { SyncStatusBadge } from '@/common/components/sync-status-badge';
 import { ThemedText } from '@/common/components/themed-text';
 import {
@@ -31,6 +32,7 @@ import {
 } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 import {
   copyTextToClipboard,
   downloadTextFile,
@@ -54,6 +56,7 @@ type ImportMode = 'merge' | 'overwrite';
 export function PortabilityScreen() {
   const { isAuthenticated, user } = useRequireAuth();
   const theme = useTheme();
+  const { showSuccess, showError } = useFeedback();
   const { width } = useWindowDimensions();
   const isDesktopWeb = Platform.OS === 'web' && width >= 768;
 
@@ -80,14 +83,18 @@ export function PortabilityScreen() {
   const [csvPreviewResult, setCsvPreviewResult] = useState<ParseTransactionsCsvResult | null>(null);
 
   // Notifications & Confirmations
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [confirmingClearAll, setConfirmingClearAll] = useState(false);
+
+  const reportError = (message: string) => {
+    setErrorMessage(message);
+    showError(message);
+  };
 
   // File Download Helper
   const downloadFile = async (content: string, filename: string, mimeType: string) => {
     if (downloadTextFile(content, filename, mimeType)) {
-      setToastMessage(`Downloaded ${filename}`);
+      showSuccess(`Downloaded ${filename}`);
     } else {
       await copyToClipboard(content, filename);
     }
@@ -96,7 +103,7 @@ export function PortabilityScreen() {
   // Clipboard Helper
   const copyToClipboard = async (text: string, label: string) => {
     const copied = await copyTextToClipboard(text);
-    setToastMessage(copied ? `${label} copied to clipboard` : `${label} ready`);
+    showSuccess(copied ? `${label} copied to clipboard` : `${label} ready`);
   };
 
   // File Upload Handler (Web)
@@ -113,7 +120,7 @@ export function PortabilityScreen() {
       setCsvInput(picked.content);
       setCsvPreviewResult(null);
     }
-    setToastMessage(`Loaded file: ${picked.name}`);
+    showSuccess(`Loaded file: ${picked.name}`);
   };
 
   // Export Handlers
@@ -130,7 +137,7 @@ export function PortabilityScreen() {
         await copyToClipboard(jsonString, 'Full JSON Backup');
       }
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to export backup.');
+      reportError(getUserErrorMessage(err, 'Failed to export backup.'));
     }
   };
 
@@ -150,7 +157,7 @@ export function PortabilityScreen() {
         await copyToClipboard(csvString, 'Transactions CSV');
       }
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to export CSV.');
+      reportError(getUserErrorMessage(err, 'Failed to export CSV.'));
     }
   };
 
@@ -161,7 +168,7 @@ export function PortabilityScreen() {
 
     const trimmed = jsonInput.trim();
     if (!trimmed) {
-      setErrorMessage('Please paste or select a JSON backup file to validate.');
+      reportError('Please paste or select a JSON backup file to validate.');
       return;
     }
 
@@ -174,13 +181,14 @@ export function PortabilityScreen() {
           .slice(0, 4)
           .join('\n');
         setErrorMessage(`Invalid backup envelope format:\n${issueDescriptions}`);
+        showError('Invalid backup envelope format. Review the details below.');
         return;
       }
       setValidatedBackup(parseResult.data);
-      setToastMessage('Backup verified and ready to restore');
+      showSuccess('Backup verified and ready to restore.');
     } catch (err: unknown) {
-      setErrorMessage(
-        `JSON Syntax Error: ${err instanceof Error ? err.message : 'Could not parse JSON string'}`,
+      reportError(
+        `JSON Syntax Error: ${getUserErrorMessage(err, 'Could not parse JSON string')}`,
       );
     }
   };
@@ -195,15 +203,15 @@ export function PortabilityScreen() {
         mode: importMode,
       });
 
-      setToastMessage(
+      showSuccess(
         `Backup restored (${result.importedCount} transactions ${
           importMode === 'overwrite' ? 'replaced' : 'merged'
-        })`,
+        }).`,
       );
       setValidatedBackup(null);
       setJsonInput('');
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to restore backup.');
+      reportError(getUserErrorMessage(err, 'Failed to restore backup.'));
     }
   };
 
@@ -214,7 +222,7 @@ export function PortabilityScreen() {
 
     const trimmed = csvInput.trim();
     if (!trimmed) {
-      setErrorMessage('Please paste or select CSV text to preview.');
+      reportError('Please paste or select CSV text to preview.');
       return;
     }
 
@@ -226,11 +234,12 @@ export function PortabilityScreen() {
         setErrorMessage(
           `Could not parse any valid transactions:\n${result.errors.slice(0, 3).join('\n')}`,
         );
+        showError('Could not parse any valid transactions from CSV.');
       } else {
-        setToastMessage(`CSV preview generated: ${result.valid.length} valid transactions`);
+        showSuccess(`CSV preview generated: ${result.valid.length} valid transactions`);
       }
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to parse CSV.');
+      reportError(getUserErrorMessage(err, 'Failed to parse CSV.'));
     }
   };
 
@@ -240,11 +249,13 @@ export function PortabilityScreen() {
 
     try {
       const created = await batchCreateMutation.mutateAsync(csvPreviewResult.valid);
-      setToastMessage(`Imported ${created.length} transactions from CSV`);
+      showSuccess(`Imported ${created.length} transactions from CSV.`);
       setCsvPreviewResult(null);
       setCsvInput('');
     } catch (err: unknown) {
-      setErrorMessage(err instanceof Error ? err.message : 'Failed to import CSV transactions.');
+      reportError(
+        getUserErrorMessage(err, 'Failed to import CSV transactions.'),
+      );
     }
   };
 
@@ -254,10 +265,10 @@ export function PortabilityScreen() {
     try {
       await clearAllMutation.mutateAsync();
       setConfirmingClearAll(false);
-      setToastMessage('All recorded transactions cleared.');
+      showSuccess('All recorded transactions cleared.');
     } catch (error: unknown) {
-      setErrorMessage(
-        error instanceof Error ? error.message : 'Failed to reset entries. Please try again.',
+      reportError(
+        getUserErrorMessage(error, 'Failed to reset entries. Please try again.'),
       );
     }
   };
@@ -356,24 +367,6 @@ export function PortabilityScreen() {
                 <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   Export snapshots, CSV spreadsheets, or restore from backups
                 </ThemedText>
-              </View>
-            )}
-
-            {/* Non-blocking Success Toast Banner */}
-            {toastMessage && (
-              <View className="px-4 py-3 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5">
-                <AppIcon name="checkCircle" size={16} color={theme.positive} />
-                <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
-                  {toastMessage}
-                </ThemedText>
-                <Pressable
-                  onPress={() => setToastMessage(null)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Dismiss notification"
-                  className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
-                >
-                  <AppIcon name="close" size={15} color={theme.positive} />
-                </Pressable>
               </View>
             )}
 

@@ -5,6 +5,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider, type Theme } from 'expo-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import AppTabs from '@/components/app-tabs';
+import { FeedbackProvider } from '@/common/components/feedback-provider';
 import { SyncCoordinator } from '@/common/components/sync-coordinator';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/common/hooks/use-color-scheme';
@@ -85,8 +86,10 @@ export default function TabLayout() {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <ThemeProvider value={colorScheme === 'dark' ? LedgerDarkTheme : LedgerLightTheme}>
-          <SyncCoordinator />
-          <AppTabs />
+          <FeedbackProvider>
+            <SyncCoordinator />
+            <AppTabs />
+          </FeedbackProvider>
         </ThemeProvider>
       </AuthProvider>
     </QueryClientProvider>

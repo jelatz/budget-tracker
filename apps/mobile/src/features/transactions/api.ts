@@ -62,6 +62,35 @@ export async function getAccounts(): Promise<Account[]> {
   return state.accounts.map((a) => accountSchema.parse(a));
 }
 
+function assertTransactionAccountsCompatible(
+  state: SyncDataState,
+  tx: Pick<Transaction, 'type' | 'currency' | 'accountId' | 'toAccountId'>,
+): void {
+  const sourceAccount = state.accounts.find((a) => a.id === tx.accountId);
+  if (!sourceAccount) {
+    throw new Error('Selected account was not found.');
+  }
+  if (sourceAccount.currency !== tx.currency) {
+    throw new Error(
+      `Account currency (${sourceAccount.currency}) does not match transaction currency (${tx.currency}).`,
+    );
+  }
+  if (tx.type === 'TRANSFER') {
+    if (!tx.toAccountId) {
+      throw new Error('Please select a destination account for this transfer.');
+    }
+    const destinationAccount = state.accounts.find((a) => a.id === tx.toAccountId);
+    if (!destinationAccount) {
+      throw new Error('Selected destination account was not found.');
+    }
+    if (destinationAccount.currency !== tx.currency) {
+      throw new Error(
+        `Transfer accounts must use the same currency (${tx.currency}).`,
+      );
+    }
+  }
+}
+
 export async function upsertAccount(input: UpsertAccountInput): Promise<Account> {
   const validated = upsertAccountInputSchema.parse(input);
   const state = getCurrentSyncState();
@@ -69,27 +98,67 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
     ? state.accounts.find((a) => a.id === validated.id)
     : undefined;
 
-  if (existingAccount && existingAccount.balanceMinor === validated.balanceMinor) {
-    const updatedMetadata = {
-      id: existingAccount.id,
-      name: validated.name,
-      accountType: validated.accountType,
-      icon: validated.icon,
-      color: validated.color,
-      currency: validated.currency,
-    };
+  if (existingAccount) {
+    const metadataChanged =
+      existingAccount.name !== validated.name ||
+      existingAccount.accountType !== validated.accountType ||
+      existingAccount.icon !== validated.icon ||
+      existingAccount.color !== validated.color ||
+      existingAccount.currency !== validated.currency;
+    const balanceChanged =
+      existingAccount.balanceMinor !== validated.balanceMinor;
 
-    enqueueSyncMutation({
-      opId: createSyncOpId(),
-      clientTimestamp: new Date().toISOString(),
-      type: 'account.updateMetadata',
-      account: updatedMetadata,
-    });
+    if (!metadataChanged && !balanceChanged) {
+      return accountSchema.parse(existingAccount);
+    }
 
-    return accountSchema.parse({
-      ...updatedMetadata,
-      balanceMinor: existingAccount.balanceMinor,
-    });
+    const nowIso = new Date().toISOString();
+
+    if (metadataChanged) {
+      enqueueSyncMutation({
+        opId: createSyncOpId(),
+        clientTimestamp: nowIso,
+        type: 'account.updateMetadata',
+        account: {
+          id: existingAccount.id,
+          name: validated.name,
+          accountType: validated.accountType,
+          icon: validated.icon,
+          color: validated.color,
+          currency: validated.currency,
+        },
+      });
+    }
+
+    if (balanceChanged) {
+      enqueueSyncMutation({
+        opId: createSyncOpId(),
+        clientTimestamp: nowIso,
+        type: 'reconciliation.apply',
+        reconciliationId: generateEntityId('rec'),
+        accountId: existingAccount.id,
+        actualBalanceMinor: validated.balanceMinor,
+        createAdjustment: false,
+        notes: 'Account balance updated',
+        reconciledAt: nowIso,
+        confirmation: createDestructiveConfirmation(
+          'reconcile-account',
+          existingAccount.id,
+        ),
+      });
+    }
+
+    const updatedAccount = getCurrentSyncState().accounts.find(
+      (a) => a.id === existingAccount.id,
+    );
+    if (
+      !updatedAccount ||
+      updatedAccount.balanceMinor !== validated.balanceMinor
+    ) {
+      throw new Error('Could not update account. Please try again.');
+    }
+
+    return accountSchema.parse(updatedAccount);
   }
 
   const id = validated.id ?? generateEntityId('account');
@@ -104,14 +173,19 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
     balanceMinor: validated.balanceMinor,
   });
 
-  enqueueSyncMutation({
+  const nextState = enqueueSyncMutation({
     opId: createSyncOpId(),
     clientTimestamp: new Date().toISOString(),
     type: 'account.upsert',
     account: savedAccount,
   });
 
-  return savedAccount;
+  const persisted = nextState.accounts.find((a) => a.id === id);
+  if (!persisted) {
+    throw new Error('Could not save account. Please try again.');
+  }
+
+  return accountSchema.parse(persisted);
 }
 
 export async function deleteAccount(id: string): Promise<void> {
@@ -189,6 +263,7 @@ export async function createTransaction(
   input: CreateTransactionInput,
 ): Promise<Transaction> {
   const validatedInput = createTransactionInputSchema.parse(input);
+  const state = getCurrentSyncState();
   const nowIso = new Date().toISOString();
 
   const tx = transactionSchema.parse({
@@ -197,12 +272,20 @@ export async function createTransaction(
     createdAt: nowIso,
   });
 
-  enqueueSyncMutation({
+  assertTransactionAccountsCompatible(state, tx);
+
+  const nextState = enqueueSyncMutation({
     opId: createSyncOpId(),
     clientTimestamp: nowIso,
     type: 'transaction.create',
     transaction: tx,
   });
+
+  if (!nextState.transactions.some((item) => item.id === tx.id)) {
+    throw new Error(
+      'Could not save transaction. Please verify the selected account and try again.',
+    );
+  }
 
   return tx;
 }
@@ -263,14 +346,21 @@ export async function updateTransaction(
     createdAt: existingTx.createdAt,
   });
 
-  enqueueSyncMutation({
+  assertTransactionAccountsCompatible(state, updatedTx);
+
+  const nextState = enqueueSyncMutation({
     opId: createSyncOpId(),
     clientTimestamp: new Date().toISOString(),
     type: 'transaction.update',
     input: validatedInput,
   });
 
-  return updatedTx;
+  const savedTx = nextState.transactions.find((t) => t.id === updatedTx.id);
+  if (!savedTx) {
+    throw new Error('Could not update transaction. Please try again.');
+  }
+
+  return savedTx;
 }
 
 export async function updateMonthlyBudget(
@@ -501,6 +591,23 @@ export async function contributeToSinkingFund(
     throw new Error(`Sinking fund "${fundId}" not found`);
   }
 
+  const sourceAccount = state.accounts.find((a) => a.id === sourceAccountId);
+  if (!sourceAccount) {
+    throw new Error('Selected source account was not found.');
+  }
+
+  if (sourceAccountId !== fund.accountId) {
+    const destAccount = state.accounts.find((a) => a.id === fund.accountId);
+    if (!destAccount) {
+      throw new Error('Sinking fund holding account was not found.');
+    }
+    if (destAccount.currency !== sourceAccount.currency) {
+      throw new Error(
+        `Source account (${sourceAccount.currency}) must match holding account (${destAccount.currency}).`,
+      );
+    }
+  }
+
   const transactionId = generateEntityId('tx');
   const occurredAt = new Date().toISOString();
 
@@ -515,9 +622,15 @@ export async function contributeToSinkingFund(
     occurredAt,
   });
 
+  const updatedFund = nextState.sinkingFunds.find((sf) => sf.id === fundId);
+  const createdTx = nextState.transactions.find((tx) => tx.id === transactionId);
+  if (!updatedFund || !createdTx) {
+    throw new Error('Could not record sinking fund contribution.');
+  }
+
   return {
-    fund: nextState.sinkingFunds.find((sf) => sf.id === fundId)!,
-    transaction: nextState.transactions.find((tx) => tx.id === transactionId)!,
+    fund: updatedFund,
+    transaction: createdTx,
   };
 }
 

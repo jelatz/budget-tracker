@@ -21,6 +21,7 @@ import {
   type TransactionType,
 } from '@repo/contracts';
 
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
 import {
@@ -30,6 +31,7 @@ import {
 } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 
 import { TransactionFormModal } from '../components/transaction-form-modal';
 import {
@@ -87,6 +89,7 @@ export function TransactionsScreen({
 }: TransactionsScreenProps = {}) {
   const { isAuthenticated } = useRequireAuth();
   const theme = useTheme();
+  const { showSuccess, showError } = useFeedback();
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 768;
@@ -99,8 +102,6 @@ export function TransactionsScreen({
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
 
   const accountsQuery = useAccounts();
   const accounts = accountsQuery.data ?? [];
@@ -121,14 +122,6 @@ export function TransactionsScreen({
       setAccountFilter(initialAccountId);
     }
   }, [initialAccountId, accounts]);
-
-  useEffect(() => {
-    if (!toastMessage) {
-      return;
-    }
-    const timer = setTimeout(() => setToastMessage(null), 4000);
-    return () => clearTimeout(timer);
-  }, [toastMessage]);
 
   const accountLookup = useMemo(() => {
     const map = new Map<string, Account>();
@@ -254,30 +247,28 @@ export function TransactionsScreen({
   ]);
 
   const handleOpenAdd = () => {
-    setActionError(null);
     setConfirmingDeleteId(null);
     setEditingTransaction(null);
     setModalVisible(true);
   };
 
   const handleOpenEdit = (tx: Transaction) => {
-    setActionError(null);
     setConfirmingDeleteId(null);
     setEditingTransaction(tx);
     setModalVisible(true);
   };
 
   const handleConfirmDelete = async (transactionId: string) => {
-    setActionError(null);
     try {
       await deleteTransactionMutation.mutateAsync(transactionId);
       setConfirmingDeleteId(null);
-      setToastMessage('Transaction deleted.');
+      showSuccess('Transaction deleted and account balance restored.');
     } catch (error: unknown) {
-      setActionError(
-        error instanceof Error
-          ? error.message
-          : 'Could not delete transaction. Please try again.',
+      showError(
+        getUserErrorMessage(
+          error,
+          'Could not delete transaction. Please try again.',
+        ),
       );
     }
   };
@@ -348,50 +339,6 @@ export function TransactionsScreen({
               </ThemedText>
             </Pressable>
           </View>
-
-          {/* Toast Banner */}
-          {toastMessage ? (
-            <View
-              accessibilityRole="status"
-              className="mb-4 p-3.5 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2"
-            >
-              <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
-                {toastMessage}
-              </ThemedText>
-              <Pressable
-                onPress={() => setToastMessage(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss notification"
-                className="min-h-[44px] px-3 items-center justify-center"
-              >
-                <ThemedText className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark">
-                  Dismiss
-                </ThemedText>
-              </Pressable>
-            </View>
-          ) : null}
-
-          {/* Inline Error Alert */}
-          {actionError ? (
-            <View
-              accessibilityRole="alert"
-              className="mb-4 p-3.5 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2"
-            >
-              <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-                {actionError}
-              </ThemedText>
-              <Pressable
-                onPress={() => setActionError(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                className="min-h-[44px] px-3 items-center justify-center"
-              >
-                <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-                  Dismiss
-                </ThemedText>
-              </Pressable>
-            </View>
-          ) : null}
 
           {/* Segmented Period Selector */}
           <View
@@ -748,8 +695,8 @@ export function TransactionsScreen({
             setModalVisible(false);
             setEditingTransaction(null);
           }}
-          onSaved={(message) => setToastMessage(message)}
-          onDeleted={(message) => setToastMessage(message)}
+          onSaved={showSuccess}
+          onDeleted={showSuccess}
         />
       </SafeAreaView>
     </ThemedView>

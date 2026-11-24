@@ -30,10 +30,12 @@ import {
 } from '@repo/contracts';
 
 import { AppIcon } from '@/common/components/app-icon';
+import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import { BottomTabInset, WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
+import { getUserErrorMessage } from '@/common/lib/error-message';
 import { SplitEditorModal } from '@/features/transactions/components/split-editor-modal';
 import {
   useAccounts,
@@ -105,6 +107,7 @@ export function ExpensesScreen({
 }: ExpensesScreenProps) {
   const { isAuthenticated } = useRequireAuth();
   const theme = useTheme();
+  const { showSuccess, showError } = useFeedback();
 
   // Current Period Metadata for Scheduled Expenses & Category Budgets
   const now = new Date();
@@ -164,10 +167,6 @@ export function ExpensesScreen({
   );
   const [externalAmountSync, setExternalAmountSync] = useState<string | null>(null);
 
-  // Feedback State
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [actionError, setActionError] = useState<string | null>(null);
-
   // Sync deep-link route params cleanly when navigated from Dashboard
   useEffect(() => {
     if (initialTab) {
@@ -199,13 +198,6 @@ export function ExpensesScreen({
       setSearchQuery(initialSearch.trim());
     }
   }, [initialSearch]);
-
-  // Auto-dismiss confirmation toast
-  useEffect(() => {
-    if (!toastMessage) return;
-    const timer = setTimeout(() => setToastMessage(null), 4000);
-    return () => clearTimeout(timer);
-  }, [toastMessage]);
 
   const allExpensesCount = useMemo(
     () => transactions.filter((tx) => tx.type === 'EXPENSE').length,
@@ -411,7 +403,6 @@ export function ExpensesScreen({
     setDraftSplits([]);
     setExternalAmountSync(null);
     setIsSplitModalOpen(false);
-    setActionError(null);
     setFormSessionKey((prev) => prev + 1);
     setModalVisible(true);
   };
@@ -423,7 +414,6 @@ export function ExpensesScreen({
     setDraftSplits(expense.splits ? expense.splits.map((s) => ({ ...s })) : []);
     setExternalAmountSync(null);
     setIsSplitModalOpen(false);
-    setActionError(null);
     setFormSessionKey((prev) => prev + 1);
     setModalVisible(true);
   };
@@ -435,7 +425,6 @@ export function ExpensesScreen({
     setDraftSplits([]);
     setExternalAmountSync(null);
     setIsSplitModalOpen(false);
-    setActionError(null);
     setFormSessionKey((prev) => prev + 1);
     setModalVisible(true);
   };
@@ -465,15 +454,15 @@ export function ExpensesScreen({
         id: payload.id,
       });
       setModalVisible(false);
-      setToastMessage(
-        `Updated expense (${formatMinorUnits(updated.amountMinor, updated.currency)})`,
+      showSuccess(
+        `Updated expense (${formatMinorUnits(updated.amountMinor, updated.currency)}).`,
       );
     } else {
       const created = await createTransactionMutation.mutateAsync(payload.input);
       setModalVisible(false);
       setActiveTab('RECORDED');
-      setToastMessage(
-        `Added expense (${formatMinorUnits(created.amountMinor, created.currency)})`,
+      showSuccess(
+        `Added expense (${formatMinorUnits(created.amountMinor, created.currency)}).`,
       );
     }
   };
@@ -485,7 +474,7 @@ export function ExpensesScreen({
     setModalVisible(false);
     setActiveTab('SCHEDULED');
     const kindLabel = saved.kind === 'INSTALLMENT' ? 'loan / installment' : 'recurring expense';
-    setToastMessage(
+    showSuccess(
       payload.id
         ? `Updated ${kindLabel}: ${saved.name}`
         : `Scheduled ${kindLabel}: ${saved.name} (${formatMinorUnits(saved.amountMinor, saved.currency)})`,
@@ -493,31 +482,27 @@ export function ExpensesScreen({
   };
 
   const handleDeleteExpenseFromCard = async (expenseId: string) => {
-    setActionError(null);
     try {
       await deleteTransactionMutation.mutateAsync(expenseId);
-      setToastMessage('Expense deleted and account balance restored');
+      showSuccess('Expense deleted and account balance restored.');
     } catch (error: unknown) {
-      setActionError(
-        error instanceof Error ? error.message : 'Failed to delete expense.',
-      );
+      showError(getUserErrorMessage(error, 'Failed to delete expense.'));
     }
   };
 
   const handleDeleteExpenseFromModal = async (expenseId: string) => {
     await deleteTransactionMutation.mutateAsync(expenseId);
     setModalVisible(false);
-    setToastMessage('Expense deleted and account balance restored');
+    showSuccess('Expense deleted and account balance restored.');
   };
 
   const handleDeleteCommitmentFromCard = async (commitmentId: string) => {
-    setActionError(null);
     try {
       await deleteCommitmentMutation.mutateAsync(commitmentId);
-      setToastMessage('Scheduled expense deleted');
+      showSuccess('Scheduled expense deleted.');
     } catch (error: unknown) {
-      setActionError(
-        error instanceof Error ? error.message : 'Failed to delete scheduled expense.',
+      showError(
+        getUserErrorMessage(error, 'Failed to delete scheduled expense.'),
       );
     }
   };
@@ -525,39 +510,33 @@ export function ExpensesScreen({
   const handleDeleteCommitmentFromModal = async (commitmentId: string) => {
     await deleteCommitmentMutation.mutateAsync(commitmentId);
     setModalVisible(false);
-    setToastMessage('Scheduled expense deleted');
+    showSuccess('Scheduled expense deleted.');
   };
 
   const handlePayCommitment = async (commitment: RecurringCommitment) => {
-    setActionError(null);
     try {
       const result = await payCommitmentMutation.mutateAsync({
         commitmentId: commitment.id,
       });
-      setToastMessage(
+      showSuccess(
         `Paid ${commitment.name} (${formatMinorUnits(
           result.transaction.amountMinor,
           result.transaction.currency,
-        )}) and deducted from account`,
+        )}) and deducted from account.`,
       );
     } catch (error: unknown) {
-      setActionError(
-        error instanceof Error ? error.message : 'Could not record payment.',
-      );
+      showError(getUserErrorMessage(error, 'Could not record payment.'));
     }
   };
 
   const handleUnpayCommitment = async (commitment: RecurringCommitment) => {
-    setActionError(null);
     try {
       await unpayCommitmentMutation.mutateAsync(commitment.id);
-      setToastMessage(
-        `Reversed payment for ${commitment.name} and restored account balance`,
+      showSuccess(
+        `Reversed payment for ${commitment.name} and restored account balance.`,
       );
     } catch (error: unknown) {
-      setActionError(
-        error instanceof Error ? error.message : 'Could not reverse payment.',
-      );
+      showError(getUserErrorMessage(error, 'Could not reverse payment.'));
     }
   };
 
@@ -759,45 +738,6 @@ export function ExpensesScreen({
               </ThemedText>
             </Pressable>
           </View>
-
-          {/* Toast Feedback Banner */}
-          {toastMessage ? (
-            <View className="px-4 py-3 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5">
-              <AppIcon name="checkCircle" size={16} color={theme.positive} />
-              <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
-                {toastMessage}
-              </ThemedText>
-              <Pressable
-                onPress={() => setToastMessage(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss notification"
-                className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
-              >
-                <AppIcon name="close" size={15} color={theme.positive} />
-              </Pressable>
-            </View>
-          ) : null}
-
-          {/* Action Error Banner */}
-          {actionError ? (
-            <View
-              accessibilityRole="alert"
-              className="px-4 py-3 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5"
-            >
-              <AppIcon name="warning" size={16} color={theme.negative} />
-              <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-                {actionError}
-              </ThemedText>
-              <Pressable
-                onPress={() => setActionError(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss error"
-                className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
-              >
-                <AppIcon name="close" size={15} color={theme.negative} />
-              </Pressable>
-            </View>
-          ) : null}
 
           {/* Loading / Error / Content */}
           {isLoading ? (

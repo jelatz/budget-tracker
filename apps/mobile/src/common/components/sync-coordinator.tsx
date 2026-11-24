@@ -1,12 +1,17 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useVersionGate } from '@/common/hooks/use-version-gate';
 import { subscribeSyncLifecycle } from '@/common/lib/sync-lifecycle';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { TRANSACTION_KEYS } from '@/features/transactions/hooks/use-transactions';
-import { registerSyncHandlers, syncNow } from '@/features/transactions/sync-engine';
+import {
+  registerSyncHandlers,
+  syncNow,
+  useSyncStatus,
+} from '@/features/transactions/sync-engine';
+import { useFeedback } from './feedback-provider';
 import { ThemedText } from './themed-text';
 
 const FOREGROUND_SYNC_INTERVAL_MS = 30_000;
@@ -14,7 +19,21 @@ const FOREGROUND_SYNC_INTERVAL_MS = 30_000;
 export function SyncCoordinator() {
   const queryClient = useQueryClient();
   const { isAuthenticated, logout } = useAuth();
+  const { showError } = useFeedback();
+  const syncStatus = useSyncStatus();
+  const lastSyncErrorRef = useRef<string | null>(null);
   const versionStatus = useVersionGate();
+
+  useEffect(() => {
+    if (syncStatus.phase === 'error' && syncStatus.errorMessage) {
+      if (lastSyncErrorRef.current !== syncStatus.errorMessage) {
+        lastSyncErrorRef.current = syncStatus.errorMessage;
+        showError(syncStatus.errorMessage);
+      }
+      return;
+    }
+    lastSyncErrorRef.current = null;
+  }, [syncStatus.phase, syncStatus.errorMessage, showError]);
 
   useEffect(() => {
     return registerSyncHandlers({
