@@ -77,8 +77,6 @@ function getCategoryMonogram(name: string): string {
   return words[0].slice(0, 2).toUpperCase();
 }
 
-const AMOUNT_PRESETS = [5000, 10000, 25000, 50000] as const;
-
 export function CategoryEnvelopesPanel() {
   const theme = useTheme();
   const [periodMonth, setPeriodMonth] = useState<string>(getCurrentPeriod);
@@ -704,30 +702,6 @@ export function CategoryEnvelopesPanel() {
                       placeholderTextColor={theme.textMuted}
                       editable={!isSubmitting}
                     />
-                  </View>
-
-                  {/* Amount Presets */}
-                  <View className="flex-row gap-2 flex-wrap mt-1">
-                    {AMOUNT_PRESETS.map((presetMinor) => (
-                      <Pressable
-                        key={presetMinor}
-                        onPress={() => {
-                          setAssignedInput(minorUnitsToDecimalInput(presetMinor));
-                          if (formError) setFormError(null);
-                        }}
-                        disabled={isSubmitting}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Set budget to ${formatMinorUnits(presetMinor)}`}
-                        className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                      >
-                        <ThemedText
-                          numeric
-                          className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
-                        >
-                          {formatMinorUnits(presetMinor)}
-                        </ThemedText>
-                      </Pressable>
-                    ))}
                   </View>
                 </View>
 

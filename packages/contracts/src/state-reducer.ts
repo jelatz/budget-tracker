@@ -284,6 +284,119 @@ function mergeById<T extends { id: string }>(
   return Array.from(map.values());
 }
 
+export interface AccountLinkedRecordsSummary {
+  transactions: Transaction[];
+  expenseCount: number;
+  incomeCount: number;
+  transferCount: number;
+  recurringCommitments: SyncDataState['recurringCommitments'];
+  sinkingFunds: SyncDataState['sinkingFunds'];
+  totalCount: number;
+  isLinked: boolean;
+}
+
+/**
+ * Finds all transactions, recurring commitments, and sinking funds linked to an account.
+ */
+export function getAccountLinkedRecords(
+  state: Pick<SyncDataState, 'transactions' | 'recurringCommitments' | 'sinkingFunds'>,
+  accountId: string,
+): AccountLinkedRecordsSummary {
+  const transactions = state.transactions.filter(
+    (tx) => tx.accountId === accountId || tx.toAccountId === accountId,
+  );
+  let expenseCount = 0;
+  let incomeCount = 0;
+  let transferCount = 0;
+  for (const tx of transactions) {
+    if (tx.type === 'EXPENSE') {
+      expenseCount += 1;
+    } else if (tx.type === 'INCOME') {
+      incomeCount += 1;
+    } else if (tx.type === 'TRANSFER') {
+      transferCount += 1;
+    }
+  }
+  const recurringCommitments = state.recurringCommitments.filter(
+    (rc) => rc.accountId === accountId,
+  );
+  const sinkingFunds = state.sinkingFunds.filter((sf) => sf.accountId === accountId);
+  const totalCount =
+    transactions.length + recurringCommitments.length + sinkingFunds.length;
+
+  return {
+    transactions,
+    expenseCount,
+    incomeCount,
+    transferCount,
+    recurringCommitments,
+    sinkingFunds,
+    totalCount,
+    isLinked: totalCount > 0,
+  };
+}
+
+function formatLinkedNamesPreview(items: readonly { name: string }[]): string {
+  const preview = items
+    .slice(0, 2)
+    .map((item) => item.name)
+    .join(', ');
+  return items.length > 2 ? `${preview}, ...` : preview;
+}
+
+/**
+ * Formats a human-readable error message describing why an account cannot be deleted.
+ */
+export function formatAccountLinkedErrorMessage(
+  summary: AccountLinkedRecordsSummary,
+): string {
+  if (summary.totalCount === 0) {
+    return 'Account has no linked records.';
+  }
+
+  const parts: string[] = [];
+
+  if (summary.transactions.length > 0) {
+    const typeParts: string[] = [];
+    if (summary.expenseCount > 0) {
+      typeParts.push(
+        `${summary.expenseCount} ${summary.expenseCount === 1 ? 'expense' : 'expenses'}`,
+      );
+    }
+    if (summary.incomeCount > 0) {
+      typeParts.push(`${summary.incomeCount} income`);
+    }
+    if (summary.transferCount > 0) {
+      typeParts.push(
+        `${summary.transferCount} ${summary.transferCount === 1 ? 'transfer' : 'transfers'}`,
+      );
+    }
+    const txCount = summary.transactions.length;
+    parts.push(
+      `${txCount} ${txCount === 1 ? 'transaction' : 'transactions'} (${typeParts.join(', ')})`,
+    );
+  }
+
+  if (summary.recurringCommitments.length > 0) {
+    const count = summary.recurringCommitments.length;
+    const namesPreview = formatLinkedNamesPreview(summary.recurringCommitments);
+    parts.push(
+      `${count} ${count === 1 ? 'recurring bill' : 'recurring bills'} (${namesPreview})`,
+    );
+  }
+
+  if (summary.sinkingFunds.length > 0) {
+    const count = summary.sinkingFunds.length;
+    const namesPreview = formatLinkedNamesPreview(summary.sinkingFunds);
+    parts.push(
+      `${count} ${count === 1 ? 'sinking fund' : 'sinking funds'} (${namesPreview})`,
+    );
+  }
+
+  const joined = parts.length === 2 ? `${parts[0]} and ${parts[1]}` : parts.join(', ');
+  return `Cannot delete this account: linked to ${joined}.`;
+}
+
 /**
  * Pure, replay-safe state transition for a single sync mutation.
  * Safe when mutations from multiple devices replay concurrently.
@@ -326,13 +439,7 @@ export function applySyncMutation(
       if (state.accounts.length <= 1) {
         return state;
       }
-      const isLinked =
-        state.transactions.some(
-          (tx) => tx.accountId === mutation.id || tx.toAccountId === mutation.id,
-        ) ||
-        state.recurringCommitments.some((rc) => rc.accountId === mutation.id) ||
-        state.sinkingFunds.some((sf) => sf.accountId === mutation.id);
-      if (isLinked) {
+      if (getAccountLinkedRecords(state, mutation.id).isLinked) {
         return state;
       }
 

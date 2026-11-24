@@ -13,7 +13,6 @@ import {
   formatDateInputValue,
   formatMinorUnits,
   getAccountTypeLabel,
-  getNextDueDatePreset,
   normalizeDecimalInput,
   parseCalendarDate,
   parseDateInputToIso,
@@ -58,8 +57,6 @@ const FREQUENCY_OPTIONS: readonly { value: CommitmentFrequency; label: string }[
   { value: 'QUARTERLY', label: 'Quarterly' },
   { value: 'YEARLY', label: 'Yearly' },
 ];
-
-const DUE_LABEL_PRESETS = ['PAYROLL', 'Weekly', 'No fixed date'] as const;
 
 export function InlineExpenseForm({
   activeTab,
@@ -564,7 +561,7 @@ export function InlineExpenseForm({
             </View>
           </View>
 
-          {/* Frequency & Label Preset Chips */}
+          {/* Frequency Selector */}
           <View className="flex-row flex-wrap items-center gap-2">
             {FREQUENCY_OPTIONS.map((opt) => {
               const isSelected = frequency === opt.value;
@@ -574,7 +571,7 @@ export function InlineExpenseForm({
                   onPress={() => setFrequency(opt.value)}
                   disabled={isSaving}
                   accessibilityRole="button"
-                  accessibilityLabel={`Quick frequency ${opt.label}`}
+                  accessibilityLabel={`Frequency ${opt.label}`}
                   accessibilityState={{ selected: isSelected }}
                   className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
                     isSelected
@@ -590,95 +587,6 @@ export function InlineExpenseForm({
                     }`}
                   >
                     {opt.label}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-
-            {DUE_LABEL_PRESETS.map((presetLabel) => {
-              const isSelected =
-                dueLabelInput.trim().toLowerCase() === presetLabel.toLowerCase();
-              return (
-                <Pressable
-                  key={presetLabel}
-                  onPress={() => {
-                    if (isSelected) {
-                      setDueLabelInput('');
-                      return;
-                    }
-                    setDueLabelInput(presetLabel);
-                    if (presetLabel === 'Weekly') setFrequency('WEEKLY');
-                    if (presetLabel === 'PAYROLL') setIsAutoPaid(true);
-                  }}
-                  disabled={isSaving}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Quick schedule label ${presetLabel}`}
-                  accessibilityState={{ selected: isSelected }}
-                  className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
-                    isSelected
-                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                      : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                  }`}
-                >
-                  <ThemedText
-                    className={`text-xs font-semibold ${
-                      isSelected
-                        ? 'text-brand-500 dark:text-brand-400'
-                        : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
-                    }`}
-                  >
-                    {presetLabel}
-                  </ThemedText>
-                </Pressable>
-              );
-            })}
-
-            {(
-              [
-                { key: 'TODAY', label: 'Due: Today' },
-                { key: 'NEXT_WEEK', label: 'Due: +1 Week' },
-                { key: 'NEXT_MONTH', label: 'Due: Next Month' },
-              ] as const
-            ).map((preset) => {
-              const anchorDay = Number.parseInt(dueDayInput.trim(), 10);
-              const presetDate = getNextDueDatePreset(
-                preset.key,
-                Number.isFinite(anchorDay) ? anchorDay : undefined,
-              );
-              const isSelected = nextDueDateInput.trim() === presetDate;
-              return (
-                <Pressable
-                  key={preset.key}
-                  onPress={() => {
-                    if (isSelected) {
-                      setNextDueDateInput('');
-                      return;
-                    }
-                    setNextDueDateInput(presetDate);
-                    const parsed = parseCalendarDate(presetDate);
-                    if (parsed) {
-                      setDueDayInput(String(parsed.getDate()));
-                    }
-                    if (formError) setFormError(null);
-                  }}
-                  disabled={isSaving}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Set next due date to ${preset.label}`}
-                  accessibilityState={{ selected: isSelected }}
-                  className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
-                    isSelected
-                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                      : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                  }`}
-                >
-                  <ThemedText
-                    className={`text-xs font-semibold ${
-                      isSelected
-                        ? 'text-brand-500 dark:text-brand-400'
-                        : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
-                    }`}
-                  >
-                    {preset.label}
                   </ThemedText>
                 </Pressable>
               );

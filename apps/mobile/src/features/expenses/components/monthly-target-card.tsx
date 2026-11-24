@@ -29,8 +29,6 @@ export interface MonthlyTargetCardProps {
   isUpdating?: boolean;
 }
 
-const PRESET_AMOUNTS_MINOR = [150000, 250000, 400000, 500000] as const;
-
 export function MonthlyTargetCard({
   budget,
   currency = DEFAULT_CURRENCY,
@@ -38,10 +36,6 @@ export function MonthlyTargetCard({
   isUpdating = false,
 }: MonthlyTargetCardProps) {
   const theme = useTheme();
-  const presets = PRESET_AMOUNTS_MINOR.map((minor) => ({
-    minor,
-    label: formatMinorUnits(minor, currency).replace(/\.00$/, ''),
-  }));
   const [modalVisible, setModalVisible] = useState(false);
   const [targetInput, setTargetInput] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -80,11 +74,6 @@ export function MonthlyTargetCard({
       setModalVisible(false);
       setErrorMessage(null);
     }
-  };
-
-  const handleSelectPreset = (minor: number) => {
-    setTargetInput(minorUnitsToDecimalInput(minor));
-    setErrorMessage(null);
   };
 
   const handleSave = async () => {
@@ -259,44 +248,6 @@ export function MonthlyTargetCard({
                       autoFocus
                       editable={!isBusy}
                     />
-                  </View>
-                </View>
-
-                {/* Quick 1-Tap Presets */}
-                <View className="gap-2">
-                  <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                    Quick Presets
-                  </ThemedText>
-                  <View className="flex-row gap-2 flex-wrap">
-                    {presets.map((preset) => {
-                      const isSelected = parseDecimalToMinorUnits(targetInput) === preset.minor;
-                      return (
-                        <Pressable
-                          key={preset.label}
-                          accessibilityRole="button"
-                          accessibilityState={{ selected: isSelected }}
-                          accessibilityLabel={`Set monthly target to ${preset.label}`}
-                          onPress={() => handleSelectPreset(preset.minor)}
-                          disabled={isBusy}
-                          className={`min-h-[44px] py-2 px-3.5 rounded-xl border items-center justify-center ${
-                            isSelected
-                              ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
-                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:bg-ledger-selected dark:active:bg-ledger-selected-dark'
-                          }`}
-                        >
-                          <ThemedText
-                            numeric
-                            className={`text-xs ${
-                              isSelected
-                                ? 'font-bold text-ledger-canvas dark:text-ledger-canvas-dark'
-                                : 'font-semibold text-ledger-ink dark:text-ledger-ink-dark'
-                            }`}
-                          >
-                            {preset.label}
-                          </ThemedText>
-                        </Pressable>
-                      );
-                    })}
                   </View>
                 </View>
 

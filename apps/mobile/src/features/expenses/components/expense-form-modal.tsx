@@ -19,7 +19,6 @@ import {
   formatDateInputValue,
   formatMinorUnits,
   getAccountTypeLabel,
-  getNextDueDatePreset,
   minorUnitsToDecimalInput,
   normalizeDecimalInput,
   parseCalendarDate,
@@ -70,7 +69,6 @@ export interface ExpenseFormModalProps {
   onClearExternalAmountSync?: () => void;
 }
 
-const QUICK_DAY_PRESETS = [1, 5, 10, 15, 20, 25, 30] as const;
 const CUSTOM_CATEGORY_ICONS = ['🏷️', '🏠', '🛒', '🚕', '🎬', '💊', '🏦', '📅', '📱', '✨'] as const;
 const DEFAULT_CUSTOM_CATEGORY_COLOR = DEFAULT_CATEGORIES[0].color;
 
@@ -568,8 +566,6 @@ export function ExpenseFormModal({
       : mode === 'RECURRING'
         ? 'Save Recurring Expense'
         : 'Save Expense';
-
-  const dueDayNumeric = Number.parseInt(dueDayInput.trim(), 10);
 
   return (
     <Modal
@@ -1115,38 +1111,6 @@ export function ExpenseFormModal({
                         style={TABULAR_NUMS_STYLE}
                         className="w-20 h-12 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-bold text-center"
                       />
-                      {QUICK_DAY_PRESETS.map((day) => {
-                        const isSelected = dueDayNumeric === day;
-                        return (
-                          <Pressable
-                            key={day}
-                            onPress={() => {
-                              setDueDayInput(String(day));
-                              if (formError) setFormError(null);
-                            }}
-                            disabled={isBusy}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Due day ${day}`}
-                            accessibilityState={{ selected: isSelected }}
-                            className={`min-w-[44px] min-h-[44px] px-2.5 py-2 rounded-xl border items-center justify-center ${
-                              isSelected
-                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                            }`}
-                          >
-                            <ThemedText
-                              numeric
-                              className={`text-xs font-bold ${
-                                isSelected
-                                  ? 'text-brand-500 dark:text-brand-400'
-                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
-                              }`}
-                            >
-                              {day}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
                     </View>
                   </View>
                 </View>
@@ -1174,52 +1138,6 @@ export function ExpenseFormModal({
                       style={TABULAR_NUMS_STYLE}
                       className="flex-1 min-w-[200px] h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-medium"
                     />
-                    {(
-                      [
-                        { key: 'TODAY', label: 'Today' },
-                        { key: 'NEXT_WEEK', label: '+1 Week' },
-                        { key: 'NEXT_MONTH', label: 'Next Month' },
-                      ] as const
-                    ).map((preset) => {
-                      const anchorDay = Number.parseInt(dueDayInput.trim(), 10);
-                      const presetDate = getNextDueDatePreset(
-                        preset.key,
-                        Number.isFinite(anchorDay) ? anchorDay : undefined,
-                      );
-                      const isSelected = nextDueDateInput.trim() === presetDate;
-                      return (
-                        <Pressable
-                          key={preset.key}
-                          onPress={() => {
-                            setNextDueDateInput(presetDate);
-                            const parsed = parseCalendarDate(presetDate);
-                            if (parsed) {
-                              setDueDayInput(String(parsed.getDate()));
-                            }
-                            if (formError) setFormError(null);
-                          }}
-                          disabled={isBusy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Set next due date to ${preset.label}`}
-                          accessibilityState={{ selected: isSelected }}
-                          className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
-                            isSelected
-                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                          }`}
-                        >
-                          <ThemedText
-                            className={`text-xs font-semibold ${
-                              isSelected
-                                ? 'text-brand-500 dark:text-brand-400'
-                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
-                            }`}
-                          >
-                            {preset.label}
-                          </ThemedText>
-                        </Pressable>
-                      );
-                    })}
                     {nextDueDateInput.trim().length > 0 && (
                       <Pressable
                         onPress={() => {
@@ -1257,46 +1175,6 @@ export function ExpenseFormModal({
                       editable={!isBusy}
                       className="flex-1 min-w-[200px] h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-medium"
                     />
-                    {(['PAYROLL', 'Weekly', 'No fixed date'] as const).map((presetLabel) => {
-                      const isSelected =
-                        dueLabelInput.trim().toLowerCase() === presetLabel.toLowerCase();
-                      return (
-                        <Pressable
-                          key={presetLabel}
-                          onPress={() => {
-                            if (isSelected) {
-                              setDueLabelInput('');
-                              return;
-                            }
-                            setDueLabelInput(presetLabel);
-                            if (presetLabel === 'Weekly') {
-                              setFrequency('WEEKLY');
-                            } else if (presetLabel === 'PAYROLL') {
-                              setIsAutoPaid(true);
-                            }
-                          }}
-                          disabled={isBusy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Set schedule label ${presetLabel}`}
-                          accessibilityState={{ selected: isSelected }}
-                          className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
-                            isSelected
-                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                          }`}
-                        >
-                          <ThemedText
-                            className={`text-xs font-semibold ${
-                              isSelected
-                                ? 'text-brand-500 dark:text-brand-400'
-                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
-                            }`}
-                          >
-                            {presetLabel}
-                          </ThemedText>
-                        </Pressable>
-                      );
-                    })}
                   </View>
                 </View>
 

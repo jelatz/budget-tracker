@@ -15,7 +15,9 @@ import {
   ACCOUNT_TYPE_LABELS,
   DEFAULT_CURRENCY,
   DEFAULT_CURRENCY_SYMBOL,
+  formatAccountLinkedErrorMessage,
   formatMinorUnits,
+  getAccountLinkedRecords,
   minorUnitsToDecimalInput,
   normalizeDecimalInput,
   parseDecimalToMinorUnits,
@@ -36,7 +38,9 @@ import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAccounts,
   useDeleteAccount,
+  useRecurringCommitments,
   useSinkingFunds,
+  useTransactions,
   useUpsertAccount,
 } from '@/features/transactions/hooks/use-transactions';
 import { SinkingFundsPanel } from '../components/sinking-funds-panel';
@@ -50,13 +54,6 @@ interface AccountTypeConfig {
   iconName: AppIconName;
   defaultIcon: string;
   defaultColor: string;
-}
-
-interface AccountQuickPreset {
-  name: string;
-  icon: string;
-  color: string;
-  accountType: AccountType;
 }
 
 const ACCOUNT_TYPE_OPTIONS: readonly AccountTypeConfig[] = [
@@ -97,25 +94,6 @@ const ACCOUNT_TYPE_OPTIONS: readonly AccountTypeConfig[] = [
 const ACCOUNT_TYPE_CONFIG_MAP = new Map<AccountType, AccountTypeConfig>(
   ACCOUNT_TYPE_OPTIONS.map((opt) => [opt.value, opt]),
 );
-
-const ACCOUNT_PRESETS: readonly AccountQuickPreset[] = [
-  { name: 'BPI', icon: '🏦', color: '#B4432C', accountType: 'BANK' },
-  { name: 'BDO', icon: '🏦', color: '#2C5F6E', accountType: 'BANK' },
-  { name: 'UnionBank', icon: '🏛️', color: '#A16207', accountType: 'BANK' },
-  { name: 'Metrobank', icon: '🏦', color: '#2C5F6E', accountType: 'BANK' },
-  { name: 'GoTyme', icon: '💎', color: '#2C5F6E', accountType: 'BANK' },
-  { name: 'SeaBank', icon: '🌊', color: '#A16207', accountType: 'BANK' },
-  { name: 'GCash', icon: '📱', color: '#2C5F6E', accountType: 'E_WALLET' },
-  { name: 'Maya', icon: '💚', color: '#1E6F4E', accountType: 'E_WALLET' },
-  { name: 'GrabPay', icon: '🟢', color: '#1B4332', accountType: 'E_WALLET' },
-  { name: 'ShopeePay', icon: '🟠', color: '#B4432C', accountType: 'E_WALLET' },
-  { name: 'Cash on Hand', icon: '💵', color: '#1E6F4E', accountType: 'CASH' },
-  { name: 'Petty Cash', icon: '🪙', color: '#A16207', accountType: 'CASH' },
-  { name: 'BPI Credit', icon: '💳', color: '#B4432C', accountType: 'CREDIT_CARD' },
-  { name: 'BDO Credit', icon: '💳', color: '#2C5F6E', accountType: 'CREDIT_CARD' },
-  { name: 'UnionBank Card', icon: '💳', color: '#A16207', accountType: 'CREDIT_CARD' },
-  { name: 'Metrobank Card', icon: '💳', color: '#5C584F', accountType: 'CREDIT_CARD' },
-];
 
 const ACCOUNT_ICONS = ['🏦', '🏛️', '📱', '💚', '💳', '💵', '🪙', '🐷', '💎', '🌊'] as const;
 
@@ -232,6 +210,10 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   const theme = useTheme();
   const accountsQuery = useAccounts();
   const accounts = accountsQuery.data ?? [];
+  const transactionsQuery = useTransactions();
+  const transactions = transactionsQuery.data ?? [];
+  const commitmentsQuery = useRecurringCommitments();
+  const recurringCommitments = commitmentsQuery.data ?? [];
   const sinkingFundsQuery = useSinkingFunds();
   const sinkingFunds = sinkingFundsQuery.data ?? [];
   const upsertAccountMutation = useUpsertAccount();
@@ -301,10 +283,13 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
     [creditCardAccounts],
   );
 
-  const filteredPresets = useMemo(
-    () => ACCOUNT_PRESETS.filter((preset) => preset.accountType === accountType),
-    [accountType],
-  );
+  const editingLinkedRecords = useMemo(() => {
+    if (!editingAccount) return null;
+    return getAccountLinkedRecords(
+      { transactions, recurringCommitments, sinkingFunds },
+      editingAccount.id,
+    );
+  }, [editingAccount, transactions, recurringCommitments, sinkingFunds]);
 
   const openAddModal = (initialType: AccountType = 'BANK') => {
     const config = getTypeConfig(initialType);
@@ -347,14 +332,6 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
       setSelectedIcon(config.defaultIcon);
       setSelectedColor(config.defaultColor);
     }
-    setFormError(null);
-  };
-
-  const handleApplyPreset = (preset: AccountQuickPreset) => {
-    setNameInput(preset.name);
-    setSelectedIcon(preset.icon);
-    setSelectedColor(preset.color);
-    setAccountType(preset.accountType);
     setFormError(null);
   };
 
@@ -850,29 +827,6 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                   </View>
                 </View>
 
-                {/* Quick Presets */}
-                <View className="gap-1.5">
-                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    Quick Presets
-                  </ThemedText>
-                  <View className="flex-row flex-wrap gap-2">
-                    {filteredPresets.map((preset) => (
-                      <Pressable
-                        key={preset.name}
-                        onPress={() => handleApplyPreset(preset)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Use ${preset.name} preset`}
-                        className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1.5 active:opacity-75"
-                      >
-                        <ThemedText className="text-sm">{preset.icon}</ThemedText>
-                        <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                          {preset.name}
-                        </ThemedText>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-
                 {/* Name Input */}
                 <View className="gap-1.5">
                   <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
@@ -1009,9 +963,91 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                     )}
                   </Pressable>
 
-                  <View className="flex-row gap-2.5">
-                    {confirmingDelete && editingAccount ? (
-                      <>
+                  {confirmingDelete && editingAccount ? (
+                    editingLinkedRecords?.isLinked ? (
+                      <View className="p-3.5 rounded-2xl bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-2.5">
+                        <ThemedText className="text-xs font-semibold text-ledger-ochre dark:text-ledger-ochre-dark leading-4">
+                          {formatAccountLinkedErrorMessage(editingLinkedRecords)}
+                        </ThemedText>
+                        <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                          Remove or reassign those linked records first, then delete this account.
+                        </ThemedText>
+                        <View className="gap-2">
+                          {editingLinkedRecords.transactions.length > 0 ? (
+                            <Pressable
+                              onPress={() => {
+                                setConfirmingDelete(false);
+                                setModalVisible(false);
+                                router.push({
+                                  pathname: '/transactions',
+                                  params: { accountId: editingAccount.id },
+                                });
+                              }}
+                              disabled={isBusy}
+                              accessibilityRole="button"
+                              accessibilityLabel={`View linked transactions (${editingLinkedRecords.transactions.length})`}
+                              className="min-h-[44px] px-3 py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                            >
+                              <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                                {`View Linked Transactions (${editingLinkedRecords.transactions.length})`}
+                              </ThemedText>
+                            </Pressable>
+                          ) : null}
+
+                          {editingLinkedRecords.recurringCommitments.length > 0 ? (
+                            <Pressable
+                              onPress={() => {
+                                setConfirmingDelete(false);
+                                setModalVisible(false);
+                                router.push({
+                                  pathname: '/expenses',
+                                  params: { tab: 'scheduled', accountId: editingAccount.id },
+                                });
+                              }}
+                              disabled={isBusy}
+                              accessibilityRole="button"
+                              accessibilityLabel={`View linked bills (${editingLinkedRecords.recurringCommitments.length})`}
+                              className="min-h-[44px] px-3 py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                            >
+                              <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                                {`View Linked Bills (${editingLinkedRecords.recurringCommitments.length})`}
+                              </ThemedText>
+                            </Pressable>
+                          ) : null}
+
+                          {editingLinkedRecords.sinkingFunds.length > 0 ? (
+                            <Pressable
+                              onPress={() => {
+                                setConfirmingDelete(false);
+                                setModalVisible(false);
+                                setActiveTab('SINKING_FUNDS');
+                              }}
+                              disabled={isBusy}
+                              accessibilityRole="button"
+                              accessibilityLabel={`View sinking funds (${editingLinkedRecords.sinkingFunds.length})`}
+                              className="min-h-[44px] px-3 py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                            >
+                              <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                                {`View Sinking Funds (${editingLinkedRecords.sinkingFunds.length})`}
+                              </ThemedText>
+                            </Pressable>
+                          ) : null}
+
+                          <Pressable
+                            onPress={() => setConfirmingDelete(false)}
+                            disabled={isBusy}
+                            accessibilityRole="button"
+                            accessibilityLabel="Keep account"
+                            className="min-h-[44px] py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                          >
+                            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                              Keep Account
+                            </ThemedText>
+                          </Pressable>
+                        </View>
+                      </View>
+                    ) : (
+                      <View className="flex-row gap-2.5">
                         <Pressable
                           onPress={() => setConfirmingDelete(false)}
                           disabled={isBusy}
@@ -1039,37 +1075,37 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                             </ThemedText>
                           )}
                         </Pressable>
-                      </>
-                    ) : (
-                      <>
+                      </View>
+                    )
+                  ) : (
+                    <View className="flex-row gap-2.5">
+                      <Pressable
+                        onPress={handleCloseModal}
+                        disabled={isBusy}
+                        accessibilityRole="button"
+                        accessibilityLabel="Cancel"
+                        className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                      >
+                        <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                          Cancel
+                        </ThemedText>
+                      </Pressable>
+
+                      {editingAccount ? (
                         <Pressable
-                          onPress={handleCloseModal}
+                          onPress={() => setConfirmingDelete(true)}
                           disabled={isBusy}
                           accessibilityRole="button"
-                          accessibilityLabel="Cancel"
-                          className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                          accessibilityLabel={`Delete ${editingAccount.name}`}
+                          className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                         >
-                          <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
-                            Cancel
+                          <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                            Delete
                           </ThemedText>
                         </Pressable>
-
-                        {editingAccount ? (
-                          <Pressable
-                            onPress={() => setConfirmingDelete(true)}
-                            disabled={isBusy}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Delete ${editingAccount.name}`}
-                            className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-                          >
-                            <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-                              Delete
-                            </ThemedText>
-                          </Pressable>
-                        ) : null}
-                      </>
-                    )}
-                  </View>
+                      ) : null}
+                    </View>
+                  )}
                 </View>
               </ScrollView>
             </View>

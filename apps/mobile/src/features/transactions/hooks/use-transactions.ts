@@ -9,7 +9,6 @@ import {
   type CreateTransactionInput,
   type DashboardMetrics,
   type DashboardPeriod,
-  type QuickPreset,
   type RecurringCommitmentInput,
   type SinkingFund,
   type UpdateTransactionInput,
@@ -24,7 +23,6 @@ import {
   createTransactionsBatch,
   deleteAccount,
   deleteCategoryBudget,
-  deleteQuickPreset,
   deleteRecurringCommitment,
   deleteSinkingFund,
   deleteTransaction,
@@ -32,7 +30,6 @@ import {
   getAccounts,
   getCategories,
   getCategoryBudgets,
-  getQuickPresets,
   getReconciliations,
   getRecurringCommitments,
   getSafeToSpendMetrics,
@@ -47,7 +44,6 @@ import {
   updateTransaction,
   upsertAccount,
   upsertCategoryBudget,
-  upsertQuickPreset,
   upsertRecurringCommitment,
   upsertSinkingFund,
 } from '../api';
@@ -63,7 +59,6 @@ export const TRANSACTION_KEYS = {
   allCategoryBudgets: ['transactions-domain', 'category-budgets'] as const,
   recurringCommitments: ['transactions-domain', 'recurring-commitments'] as const,
   sinkingFunds: ['transactions-domain', 'sinking-funds'] as const,
-  quickPresets: ['transactions-domain', 'quick-presets'] as const,
   safeToSpend: (dateIso?: string) =>
     ['transactions-domain', 'safe-to-spend', dateIso ?? 'current'] as const,
   reconciliations: ['transactions-domain', 'reconciliations'] as const,
@@ -405,39 +400,6 @@ export function useDeleteSinkingFund() {
 
   return useMutation({
     mutationFn: (id: string) => deleteSinkingFund(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
-  });
-}
-
-// ==========================================
-// Quick Presets Hooks
-// ==========================================
-
-export function useQuickPresets() {
-  return useQuery({
-    queryKey: TRANSACTION_KEYS.quickPresets,
-    queryFn: getQuickPresets,
-  });
-}
-
-export function useUpsertQuickPreset() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: Omit<QuickPreset, 'id'> & { id?: string }) => upsertQuickPreset(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
-  });
-}
-
-export function useDeleteQuickPreset() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: string) => deleteQuickPreset(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },

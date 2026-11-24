@@ -42,23 +42,13 @@ const FUND_COLORS = [
 
 const DEFAULT_FUND_COLOR = FUND_COLORS[0].value;
 
-const AMOUNT_PRESETS = [50000, 100000, 250000, 500000] as const;
-const STASH_QUICK_AMOUNTS = [2500, 5000, 10000] as const;
-
 function getFundMonogram(fundName: string): string {
   return fundName.trim().slice(0, 2).toUpperCase() || 'SF';
 }
 
-function getDatePreset(type: '3_MOS' | '6_MOS' | '1_YR' | 'EOY'): string {
-  const now = new Date();
-  if (type === 'EOY') {
-    return `${now.getFullYear()}-12-31`;
-  }
-  const target = new Date(now);
-  if (type === '3_MOS') target.setMonth(target.getMonth() + 3);
-  if (type === '6_MOS') target.setMonth(target.getMonth() + 6);
-  if (type === '1_YR') target.setFullYear(target.getFullYear() + 1);
-
+function getDefaultTargetDate(): string {
+  const target = new Date();
+  target.setMonth(target.getMonth() + 6);
   const year = target.getFullYear();
   const month = String(target.getMonth() + 1).padStart(2, '0');
   const day = String(target.getDate()).padStart(2, '0');
@@ -87,7 +77,7 @@ export function SinkingFundsPanel() {
   const [name, setName] = useState('');
   const [color, setColor] = useState<string>(DEFAULT_FUND_COLOR);
   const [targetAmountInput, setTargetAmountInput] = useState('1000');
-  const [targetDate, setTargetDate] = useState(() => getDatePreset('6_MOS'));
+  const [targetDate, setTargetDate] = useState(() => getDefaultTargetDate());
   const [accountId, setAccountId] = useState('');
   const [notes, setNotes] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
@@ -149,7 +139,7 @@ export function SinkingFundsPanel() {
     setName('');
     setColor(DEFAULT_FUND_COLOR);
     setTargetAmountInput('1000');
-    setTargetDate(getDatePreset('6_MOS'));
+    setTargetDate(getDefaultTargetDate());
     setAccountId(accounts[0]?.id ?? '');
     setNotes('');
     setEditError(null);
@@ -700,32 +690,6 @@ export function SinkingFundsPanel() {
                     editable={!isSubmitting}
                   />
                 </View>
-
-                {/* Amount Presets */}
-                <View className="flex-row gap-2 flex-wrap mt-1">
-                  {AMOUNT_PRESETS.map((presetMinor) => (
-                    <Pressable
-                      key={presetMinor}
-                      onPress={() => {
-                        setTargetAmountInput(
-                          minorUnitsToDecimalInput(presetMinor),
-                        );
-                        if (editError) setEditError(null);
-                      }}
-                      disabled={isSubmitting}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Set target to ${formatMinorUnits(presetMinor)}`}
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                    >
-                      <ThemedText
-                        numeric
-                        className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
-                      >
-                        {formatMinorUnits(presetMinor)}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
-                </View>
               </View>
 
               {/* Target Date */}
@@ -746,54 +710,6 @@ export function SinkingFundsPanel() {
                   placeholderTextColor={theme.textMuted}
                   editable={!isSubmitting}
                 />
-
-                {/* Date Quick Presets */}
-                <View className="flex-row gap-2 mt-1 flex-wrap">
-                  <Pressable
-                    onPress={() => setTargetDate(getDatePreset('3_MOS'))}
-                    disabled={isSubmitting}
-                    accessibilityRole="button"
-                    accessibilityLabel="Set date to 3 months from now"
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                  >
-                    <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                      +3 Mos
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setTargetDate(getDatePreset('6_MOS'))}
-                    disabled={isSubmitting}
-                    accessibilityRole="button"
-                    accessibilityLabel="Set date to 6 months from now"
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                  >
-                    <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                      +6 Mos
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setTargetDate(getDatePreset('1_YR'))}
-                    disabled={isSubmitting}
-                    accessibilityRole="button"
-                    accessibilityLabel="Set date to 1 year from now"
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                  >
-                    <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                      +1 Year
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => setTargetDate(getDatePreset('EOY'))}
-                    disabled={isSubmitting}
-                    accessibilityRole="button"
-                    accessibilityLabel="Set date to End of Year"
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                  >
-                    <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                      End of Year
-                    </ThemedText>
-                  </Pressable>
-                </View>
               </View>
 
               {/* Holding Account */}
@@ -1121,55 +1037,6 @@ export function SinkingFundsPanel() {
                     autoFocus
                     editable={!isSubmitting}
                   />
-                </View>
-
-                {/* Quick Suggestions */}
-                <View className="flex-row gap-2 mt-1 flex-wrap">
-                  {stashingFund && (
-                    <Pressable
-                      onPress={() => {
-                        const calc = computeSinkingFundMonthlyTarget(
-                          stashingFund.targetAmountMinor,
-                          stashingFund.currentSavedMinor,
-                          stashingFund.targetDate,
-                        );
-                        if (calc.monthlyTargetMinor > 0) {
-                          setStashAmountInput(
-                            minorUnitsToDecimalInput(calc.monthlyTargetMinor),
-                          );
-                          if (stashError) setStashError(null);
-                        }
-                      }}
-                      disabled={isSubmitting}
-                      accessibilityRole="button"
-                      accessibilityLabel="Use recommended monthly amount"
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-                    >
-                      <ThemedText className="text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark">
-                        Recommended Monthly
-                      </ThemedText>
-                    </Pressable>
-                  )}
-                  {STASH_QUICK_AMOUNTS.map((minor) => (
-                    <Pressable
-                      key={minor}
-                      onPress={() => {
-                        setStashAmountInput(minorUnitsToDecimalInput(minor));
-                        if (stashError) setStashError(null);
-                      }}
-                      disabled={isSubmitting}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Stash ${formatMinorUnits(minor)}`}
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
-                    >
-                      <ThemedText
-                        numeric
-                        className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
-                      >
-                        {formatMinorUnits(minor)}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
                 </View>
               </View>
 

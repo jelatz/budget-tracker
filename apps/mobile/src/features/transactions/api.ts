@@ -11,10 +11,11 @@ import {
   createDestructiveConfirmation,
   createTransactionInputSchema,
   DEFAULT_CURRENCY,
+  formatAccountLinkedErrorMessage,
+  getAccountLinkedRecords,
   isCommitmentPaidOff,
   normalizeBackupEnvelope,
   positiveAmountMinorSchema,
-  quickPresetSchema,
   recurringCommitmentSchema,
   sinkingFundSchema,
   smartDefaultsSchema,
@@ -30,7 +31,6 @@ import {
   type CategoryBudgetStatus,
   type CreateCategoryInput,
   type CreateTransactionInput,
-  type QuickPreset,
   type RecurringCommitment,
   type RecurringCommitmentInput,
   type SafeToSpendMetrics,
@@ -121,15 +121,9 @@ export async function deleteAccount(id: string): Promise<void> {
     throw new Error('You must keep at least one account.');
   }
 
-  const isLinked =
-    state.transactions.some((tx) => tx.accountId === id || tx.toAccountId === id) ||
-    state.recurringCommitments.some((rc) => rc.accountId === id) ||
-    state.sinkingFunds.some((sf) => sf.accountId === id);
-
-  if (isLinked) {
-    throw new Error(
-      'Cannot delete an account that is linked to existing transactions, bills, or sinking funds.',
-    );
+  const linked = getAccountLinkedRecords(state, id);
+  if (linked.isLinked) {
+    throw new Error(formatAccountLinkedErrorMessage(linked));
   }
 
   enqueueSyncMutation({
@@ -532,43 +526,6 @@ export async function deleteSinkingFund(id: string): Promise<void> {
     opId: createSyncOpId(),
     clientTimestamp: new Date().toISOString(),
     type: 'sinkingFund.delete',
-    id,
-  });
-}
-
-// ==========================================
-// Quick Presets API
-// ==========================================
-
-export async function getQuickPresets(): Promise<QuickPreset[]> {
-  const state = getCurrentSyncState();
-  return state.quickPresets.map((qp) => quickPresetSchema.parse(qp));
-}
-
-export async function upsertQuickPreset(
-  input: Omit<QuickPreset, 'id'> & { id?: string },
-): Promise<QuickPreset> {
-  const id = input.id || generateEntityId('preset');
-  const validated = quickPresetSchema.parse({
-    ...input,
-    id,
-  });
-
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: new Date().toISOString(),
-    type: 'quickPreset.upsert',
-    preset: validated,
-  });
-
-  return validated;
-}
-
-export async function deleteQuickPreset(id: string): Promise<void> {
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: new Date().toISOString(),
-    type: 'quickPreset.delete',
     id,
   });
 }

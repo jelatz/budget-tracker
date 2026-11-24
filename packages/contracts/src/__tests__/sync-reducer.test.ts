@@ -3,6 +3,8 @@ import {
   applySyncMutations,
   createInitialSyncDataState,
   DEFAULT_CURRENCY,
+  formatAccountLinkedErrorMessage,
+  getAccountLinkedRecords,
   syncPushRequestSchema,
   type SyncMutation,
 } from '../index';
@@ -487,5 +489,323 @@ describe('Sync State Reducer', () => {
       })),
     });
     expect(oversizedPush.success).toBe(false);
+  });
+
+  it('detects linked account records across outgoing, incoming transfers, reconciliations, recurring bills, and sinking funds', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+
+    const state = applySyncMutations(base, [
+      {
+        opId: 'op-link-exp',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-link-exp',
+          type: 'EXPENSE',
+          amountMinor: 1000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-daily-living',
+          tags: [],
+          occurredAt: '2026-11-10T12:01:00.000Z',
+          createdAt: '2026-11-10T12:01:00.000Z',
+        },
+      },
+      {
+        opId: 'op-link-tr',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-link-tr',
+          type: 'TRANSFER',
+          amountMinor: 2000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          toAccountId: 'account-savings',
+          tags: [],
+          occurredAt: '2026-11-10T12:02:00.000Z',
+          createdAt: '2026-11-10T12:02:00.000Z',
+        },
+      },
+      {
+        opId: 'op-link-rec',
+        clientTimestamp: '2026-11-10T12:03:00.000Z',
+        type: 'reconciliation.apply',
+        reconciliationId: 'rec-link-1',
+        accountId: 'account-cash',
+        actualBalanceMinor: 5000,
+        createAdjustment: true,
+        adjustmentTransactionId: 'tx-link-rec-adj',
+        reconciledAt: '2026-11-10T12:03:00.000Z',
+      },
+      {
+        opId: 'op-link-rc',
+        clientTimestamp: '2026-11-10T12:04:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'rc-link-1',
+          name: 'Internet Bill',
+          kind: 'RECURRING',
+          amountMinor: 15000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-utilities',
+          frequency: 'MONTHLY',
+          dueDay: 20,
+          nextDueDate: '2026-11-20',
+          isAutoPaid: false,
+          isActive: true,
+          paidInstallments: 0,
+        },
+      },
+      {
+        opId: 'op-link-sf',
+        clientTimestamp: '2026-11-10T12:05:00.000Z',
+        type: 'sinkingFund.upsert',
+        fund: {
+          id: 'sf-link-1',
+          name: 'Emergency Reserve',
+          icon: '🛡️',
+          color: '#10B981',
+          targetAmountMinor: 100000,
+          currentSavedMinor: 0,
+          targetDate: '2027-01-01',
+          accountId: 'account-savings',
+          monthlyContributionMinor: 5000,
+          isCompleted: false,
+        },
+      },
+    ]);
+
+    const bankSummary = getAccountLinkedRecords(state, 'account-bank');
+    expect(bankSummary.isLinked).toBe(true);
+    expect(bankSummary.transactions.map((t) => t.id)).toEqual(['tx-link-tr', 'tx-link-exp']);
+    expect(bankSummary.expenseCount).toBe(1);
+    expect(bankSummary.incomeCount).toBe(0);
+    expect(bankSummary.transferCount).toBe(1);
+    expect(bankSummary.recurringCommitments.map((rc) => rc.id)).toEqual(['rc-link-1']);
+    expect(bankSummary.sinkingFunds).toEqual([]);
+    expect(bankSummary.totalCount).toBe(3);
+
+    const savingsSummary = getAccountLinkedRecords(state, 'account-savings');
+    expect(savingsSummary.isLinked).toBe(true);
+    expect(savingsSummary.transactions.map((t) => t.id)).toEqual(['tx-link-tr']);
+    expect(savingsSummary.transferCount).toBe(1);
+    expect(savingsSummary.sinkingFunds.map((sf) => sf.id)).toEqual(['sf-link-1']);
+    expect(savingsSummary.totalCount).toBe(2);
+
+    const cashSummary = getAccountLinkedRecords(state, 'account-cash');
+    expect(cashSummary.isLinked).toBe(true);
+    expect(cashSummary.transactions.map((t) => t.id)).toEqual(['tx-link-rec-adj']);
+    expect(cashSummary.incomeCount).toBe(1);
+    expect(cashSummary.totalCount).toBe(1);
+  });
+
+  it('formats account linked error messages with only non-zero categories, accurate counts, and truncated names', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+
+    const unlinkedSummary = getAccountLinkedRecords(base, 'account-bank');
+    expect(formatAccountLinkedErrorMessage(unlinkedSummary)).toBe(
+      'Account has no linked records.',
+    );
+
+    const oneCategoryState = applySyncMutations(base, [
+      {
+        opId: 'op-fmt-tx-1',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-fmt-1',
+          type: 'INCOME',
+          amountMinor: 5000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-salary',
+          tags: [],
+          occurredAt: '2026-11-10T12:01:00.000Z',
+          createdAt: '2026-11-10T12:01:00.000Z',
+        },
+      },
+    ]);
+    expect(
+      formatAccountLinkedErrorMessage(getAccountLinkedRecords(oneCategoryState, 'account-bank')),
+    ).toBe('Cannot delete this account: linked to 1 transaction (1 income).');
+
+    const twoCategoriesState = applySyncMutations(oneCategoryState, [
+      {
+        opId: 'op-fmt-tx-2',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-fmt-2',
+          type: 'EXPENSE',
+          amountMinor: 1000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-daily-living',
+          tags: [],
+          occurredAt: '2026-11-10T12:02:00.000Z',
+          createdAt: '2026-11-10T12:02:00.000Z',
+        },
+      },
+      {
+        opId: 'op-fmt-tx-3',
+        clientTimestamp: '2026-11-10T12:03:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-fmt-3',
+          type: 'EXPENSE',
+          amountMinor: 2000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-daily-living',
+          tags: [],
+          occurredAt: '2026-11-10T12:03:00.000Z',
+          createdAt: '2026-11-10T12:03:00.000Z',
+        },
+      },
+      {
+        opId: 'op-fmt-rc-1',
+        clientTimestamp: '2026-11-10T12:04:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'rc-fmt-1',
+          name: 'Rent',
+          kind: 'RECURRING',
+          amountMinor: 20000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-home',
+          frequency: 'MONTHLY',
+          dueDay: 1,
+          nextDueDate: '2026-12-01',
+          isAutoPaid: false,
+          isActive: true,
+          paidInstallments: 0,
+        },
+      },
+      {
+        opId: 'op-fmt-rc-2',
+        clientTimestamp: '2026-11-10T12:05:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'rc-fmt-2',
+          name: 'Fiber',
+          kind: 'RECURRING',
+          amountMinor: 5000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-utilities',
+          frequency: 'MONTHLY',
+          dueDay: 5,
+          nextDueDate: '2026-12-05',
+          isAutoPaid: false,
+          isActive: true,
+          paidInstallments: 0,
+        },
+      },
+      {
+        opId: 'op-fmt-rc-3',
+        clientTimestamp: '2026-11-10T12:06:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'rc-fmt-3',
+          name: 'Water',
+          kind: 'RECURRING',
+          amountMinor: 1500,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-utilities',
+          frequency: 'MONTHLY',
+          dueDay: 10,
+          nextDueDate: '2026-12-10',
+          isAutoPaid: false,
+          isActive: true,
+          paidInstallments: 0,
+        },
+      },
+    ]);
+    expect(
+      formatAccountLinkedErrorMessage(
+        getAccountLinkedRecords(twoCategoriesState, 'account-bank'),
+      ),
+    ).toBe(
+      'Cannot delete this account: linked to 3 transactions (2 expenses, 1 income) and 3 recurring bills (Rent, Fiber, ...).',
+    );
+
+    const threeCategoriesState = applySyncMutations(twoCategoriesState, [
+      {
+        opId: 'op-fmt-sf-1',
+        clientTimestamp: '2026-11-10T12:07:00.000Z',
+        type: 'sinkingFund.upsert',
+        fund: {
+          id: 'sf-fmt-1',
+          name: 'Vacation',
+          icon: '✈️',
+          color: '#3B82F6',
+          targetAmountMinor: 50000,
+          currentSavedMinor: 0,
+          targetDate: '2027-06-01',
+          accountId: 'account-bank',
+          monthlyContributionMinor: 5000,
+          isCompleted: false,
+        },
+      },
+    ]);
+    expect(
+      formatAccountLinkedErrorMessage(
+        getAccountLinkedRecords(threeCategoriesState, 'account-bank'),
+      ),
+    ).toBe(
+      'Cannot delete this account: linked to 3 transactions (2 expenses, 1 income), 3 recurring bills (Rent, Fiber, ...), 1 sinking fund (Vacation).',
+    );
+  });
+
+  it('refuses account.delete when linked via incoming transfer toAccountId and succeeds after transaction.delete', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+
+    const withIncomingTransfer = applySyncMutations(base, [
+      {
+        opId: 'op-del-tr-create',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-del-tr',
+          type: 'TRANSFER',
+          amountMinor: 10000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          toAccountId: 'account-savings',
+          tags: [],
+          occurredAt: '2026-11-10T12:01:00.000Z',
+          createdAt: '2026-11-10T12:01:00.000Z',
+        },
+      },
+      {
+        opId: 'op-del-acc-blocked',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'account.delete',
+        id: 'account-savings',
+      },
+    ]);
+
+    expect(withIncomingTransfer.accounts.some((a) => a.id === 'account-savings')).toBe(true);
+
+    const afterTxDeleted = applySyncMutations(withIncomingTransfer, [
+      {
+        opId: 'op-del-tr-delete',
+        clientTimestamp: '2026-11-10T12:03:00.000Z',
+        type: 'transaction.delete',
+        id: 'tx-del-tr',
+      },
+      {
+        opId: 'op-del-acc-allowed',
+        clientTimestamp: '2026-11-10T12:04:00.000Z',
+        type: 'account.delete',
+        id: 'account-savings',
+      },
+    ]);
+
+    expect(afterTxDeleted.accounts.some((a) => a.id === 'account-savings')).toBe(false);
   });
 });

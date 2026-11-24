@@ -73,7 +73,7 @@ export function DashboardScreen() {
 
   const recentActivityCard = (
     <Pressable
-      onPress={() => router.push('/transactions')}
+      onPress={() => router.push('/history')}
       accessibilityRole="link"
       accessibilityLabel="Recent Activity. View full transaction history"
       className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-85"
@@ -210,7 +210,7 @@ export function DashboardScreen() {
                   accessibilityRole="header"
                   className="text-2xl sm:text-[28px] font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark"
                 >
-                  Overview
+                  Dashboard
                 </ThemedText>
                 <ThemedText
                   className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
@@ -267,7 +267,7 @@ export function DashboardScreen() {
             <View className="py-16 items-center justify-center gap-3">
               <ActivityIndicator size="large" color={theme.primary} />
               <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                Loading overview...
+                Loading dashboard...
               </ThemedText>
             </View>
           ) : isError ? (
@@ -277,14 +277,14 @@ export function DashboardScreen() {
               className="p-5 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-3 items-start"
             >
               <ThemedText className="text-sm font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-                Could not load overview metrics.
+                Could not load dashboard metrics.
               </ThemedText>
               <Pressable
                 onPress={() => {
                   void refetch();
                 }}
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading overview metrics"
+                accessibilityLabel="Retry loading dashboard metrics"
                 className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 items-center justify-center active:opacity-85"
               >
                 <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">

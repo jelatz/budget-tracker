@@ -9,7 +9,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
 import {
   computeExpenseSummary,
   computeInstallmentProgress,
@@ -185,7 +184,13 @@ export function ExpensesScreen({
   useEffect(() => {
     if (initialAccountId && accounts.length > 0) {
       const exists = accounts.some((a) => a.id === initialAccountId);
-      setAccountFilter(exists ? initialAccountId : 'ALL');
+      if (exists) {
+        setAccountFilter(initialAccountId);
+        setScheduledStatus('ALL');
+        setCategoryFilter('ALL');
+      } else {
+        setAccountFilter('ALL');
+      }
     }
   }, [initialAccountId, accounts]);
 
@@ -661,24 +666,11 @@ export function ExpensesScreen({
 
             <View className="flex-row items-center gap-2">
               <Pressable
-                onPress={() => router.push('/capture')}
-                accessibilityRole="button"
-                accessibilityLabel="Open Fast Entry calculator"
-                className="min-h-[44px] px-4 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
-              >
-                <AppIcon name="autopay" size={15} color={theme.text} />
-                <ThemedText className="text-xs sm:text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                  Fast Entry
-                </ThemedText>
-              </Pressable>
-
-              <Pressable
                 onPress={openAddModal}
                 accessibilityRole="button"
                 accessibilityLabel="Add expense"
-                className="min-h-[44px] px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
+                className="min-h-[44px] px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 items-center justify-center"
               >
-                <AppIcon name="add" size={15} color={theme.onPrimary} />
                 <ThemedText className="text-xs sm:text-sm font-bold text-ledger-canvas dark:text-brand-900">
                   Add Expense
                 </ThemedText>
