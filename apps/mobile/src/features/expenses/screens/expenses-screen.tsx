@@ -1015,7 +1015,7 @@ export function ExpensesScreen({
                     )}
                   </View>
 
-                  <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row flex-wrap items-center gap-1">
+                  <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row flex-wrap items-center gap-1 max-w-full shrink">
                     {activeTab === 'RECORDED'
                       ? PERIOD_OPTIONS.map((option) => {
                           const isSelected = period === option.key;
@@ -1165,8 +1165,8 @@ export function ExpensesScreen({
 
               {/* List / Table Section */}
               <View className="gap-3">
-                <View className="flex-row flex-wrap items-center justify-between gap-2">
-                  <View className="flex-row items-center gap-2">
+                <View className="w-full flex-row flex-wrap items-center justify-between gap-2">
+                  <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1 max-w-full shrink">
                     <ThemedText
                       numeric
                       className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
@@ -1187,7 +1187,7 @@ export function ExpensesScreen({
                     )}
                   </View>
 
-                  <View className="flex-row flex-wrap items-center gap-2">
+                  <View className="flex-row flex-wrap items-center gap-2 max-w-full shrink">
                     {/* Cards / Table Switcher */}
                     <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1">
                       <Pressable
@@ -1323,8 +1323,10 @@ export function ExpensesScreen({
                     <Pressable
                       onPress={openAddModal}
                       accessibilityRole="button"
-                      accessibilityLabel="Add new expense"
-                      className="min-h-[44px] px-3 rounded-xl items-center justify-center active:opacity-75"
+                      accessibilityLabel={
+                        activeTab === 'SCHEDULED' ? 'Add new schedule' : 'Add new expense'
+                      }
+                      className="min-h-[44px] px-3.5 rounded-xl bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                     >
                       <ThemedText className="text-xs font-semibold text-brand-500 dark:text-brand-400">
                         {activeTab === 'SCHEDULED' ? '+ New Schedule' : '+ New Expense'}
