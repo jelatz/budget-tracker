@@ -12,7 +12,7 @@ This rule applies **mandatorily** whenever an agent or developer adds, modifies,
 - Feature components: `apps/mobile/src/features/**/components/**`
 - Shared mobile components & hooks: `apps/mobile/src/common/components/**`, `apps/mobile/src/common/hooks/**`
 - Theming & styling definitions: `apps/mobile/src/common/constants/theme.ts`, `apps/mobile/src/global.css`, `apps/mobile/tailwind.config.js`
-- Mobile assets: `apps/mobile/assets/**`
+- Mobile assets & web shell/PWA artifacts: `apps/mobile/assets/**`, `apps/mobile/public/**`, `scripts/build-vercel.mjs`
 
 ---
 
@@ -23,6 +23,7 @@ Before declaring any UI/UX task complete, the agent **MUST** audit changes again
 ### 1. Cross-Platform Parity & Platform Safety
 - **Safe Area Insets**: All views must use `react-native-safe-area-context` (`SafeAreaView` or `useSafeAreaInsets()`) and account for notches, status bars, and bottom navigation/tab bars (`BottomTabInset`).
 - **No Direct DOM Globals in Native**: Browser globals (`window`, `document`, `localStorage`, `navigator`) must never be accessed in code executed by native runtimes (iOS/Android). Any Web-specific logic must be isolated in `.web.tsx` files with an accompanying native `.tsx` file.
+- **Expo SDK 58 `+html.tsx` Document Context**: Any custom `apps/mobile/src/app/+html.tsx` MUST call `useServerDocumentContext()` from `expo-router/html` and spread/render `{...htmlAttributes}`, `{headNodes}`, `{...bodyAttributes}`, and `{bodyNodes}` so Expo Router injects CSS stylesheets, React Native Web styles, and JS hydration scripts.
 - **Keyboard Handling**: All input screens must use `KeyboardAvoidingView` (with OS-appropriate behavior) and `ScrollView` with `keyboardShouldPersistTaps="handled"`.
 
 ### 2. Design & Theme Consistency
@@ -51,3 +52,8 @@ pnpm --filter @repo/mobile typecheck
 pnpm --filter @repo/mobile lint
 pnpm turbo run typecheck lint
 ```
+Any change touching `apps/mobile/src/app/+html.tsx`, `_layout.web.tsx`, `apps/mobile/src/global.css`, `apps/mobile/public/**`, or `scripts/build-vercel.mjs` **MUST** also run:
+```bash
+pnpm run build:vercel
+```
+which automatically validates exported HTML CSS, JS bundle, and PWA manifest integrity.

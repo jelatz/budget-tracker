@@ -44,6 +44,8 @@ Execute this audit whenever:
 - [ ] **Platform Extensions & Overrides**:
   - Divergent layouts must have both a base file and a platform variant (e.g. `_layout.tsx` and `_layout.web.tsx`, or `app-tabs.tsx` and `app-tabs.web.tsx`).
   - Small conditional styles should use `Platform.select({ ios: ..., android: ..., web: ..., default: ... })`.
+- [ ] **Static HTML Root (`+html.tsx`) Document Context**:
+  - If `apps/mobile/src/app/+html.tsx` exists, verify it calls `useServerDocumentContext()` from `expo-router/html` and renders `{...htmlAttributes}`, `{headNodes}`, `{...bodyAttributes}`, and `{bodyNodes}` so exported static HTML includes styles and hydration scripts.
 
 ### B. Design & Theme Consistency
 - [ ] **Design Tokens from `@/constants/theme`**:
@@ -107,3 +109,6 @@ Before completing any task involving UI/UX changes, execute the following audit 
 4. **Code Review Diff Inspection**:
    - Inspect `git diff` for hardcoded color hexes, unhandled safe areas, or missing error/loading states.
    - Confirm proper platform file separation (`.web.tsx` vs `.tsx`) if platform-specific APIs were introduced.
+
+5. **Static Web Export & HTML Integrity (when touching web shell, layouts, global CSS, or PWA assets)**:
+   - Run `pnpm run build:vercel` and confirm the exported HTML verification passes (React Native Web `<style id="react-native-stylesheet">`, `/_expo/static/css/` links, `/_expo/static/js/web/` bundle scripts, and PWA manifest linkage).

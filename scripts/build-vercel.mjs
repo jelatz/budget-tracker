@@ -119,6 +119,91 @@ for (const asset of requiredPwaAssets) {
   }
 }
 
+function verifyExportedHtml(htmlDir) {
+  const htmlFiles = fs
+    .readdirSync(htmlDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith('.html'))
+    .map((entry) => entry.name);
+
+  if (!htmlFiles.includes('index.html')) {
+    throw new Error(`Expected exported index.html in ${htmlDir}`);
+  }
+
+  const contextHint =
+    'Ensure apps/mobile/src/app/+html.tsx calls useServerDocumentContext() from "expo-router/html" and renders {headNodes} and {bodyNodes}.';
+
+  const linkTagRegex = /<link\b[^>]*>/gi;
+  const relStylesheetRegex = /\brel=["']stylesheet["']/i;
+  const hrefRegex = /\bhref=["']([^"']+)["']/i;
+  const scriptSrcRegex = /<script\b[^>]*\bsrc=["'](\/_expo\/static\/js\/[^"']+)["'][^>]*>/gi;
+
+  for (const fileName of htmlFiles) {
+    const html = fs.readFileSync(path.join(htmlDir, fileName), 'utf8');
+
+    if (!html.includes('id="react-native-stylesheet"')) {
+      throw new Error(
+        `Exported ${fileName} is missing <style id="react-native-stylesheet">. ${contextHint}`,
+      );
+    }
+
+    const cssHrefs = [];
+    for (const tagMatch of html.matchAll(linkTagRegex)) {
+      const tag = tagMatch[0];
+      if (!relStylesheetRegex.test(tag)) {
+        continue;
+      }
+      const hrefMatch = tag.match(hrefRegex);
+      if (hrefMatch && hrefMatch[1].startsWith('/_expo/static/css/')) {
+        cssHrefs.push(hrefMatch[1]);
+      }
+    }
+    if (cssHrefs.length === 0) {
+      throw new Error(
+        `Exported ${fileName} is missing /_expo/static/css/ stylesheet links. ${contextHint}`,
+      );
+    }
+    for (const cssHref of cssHrefs) {
+      const diskPath = path.join(htmlDir, cssHref.replace(/^\/+/, ''));
+      if (!fs.existsSync(diskPath)) {
+        throw new Error(
+          `Exported ${fileName} references missing stylesheet ${cssHref} (${diskPath}).`,
+        );
+      }
+    }
+
+    const jsSrcs = [];
+    for (const scriptMatch of html.matchAll(scriptSrcRegex)) {
+      jsSrcs.push(scriptMatch[1]);
+    }
+    if (!jsSrcs.some((src) => src.startsWith('/_expo/static/js/web/'))) {
+      throw new Error(
+        `Exported ${fileName} is missing /_expo/static/js/web/ bundle scripts. ${contextHint}`,
+      );
+    }
+    for (const jsSrc of jsSrcs) {
+      const diskPath = path.join(htmlDir, jsSrc.replace(/^\/+/, ''));
+      if (!fs.existsSync(diskPath)) {
+        throw new Error(
+          `Exported ${fileName} references missing script ${jsSrc} (${diskPath}).`,
+        );
+      }
+    }
+
+    if (
+      fileName === 'index.html' &&
+      !/<link\b[^>]*\brel=["']manifest["'][^>]*\bhref=["']\/manifest\.webmanifest["']|<link\b[^>]*\bhref=["']\/manifest\.webmanifest["'][^>]*\brel=["']manifest["']/i.test(
+        html,
+      )
+    ) {
+      throw new Error(
+        `Exported index.html is missing <link rel="manifest" href="/manifest.webmanifest">. ${contextHint}`,
+      );
+    }
+  }
+}
+
+verifyExportedHtml(staticOutputDir);
+
 writeJson(path.join(staticOutputDir, 'version.json'), {
   buildId,
   builtAt: new Date().toISOString(),

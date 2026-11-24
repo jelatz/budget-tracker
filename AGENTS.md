@@ -82,6 +82,9 @@ pnpm --filter @repo/mobile lint       # Lint mobile app
 - Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
 - Docs: https://docs.expo.dev/router/introduction.md
 
+> [!IMPORTANT]
+> **Expo SDK 58 `+html.tsx` Requirement**: Any custom `apps/mobile/src/app/+html.tsx` **MUST** call `useServerDocumentContext()` from `expo-router/html` and spread/render `{...htmlAttributes}`, `{headNodes}`, `{...bodyAttributes}`, and `{bodyNodes}` so Expo Router injects stylesheets, React Native Web styles, and JS hydration scripts into exported HTML. `pnpm run build:vercel` runs an automated HTML integrity check (`verifyExportedHtml`) to enforce this.
+
 ---
 
 ## 5. Building with EAS
