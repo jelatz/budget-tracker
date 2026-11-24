@@ -1,5 +1,27 @@
 import { z } from 'zod';
+import type { CategoryBudgetStatus } from './category-budget.schema';
+import type { SinkingFund } from './sinking-funds.schema';
 import type { Account, Category, Transaction } from './transactions.schema';
+
+export type ExpensesRouteTab = 'RECORDED' | 'SCHEDULED' | 'BUDGETS';
+export type AccountsRouteTab = 'ACCOUNTS' | 'SINKING_FUNDS';
+
+export interface CategoryBudgetsOverviewSummary {
+  totalAssignedMinor: number;
+  totalEffectiveMinor: number;
+  totalSpentMinor: number;
+  totalRemainingMinor: number;
+  utilizationPercent: number;
+  overspentCount: number;
+}
+
+export interface SinkingFundsOverviewSummary {
+  totalSavedMinor: number;
+  totalTargetMinor: number;
+  utilizationPercent: number;
+  activeCount: number;
+  completedCount: number;
+}
 
 export const dashboardPeriodSchema = z.enum(['THIS_MONTH', 'LAST_7_DAYS', 'ALL_TIME']);
 export type DashboardPeriod = z.infer<typeof dashboardPeriodSchema>;
@@ -235,5 +257,110 @@ export function computeDashboardMetrics(params: {
     categoryBreakdown,
     tagBreakdown,
     recentTransactions,
+  };
+}
+
+function normalizeRouteTabParam(raw?: string | string[]): string | undefined {
+  const first = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof first !== 'string') {
+    return undefined;
+  }
+  return first.trim().toLowerCase();
+}
+
+const EXPENSES_TAB_MAP: Record<string, ExpensesRouteTab> = {
+  recorded: 'RECORDED',
+  scheduled: 'SCHEDULED',
+  recurring: 'SCHEDULED',
+  budgets: 'BUDGETS',
+  envelopes: 'BUDGETS',
+};
+
+const ACCOUNTS_TAB_MAP: Record<string, AccountsRouteTab> = {
+  accounts: 'ACCOUNTS',
+  'sinking-funds': 'SINKING_FUNDS',
+  sinking_funds: 'SINKING_FUNDS',
+  sinkingfunds: 'SINKING_FUNDS',
+};
+
+/**
+ * Parses and normalizes the Expenses route tab query parameter.
+ */
+export function parseExpensesTabParam(raw?: string | string[]): ExpensesRouteTab | undefined {
+  const normalized = normalizeRouteTabParam(raw);
+  return normalized ? EXPENSES_TAB_MAP[normalized] : undefined;
+}
+
+/**
+ * Parses and normalizes the Accounts route tab query parameter.
+ */
+export function parseAccountsTabParam(raw?: string | string[]): AccountsRouteTab | undefined {
+  const normalized = normalizeRouteTabParam(raw);
+  return normalized ? ACCOUNTS_TAB_MAP[normalized] : undefined;
+}
+
+/**
+ * Aggregates category envelope statuses into an integer minor-unit dashboard overview summary.
+ */
+export function summarizeCategoryBudgets(
+  envelopes: readonly CategoryBudgetStatus[],
+): CategoryBudgetsOverviewSummary {
+  let totalAssignedMinor = 0;
+  let totalEffectiveMinor = 0;
+  let totalSpentMinor = 0;
+  let totalRemainingMinor = 0;
+  let overspentCount = 0;
+
+  for (const env of envelopes) {
+    totalAssignedMinor += env.assignedMinor;
+    totalEffectiveMinor += env.effectiveBudgetMinor;
+    totalSpentMinor += env.spentMinor;
+    totalRemainingMinor += env.remainingMinor;
+    if (env.isOverspent || env.spentMinor > env.effectiveBudgetMinor) {
+      overspentCount += 1;
+    }
+  }
+
+  const utilizationPercent =
+    totalEffectiveMinor > 0 ? Math.round((totalSpentMinor * 100) / totalEffectiveMinor) : 0;
+
+  return {
+    totalAssignedMinor,
+    totalEffectiveMinor,
+    totalSpentMinor,
+    totalRemainingMinor,
+    utilizationPercent,
+    overspentCount,
+  };
+}
+
+/**
+ * Aggregates sinking fund goals into an integer minor-unit dashboard overview summary.
+ */
+export function summarizeSinkingFunds(
+  funds: readonly SinkingFund[],
+): SinkingFundsOverviewSummary {
+  let totalSavedMinor = 0;
+  let totalTargetMinor = 0;
+  let completedCount = 0;
+
+  for (const fund of funds) {
+    totalSavedMinor += fund.currentSavedMinor;
+    totalTargetMinor += fund.targetAmountMinor;
+    if (fund.isCompleted || fund.currentSavedMinor >= fund.targetAmountMinor) {
+      completedCount += 1;
+    }
+  }
+
+  const activeCount = funds.length - completedCount;
+  const utilizationPercent =
+    totalTargetMinor > 0 ? Math.round((totalSavedMinor * 100) / totalTargetMinor) : 0;
+
+  return {
+    totalSavedMinor,
+    totalTargetMinor,
+    utilizationPercent,
+    activeCount,
+    completedCount,
   };
 }

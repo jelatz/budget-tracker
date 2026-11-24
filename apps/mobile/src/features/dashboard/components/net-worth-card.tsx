@@ -1,68 +1,36 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { DEFAULT_CURRENCY, formatMinorUnits, type DashboardPeriod } from '@repo/contracts';
+import { DEFAULT_CURRENCY, formatMinorUnits } from '@repo/contracts';
 import { ThemedText } from '@/common/components/themed-text';
 
 export interface NetWorthCardProps {
-  period: DashboardPeriod;
-  onPeriodChange: (period: DashboardPeriod) => void;
   netWorthMinor: number;
   incomeMinor: number;
   expenseMinor: number;
   netCashflowMinor: number;
   transactionCount: number;
   currency?: string;
+  onPress?: () => void;
 }
 
-const PERIOD_OPTIONS: Array<{ key: DashboardPeriod; label: string }> = [
-  { key: 'THIS_MONTH', label: 'This Month' },
-  { key: 'LAST_7_DAYS', label: 'Last 7 Days' },
-  { key: 'ALL_TIME', label: 'All Time' },
-];
-
 export function NetWorthCard({
-  period,
-  onPeriodChange,
   netWorthMinor,
   incomeMinor,
   expenseMinor,
   netCashflowMinor,
   transactionCount,
   currency = DEFAULT_CURRENCY,
+  onPress,
 }: NetWorthCardProps) {
   return (
-    <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
-      {/* 1. Segmented Period Selector */}
-      <View className="flex-row items-center bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark p-1 rounded-xl mb-5">
-        {PERIOD_OPTIONS.map((option) => {
-          const isActive = period === option.key;
-          return (
-            <Pressable
-              key={option.key}
-              accessibilityRole="button"
-              accessibilityState={{ selected: isActive }}
-              accessibilityLabel={`Select period ${option.label}`}
-              onPress={() => onPeriodChange(option.key)}
-              className={`flex-1 min-h-[44px] py-2 px-2 rounded-lg items-center justify-center active:opacity-80 ${
-                isActive ? 'bg-brand-500 dark:bg-brand-400' : 'bg-transparent'
-              }`}
-            >
-              <ThemedText
-                className={`text-xs ${
-                  isActive
-                    ? 'font-bold text-ledger-canvas dark:text-ledger-canvas-dark'
-                    : 'font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
-                }`}
-                numberOfLines={1}
-              >
-                {option.label}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* 2. Hero Net Worth Display */}
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole="link"
+      accessibilityLabel="Total Net Worth. View transaction history"
+      className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-85"
+    >
+      {/* 1. Hero Net Worth Display */}
       <View className="items-center mb-5">
         <ThemedText className="text-[11px] font-semibold tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted uppercase mb-1.5">
           Total Net Worth
@@ -88,7 +56,7 @@ export function NetWorthCard({
         </View>
       </View>
 
-      {/* 3. Three-Column Summary Row */}
+      {/* 2. Three-Column Summary Row */}
       <View className="flex-row gap-2 pt-4 border-t border-ledger-border dark:border-ledger-border-dark">
         <View className="flex-1 min-w-0 bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark rounded-xl p-2.5 sm:p-3 items-center">
           <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
@@ -142,6 +110,10 @@ export function NetWorthCard({
           </ThemedText>
         </View>
       </View>
-    </View>
+
+      <ThemedText className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-center mt-3">
+        Tap to view history
+      </ThemedText>
+    </Pressable>
   );
 }

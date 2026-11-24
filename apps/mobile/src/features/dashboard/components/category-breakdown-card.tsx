@@ -1,14 +1,13 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { DEFAULT_CURRENCY, formatMinorUnits, type CategorySpendItem } from '@repo/contracts';
-import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
-import { useTheme } from '@/common/hooks/use-theme';
 
 export interface CategoryBreakdownCardProps {
   items: readonly CategorySpendItem[];
   totalExpenseMinor: number;
   currency?: string;
+  onHeaderPress?: () => void;
   onCategoryPress?: (item: CategorySpendItem) => void;
 }
 
@@ -16,14 +15,19 @@ export function CategoryBreakdownCard({
   items,
   totalExpenseMinor,
   currency = DEFAULT_CURRENCY,
+  onHeaderPress,
   onCategoryPress,
 }: CategoryBreakdownCardProps) {
-  const theme = useTheme();
-
   return (
     <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
-      {/* Card Header */}
-      <View className="mb-3">
+      {/* Card Header (Sibling Link) */}
+      <Pressable
+        onPress={onHeaderPress}
+        disabled={!onHeaderPress}
+        accessibilityRole="link"
+        accessibilityLabel="Spending by Category. View all recorded expenses"
+        className="min-h-[44px] mb-3 active:opacity-75"
+      >
         <View className="flex-row items-center justify-between gap-2 mb-1">
           <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
             Spending by Category
@@ -38,18 +42,21 @@ export function CategoryBreakdownCard({
         <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
           Includes split transaction allocations
         </ThemedText>
-      </View>
+      </Pressable>
 
       {/* Empty State vs Breakdown Content */}
       {items.length === 0 ? (
-        <View className="items-center justify-center py-6 gap-2.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark">
-          <View className="w-11 h-11 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
-            <AppIcon name="chart" size={20} color={theme.textMuted} />
-          </View>
-          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center px-4">
-            No expenses recorded in this period
+        <Pressable
+          onPress={onHeaderPress}
+          disabled={!onHeaderPress}
+          accessibilityRole="link"
+          accessibilityLabel="No expenses recorded. Open Expenses"
+          className="min-h-[44px] items-center justify-center py-6 px-4 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark active:opacity-80"
+        >
+          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
+            No expenses recorded in this period. Tap to view Expenses.
           </ThemedText>
-        </View>
+        </Pressable>
       ) : (
         <>
           {/* Multi-segment stacked horizontal summary bar */}
@@ -71,7 +78,7 @@ export function CategoryBreakdownCard({
             })}
           </View>
 
-          {/* List of category spend rows */}
+          {/* List of category spend rows (Sibling Links) */}
           <View className="gap-2.5 mt-1">
             {items.map((item) => {
               const itemCountText = `${item.transactionCount} ${
@@ -85,7 +92,7 @@ export function CategoryBreakdownCard({
                   className="min-h-[44px] py-1.5 active:opacity-75"
                   disabled={!onCategoryPress}
                   onPress={() => onCategoryPress?.(item)}
-                  accessibilityRole={onCategoryPress ? 'button' : undefined}
+                  accessibilityRole="link"
                   accessibilityLabel={`${item.name}, ${formatMinorUnits(
                     item.amountMinor,
                     currency,
@@ -94,11 +101,9 @@ export function CategoryBreakdownCard({
                   <View className="flex-row items-center justify-between mb-1.5">
                     <View className="flex-row items-center flex-1 mr-2 min-w-0">
                       <View
-                        className="w-8 h-8 rounded-xl items-center justify-center mr-2.5 shrink-0"
-                        style={{ backgroundColor: `${item.color}20` }}
-                      >
-                        <ThemedText className="text-sm">{item.icon}</ThemedText>
-                      </View>
+                        className="w-3 h-3 rounded-full mr-2.5 shrink-0"
+                        style={{ backgroundColor: item.color }}
+                      />
                       <ThemedText
                         className="text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark flex-shrink mr-2"
                         numberOfLines={1}

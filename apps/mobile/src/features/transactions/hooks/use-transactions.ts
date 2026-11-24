@@ -220,6 +220,18 @@ export function useDashboardMetrics(period: DashboardPeriod = 'THIS_MONTH') {
     accounts: accountsQuery.data ?? [],
     categories: categoriesQuery.categories,
     isLoading: transactionsQuery.isLoading || accountsQuery.isLoading,
+    isError:
+      transactionsQuery.isError ||
+      accountsQuery.isError ||
+      categoriesQuery.isError ||
+      smartDefaultsQuery.isError,
+    refetch: () =>
+      Promise.all([
+        transactionsQuery.refetch(),
+        accountsQuery.refetch(),
+        categoriesQuery.refetch(),
+        smartDefaultsQuery.refetch(),
+      ]),
   };
 }
 

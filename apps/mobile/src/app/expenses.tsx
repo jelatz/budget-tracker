@@ -1,4 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
+import { parseExpensesTabParam } from '@repo/contracts';
 
 import { ExpensesScreen } from '@/features/expenses/screens/expenses-screen';
 
@@ -14,6 +15,7 @@ export default function ExpensesRoute() {
     categoryId?: string | string[];
     accountId?: string | string[];
     search?: string | string[];
+    tab?: string | string[];
   }>();
 
   return (
@@ -21,6 +23,7 @@ export default function ExpensesRoute() {
       initialCategoryId={normalizeParam(params.categoryId)}
       initialAccountId={normalizeParam(params.accountId)}
       initialSearch={normalizeParam(params.search)}
+      initialTab={parseExpensesTabParam(params.tab)}
     />
   );
 }

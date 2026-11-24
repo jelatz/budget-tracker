@@ -41,6 +41,7 @@ import {
   useAccounts,
   useAllCategories,
   useBatchCreateTransactions,
+  useClearAllTransactions,
   useExportBackup,
   useImportBackup,
   useTransactions,
@@ -69,6 +70,7 @@ export function PortabilityScreen() {
   const exportBackupMutation = useExportBackup();
   const importBackupMutation = useImportBackup();
   const batchCreateMutation = useBatchCreateTransactions();
+  const clearAllMutation = useClearAllTransactions();
 
   // Inputs & Previews
   const [jsonInput, setJsonInput] = useState<string>('');
@@ -77,9 +79,10 @@ export function PortabilityScreen() {
   const [validatedBackup, setValidatedBackup] = useState<BackupEnvelope | null>(null);
   const [csvPreviewResult, setCsvPreviewResult] = useState<ParseTransactionsCsvResult | null>(null);
 
-  // Notifications
+  // Notifications & Confirmations
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [confirmingClearAll, setConfirmingClearAll] = useState(false);
 
   // File Download Helper
   const downloadFile = async (content: string, filename: string, mimeType: string) => {
@@ -242,6 +245,20 @@ export function PortabilityScreen() {
       setCsvInput('');
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to import CSV transactions.');
+    }
+  };
+
+  // Reset Data Handler
+  const handleConfirmResetData = async () => {
+    setErrorMessage(null);
+    try {
+      await clearAllMutation.mutateAsync();
+      setConfirmingClearAll(false);
+      setToastMessage('All recorded transactions cleared.');
+    } catch (error: unknown) {
+      setErrorMessage(
+        error instanceof Error ? error.message : 'Failed to reset entries. Please try again.',
+      );
     }
   };
 
@@ -1083,6 +1100,78 @@ export function PortabilityScreen() {
                 )}
               </View>
             )}
+
+            {/* ============================================================== */}
+            {/* RESET DATA SECTION */}
+            {/* ============================================================== */}
+            <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3.5">
+              <View className="gap-0.5">
+                <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                  Reset Data
+                </ThemedText>
+                <ThemedText className="text-xs leading-4 text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Clear all recorded transactions from your ledger. Accounts and settings remain intact.
+                </ThemedText>
+              </View>
+
+              {!confirmingClearAll ? (
+                <Pressable
+                  onPress={() => {
+                    setErrorMessage(null);
+                    setConfirmingClearAll(true);
+                  }}
+                  disabled={clearAllMutation.isPending}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset all data"
+                  className="min-h-[44px] py-3 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                >
+                  <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                    Reset All Data
+                  </ThemedText>
+                </Pressable>
+              ) : (
+                <View className="p-4 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-3">
+                  <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark leading-4">
+                    Clear all recorded entries? This removes your transactions and cannot be undone.
+                  </ThemedText>
+
+                  <View className="flex-row gap-2.5">
+                    <Pressable
+                      onPress={() => {
+                        setConfirmingClearAll(false);
+                        setErrorMessage(null);
+                      }}
+                      disabled={clearAllMutation.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel resetting all data"
+                      className="flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                    >
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        Cancel
+                      </ThemedText>
+                    </Pressable>
+
+                    <Pressable
+                      onPress={() => void handleConfirmResetData()}
+                      disabled={clearAllMutation.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm reset all data"
+                      className={`flex-1 min-h-[44px] py-2.5 px-4 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center ${
+                        clearAllMutation.isPending ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {clearAllMutation.isPending ? (
+                        <ActivityIndicator size="small" color={theme.background} />
+                      ) : (
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                          Confirm Reset
+                        </ThemedText>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>

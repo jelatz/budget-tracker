@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,6 +20,7 @@ import {
   normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type Account,
+  type AccountsRouteTab,
   type AccountType,
 } from '@repo/contracts';
 
@@ -35,8 +36,10 @@ import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAccounts,
   useDeleteAccount,
+  useSinkingFunds,
   useUpsertAccount,
 } from '@/features/transactions/hooks/use-transactions';
+import { SinkingFundsPanel } from '../components/sinking-funds-panel';
 
 type AccountFilter = 'ALL' | AccountType;
 
@@ -220,13 +223,41 @@ function AccountCard({ account, onEdit, onReconcile }: AccountCardProps) {
   );
 }
 
-export function AccountsScreen() {
-  const { isAuthenticated } = useRequireAuth();
+export interface AccountsScreenProps {
+  initialTab?: AccountsRouteTab;
+}
+
+export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
+  const { isAuthenticated, logout } = useRequireAuth();
   const theme = useTheme();
   const accountsQuery = useAccounts();
   const accounts = accountsQuery.data ?? [];
+  const sinkingFundsQuery = useSinkingFunds();
+  const sinkingFunds = sinkingFundsQuery.data ?? [];
   const upsertAccountMutation = useUpsertAccount();
   const deleteAccountMutation = useDeleteAccount();
+
+  const [activeTab, setActiveTab] = useState<AccountsRouteTab>(
+    initialTab ?? 'ACCOUNTS',
+  );
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
+  const handleSignOut = async () => {
+    if (isSigningOut) return;
+    setIsSigningOut(true);
+    try {
+      await logout();
+      router.replace('/');
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
 
   const [filter, setFilter] = useState<AccountFilter>('ALL');
   const [modalVisible, setModalVisible] = useState(false);
@@ -418,20 +449,96 @@ export function AccountsScreen() {
               </ThemedText>
             </View>
 
+            <View className="flex-row items-center gap-2">
+              {activeTab === 'ACCOUNTS' && (
+                <Pressable
+                  onPress={() => openAddModal(activeCreateType)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add account"
+                  className="min-h-[44px] px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
+                >
+                  <AppIcon name="add" size={15} color={theme.onPrimary} />
+                  <ThemedText className="text-xs sm:text-sm font-bold text-ledger-canvas dark:text-brand-900">
+                    Add Account
+                  </ThemedText>
+                </Pressable>
+              )}
+
+              {Platform.OS !== 'web' && (
+                <Pressable
+                  onPress={() => void handleSignOut()}
+                  disabled={isSigningOut}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sign Out"
+                  className={`min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75 ${
+                    isSigningOut ? 'opacity-60' : ''
+                  }`}
+                >
+                  <ThemedText className="text-xs sm:text-sm font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                    {isSigningOut ? 'Signing Out...' : 'Sign Out'}
+                  </ThemedText>
+                </Pressable>
+              )}
+            </View>
+          </View>
+
+          {/* 2-Tab Segmented Switcher */}
+          <View
+            accessibilityRole="tablist"
+            className="flex-row p-1 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1"
+          >
             <Pressable
-              onPress={() => openAddModal(activeCreateType)}
-              accessibilityRole="button"
-              accessibilityLabel="Add account"
-              className="min-h-[44px] px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
+              onPress={() => setActiveTab('ACCOUNTS')}
+              accessibilityRole="tab"
+              accessibilityLabel={`Accounts (${accounts.length})`}
+              accessibilityState={{ selected: activeTab === 'ACCOUNTS' }}
+              className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
+                activeTab === 'ACCOUNTS'
+                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                  : 'active:opacity-75'
+              }`}
             >
-              <AppIcon name="add" size={15} color={theme.onPrimary} />
-              <ThemedText className="text-xs sm:text-sm font-bold text-ledger-canvas dark:text-brand-900">
-                Add Account
+              <ThemedText
+                numeric
+                className={`text-xs sm:text-sm font-bold ${
+                  activeTab === 'ACCOUNTS'
+                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                }`}
+              >
+                {`Accounts (${accounts.length})`}
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setActiveTab('SINKING_FUNDS')}
+              accessibilityRole="tab"
+              accessibilityLabel={`Sinking Funds (${sinkingFunds.length})`}
+              accessibilityState={{ selected: activeTab === 'SINKING_FUNDS' }}
+              className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
+                activeTab === 'SINKING_FUNDS'
+                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                  : 'active:opacity-75'
+              }`}
+            >
+              <ThemedText
+                numeric
+                className={`text-xs sm:text-sm font-bold ${
+                  activeTab === 'SINKING_FUNDS'
+                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                }`}
+              >
+                {`Sinking Funds (${sinkingFunds.length})`}
               </ThemedText>
             </Pressable>
           </View>
 
-          {/* Loading / Error / Content */}
+          {activeTab === 'SINKING_FUNDS' ? (
+            <SinkingFundsPanel />
+          ) : (
+            <>
+              {/* Loading / Error / Content */}
           {accountsQuery.isLoading ? (
             <View className="py-12 items-center justify-center gap-3">
               <ActivityIndicator size="large" color={theme.primary} />
@@ -638,6 +745,8 @@ export function AccountsScreen() {
                   </View>
                 )}
               </View>
+            </>
+          )}
             </>
           )}
         </ScrollView>

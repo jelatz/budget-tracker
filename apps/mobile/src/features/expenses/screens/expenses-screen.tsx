@@ -23,6 +23,7 @@ import {
   type CreateCategoryInput,
   type CreateTransactionInput,
   type DashboardPeriod,
+  type ExpensesRouteTab,
   type RecurringCommitment,
   type RecurringCommitmentInput,
   type Transaction,
@@ -39,6 +40,7 @@ import {
   useAccounts,
   useAllCategories,
   useCategories,
+  useCategoryBudgets,
   useCreateCustomCategory,
   useCreateTransaction,
   useDeleteRecurringCommitment,
@@ -48,23 +50,27 @@ import {
   useSmartDefaults,
   useTransactions,
   useUnpayRecurringCommitment,
+  useUpdateMonthlyBudget,
   useUpdateTransaction,
   useUpsertRecurringCommitment,
 } from '@/features/transactions/hooks/use-transactions';
 
+import { CategoryEnvelopesPanel } from '../components/category-envelopes-panel';
 import { ExpenseCard } from '../components/expense-card';
 import { ExpenseFormModal, type ExpenseFormMode } from '../components/expense-form-modal';
 import { RecordedExpensesTable, ScheduledExpensesTable } from '../components/expenses-table';
 import { InlineExpenseForm } from '../components/inline-expense-form';
+import { MonthlyTargetCard } from '../components/monthly-target-card';
 import { ScheduledExpenseCard } from '../components/scheduled-expense-card';
 
 export interface ExpensesScreenProps {
   initialCategoryId?: string;
   initialAccountId?: string;
   initialSearch?: string;
+  initialTab?: ExpensesRouteTab;
 }
 
-type ExpensesViewTab = 'RECORDED' | 'SCHEDULED';
+type ExpensesViewTab = ExpensesRouteTab;
 type ExpensesDisplayMode = 'CARDS' | 'TABLE';
 type ScheduledStatusFilter = 'ALL' | 'UNPAID' | 'PAID' | 'LOANS';
 
@@ -96,9 +102,16 @@ export function ExpensesScreen({
   initialCategoryId,
   initialAccountId,
   initialSearch,
+  initialTab,
 }: ExpensesScreenProps) {
   const { isAuthenticated } = useRequireAuth();
   const theme = useTheme();
+
+  // Current Period Metadata for Scheduled Expenses & Category Budgets
+  const now = new Date();
+  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentDay = now.getDate();
+  const monthName = now.toLocaleDateString(undefined, { month: 'short' });
 
   const transactionsQuery = useTransactions();
   const accountsQuery = useAccounts();
@@ -106,6 +119,7 @@ export function ExpensesScreen({
   const { categories: allCategories } = useAllCategories();
   const smartDefaultsQuery = useSmartDefaults();
   const commitmentsQuery = useRecurringCommitments();
+  const categoryBudgetsQuery = useCategoryBudgets(currentPeriod);
 
   const createTransactionMutation = useCreateTransaction();
   const updateTransactionMutation = useUpdateTransaction();
@@ -115,17 +129,19 @@ export function ExpensesScreen({
   const deleteCommitmentMutation = useDeleteRecurringCommitment();
   const payCommitmentMutation = usePayRecurringCommitment();
   const unpayCommitmentMutation = useUnpayRecurringCommitment();
+  const updateBudgetMutation = useUpdateMonthlyBudget();
 
   const transactions = transactionsQuery.data ?? [];
   const accounts = accountsQuery.data ?? [];
   const expenseCategories = categoriesQuery.rankedCategories;
   const smartDefaults = smartDefaultsQuery.data;
   const commitments = commitmentsQuery.data ?? [];
+  const envelopes = categoryBudgetsQuery.data ?? [];
 
   // View Tab, Display Mode & Filter State
   const { width: windowWidth } = useWindowDimensions();
   const isWideSummary = windowWidth >= 768;
-  const [activeTab, setActiveTab] = useState<ExpensesViewTab>('RECORDED');
+  const [activeTab, setActiveTab] = useState<ExpensesViewTab>(initialTab ?? 'RECORDED');
   const [displayMode, setDisplayMode] = useState<ExpensesDisplayMode>('CARDS');
   const [cardColumnsPref, setCardColumnsPref] = useState<2 | 3>(3);
   const [showInlineForm, setShowInlineForm] = useState(false);
@@ -153,13 +169,12 @@ export function ExpensesScreen({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Current Period Metadata for Scheduled Expenses
-  const now = new Date();
-  const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const currentDay = now.getDate();
-  const monthName = now.toLocaleDateString(undefined, { month: 'short' });
-
   // Sync deep-link route params cleanly when navigated from Dashboard
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   useEffect(() => {
     if (initialCategoryId && expenseCategories.length > 0) {
       const exists = expenseCategories.some((c) => c.id === initialCategoryId);
@@ -672,13 +687,13 @@ export function ExpensesScreen({
           </View>
 
           {/* Segmented View Switcher */}
-          <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row gap-1">
+          <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row flex-wrap gap-1">
             <Pressable
               onPress={() => setActiveTab('RECORDED')}
               accessibilityRole="tab"
               accessibilityLabel={`One-Time and Recorded expenses, ${allExpensesCount}`}
               accessibilityState={{ selected: activeTab === 'RECORDED' }}
-              className={`flex-1 min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
+              className={`flex-1 min-w-[100px] min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
                 activeTab === 'RECORDED'
                   ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
                   : 'border border-transparent active:opacity-75'
@@ -706,7 +721,7 @@ export function ExpensesScreen({
               accessibilityRole="tab"
               accessibilityLabel={`Recurring and Loans, ${scheduledStats.unpaidCount} due`}
               accessibilityState={{ selected: activeTab === 'SCHEDULED' }}
-              className={`flex-1 min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
+              className={`flex-1 min-w-[120px] min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
                 activeTab === 'SCHEDULED'
                   ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
                   : 'border border-transparent active:opacity-75'
@@ -726,6 +741,29 @@ export function ExpensesScreen({
                 }`}
               >
                 Recurring & Loans ({scheduledStats.unpaidCount} due)
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setActiveTab('BUDGETS')}
+              accessibilityRole="tab"
+              accessibilityLabel={`Budgets and Category Envelopes, ${envelopes.length}`}
+              accessibilityState={{ selected: activeTab === 'BUDGETS' }}
+              className={`flex-1 min-w-[100px] min-h-[44px] px-3 rounded-lg items-center justify-center ${
+                activeTab === 'BUDGETS'
+                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                  : 'border border-transparent active:opacity-75'
+              }`}
+            >
+              <ThemedText
+                numeric
+                className={`text-xs sm:text-sm font-bold text-center ${
+                  activeTab === 'BUDGETS'
+                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                }`}
+              >
+                Budgets ({envelopes.length})
               </ThemedText>
             </Pressable>
           </View>
@@ -837,8 +875,11 @@ export function ExpensesScreen({
                       </ThemedText>
                     </View>
 
-                    <View
-                      className={`flex-1 p-4 gap-1 ${
+                    <Pressable
+                      onPress={() => setActiveTab('BUDGETS')}
+                      accessibilityRole="button"
+                      accessibilityLabel="Open Budgets and Category Envelopes"
+                      className={`flex-1 min-h-[44px] p-4 gap-1 active:opacity-75 ${
                         isWideSummary
                           ? 'border-r border-ledger-border dark:border-ledger-border-dark'
                           : ''
@@ -869,7 +910,7 @@ export function ExpensesScreen({
                       >
                         {budgetUtilizationPercent}% of {formatMinorUnits(monthlyBudgetMinor)} used
                       </ThemedText>
-                    </View>
+                    </Pressable>
                   </View>
 
                   {/* Row 2 (or Columns 3 & 4 on Desktop) */}
@@ -934,7 +975,24 @@ export function ExpensesScreen({
                 </View>
               </View>
 
-              {/* Primary Filter Row + Search */}
+              {activeTab === 'BUDGETS' ? (
+                <View className="gap-4">
+                  <MonthlyTargetCard
+                    budget={{
+                      budgetMinor: monthlyBudgetMinor,
+                      spentMinor: thisMonthSpentMinor,
+                      remainingMinor: budgetRemainingMinor,
+                      utilizationPercent: budgetUtilizationPercent,
+                      isOverBudget,
+                    }}
+                    onUpdateBudget={(minor) => updateBudgetMutation.mutateAsync(minor)}
+                    isUpdating={updateBudgetMutation.isPending}
+                  />
+                  <CategoryEnvelopesPanel />
+                </View>
+              ) : (
+                <>
+                  {/* Primary Filter Row + Search */}
               <View className="gap-2.5">
                 <View className="flex-row flex-wrap items-center gap-2">
                   <View className="flex-1 min-w-[220px] min-h-[44px] px-3.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2">
@@ -1475,6 +1533,8 @@ export function ExpensesScreen({
                   </View>
                 )}
               </View>
+                </>
+              )}
             </>
           )}
         </ScrollView>

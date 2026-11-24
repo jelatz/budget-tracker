@@ -1,48 +1,53 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { DEFAULT_CURRENCY, formatMinorUnits, type TagSpendItem } from '@repo/contracts';
-import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
-import { useTheme } from '@/common/hooks/use-theme';
 
 export interface TagInsightsCardProps {
   items: readonly TagSpendItem[];
   currency?: string;
+  onHeaderPress?: () => void;
   onTagPress?: (item: TagSpendItem) => void;
 }
 
 export function TagInsightsCard({
   items,
   currency = DEFAULT_CURRENCY,
+  onHeaderPress,
   onTagPress,
 }: TagInsightsCardProps) {
-  const theme = useTheme();
-
   return (
     <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
-      {/* Card Header */}
-      <View className="mb-3">
-        <View className="flex-row items-center gap-2 mb-0.5">
-          <AppIcon name="tag" size={16} color={theme.primary} />
-          <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
-            Top #Tags Spending
-          </ThemedText>
-        </View>
+      {/* Card Header (Sibling Link) */}
+      <Pressable
+        onPress={onHeaderPress}
+        disabled={!onHeaderPress}
+        accessibilityRole="link"
+        accessibilityLabel="Top Tags Spending. View recorded expenses"
+        className="min-h-[44px] mb-3 active:opacity-75"
+      >
+        <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark mb-0.5">
+          Top #Tags Spending
+        </ThemedText>
         <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
           Track #vacation, #reimbursable, and custom tags
         </ThemedText>
-      </View>
+      </Pressable>
 
-      {/* Empty State vs Tag Pills Grid */}
+      {/* Empty State vs Tag Pills Grid (Sibling Links) */}
       {items.length === 0 ? (
-        <View className="items-center justify-center py-6 gap-2.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark">
-          <View className="w-11 h-11 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
-            <AppIcon name="tag" size={20} color={theme.textMuted} />
-          </View>
-          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[280px] px-4">
-            Add #tags when capturing transactions to track project or trip spending
+        <Pressable
+          onPress={onHeaderPress}
+          disabled={!onHeaderPress}
+          accessibilityRole="link"
+          accessibilityLabel="No tagged expenses recorded. Open Expenses"
+          className="min-h-[44px] items-center justify-center py-6 px-4 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark active:opacity-80"
+        >
+          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[280px]">
+            Add #tags when capturing transactions to track project or trip spending. Tap to open
+            Expenses.
           </ThemedText>
-        </View>
+        </Pressable>
       ) : (
         <View className="flex-row flex-wrap gap-2 mt-1">
           {items.map((item) => {
@@ -57,7 +62,7 @@ export function TagInsightsCard({
                 className="flex-grow flex-1 basis-[48%] min-w-[130px] min-h-[44px] p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-between active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                 disabled={!onTagPress}
                 onPress={() => onTagPress?.(item)}
-                accessibilityRole={onTagPress ? 'button' : undefined}
+                accessibilityRole="link"
                 accessibilityLabel={`${displayTag}, ${formatMinorUnits(
                   item.amountMinor,
                   currency,
