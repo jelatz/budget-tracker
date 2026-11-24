@@ -295,8 +295,8 @@ export function InlineExpenseForm({
   return (
     <View className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-brand-200 dark:border-brand-800/70 shadow-sm gap-4">
       {/* Header Row */}
-      <View className="flex-row flex-wrap items-center justify-between gap-2">
-        <View className="gap-0.5">
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="flex-1 min-w-0 gap-0.5">
           <ThemedText className="text-sm font-extrabold text-slate-900 dark:text-white">
             Quick Expense Form
           </ThemedText>
@@ -310,7 +310,7 @@ export function InlineExpenseForm({
           disabled={isSaving}
           accessibilityRole="button"
           accessibilityLabel="Hide quick expense form"
-          className="min-h-[44px] px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+          className="shrink-0 min-h-[44px] px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
         >
           <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-200">
             Hide Form
@@ -452,7 +452,7 @@ export function InlineExpenseForm({
       {/* Scheduled Specific Row */}
       {mode !== 'ONE_TIME' && (
         <View className="gap-3">
-          <View className={isWide ? 'flex-row items-start gap-3' : 'gap-3'}>
+          <View className={isWide ? 'flex-row flex-wrap items-start gap-3' : 'gap-3'}>
             <View className={isWide ? 'flex-1 min-w-[190px] gap-1' : 'gap-1'}>
               <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Next Due Date (Optional)
@@ -697,7 +697,7 @@ export function InlineExpenseForm({
                 accessibilityRole="button"
                 accessibilityLabel={`Select category ${cat.name}`}
                 accessibilityState={{ selected: isSelected }}
-                className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
+                className={`max-w-full min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                   isSelected
                     ? 'bg-brand-50 dark:bg-brand-900/40 border-brand-500'
                     : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 active:opacity-75'
@@ -705,7 +705,7 @@ export function InlineExpenseForm({
               >
                 <ThemedText className="text-xs">{cat.icon}</ThemedText>
                 <ThemedText
-                  className={`text-xs font-semibold ${
+                  className={`shrink text-xs font-semibold ${
                     isSelected
                       ? 'text-brand-700 dark:text-brand-300'
                       : 'text-slate-700 dark:text-slate-300'
@@ -739,7 +739,7 @@ export function InlineExpenseForm({
                   accessibilityRole="button"
                   accessibilityLabel={`Select account ${acc.name}`}
                   accessibilityState={{ selected: isSelected }}
-                  className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
+                  className={`max-w-full min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                     isSelected
                       ? 'bg-slate-800 dark:bg-slate-200 border-slate-800 dark:border-slate-200'
                       : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 active:opacity-75'
@@ -747,7 +747,7 @@ export function InlineExpenseForm({
                 >
                   <ThemedText className="text-xs">{acc.icon}</ThemedText>
                   <ThemedText
-                    className={`text-xs font-semibold ${
+                    className={`shrink text-xs font-semibold ${
                       isSelected
                         ? 'text-white dark:text-slate-900'
                         : 'text-slate-700 dark:text-slate-200'
