@@ -19,11 +19,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/context/auth-context';
+import { useTheme } from '@/hooks/use-theme';
 import { SyncStatusBadge } from './sync-status-badge';
 import { ThemedText } from './themed-text';
 
 export default function AppTabs() {
   const { isAuthenticated, logout } = useAuth();
+  const theme = useTheme();
   const { width } = useWindowDimensions();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -81,14 +83,14 @@ export default function AppTabs() {
             <View className="min-h-[56px] px-3 flex-row items-center justify-between gap-2">
               <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
                 <Pressable
-                  onPress={() => setDrawerOpen(true)}
+                  onPress={() => setDrawerOpen((prev) => !prev)}
                   accessibilityRole="button"
-                  accessibilityLabel="Open navigation menu"
+                  accessibilityLabel={
+                    drawerOpen ? 'Close navigation menu' : 'Open navigation menu'
+                  }
                   accessibilityState={{ expanded: drawerOpen }}
-                  className="min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75">
-                  <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                    Menu
-                  </ThemedText>
+                  className="w-11 h-11 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75">
+                  <HamburgerIcon color={theme.text} />
                 </Pressable>
                 <ThemedText
                   className="text-sm font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark flex-1"
@@ -372,6 +374,28 @@ export function SidebarTabList({
           {innerContent}
         </SafeAreaView>
       )}
+    </View>
+  );
+}
+
+function HamburgerIcon({ color }: { color: string }) {
+  return (
+    <View
+      accessible={false}
+      importantForAccessibility="no-hide-descendants"
+      className="w-[18px] h-[14px] justify-between">
+      <View
+        className="w-full h-[2px] rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      <View
+        className="w-full h-[2px] rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      <View
+        className="w-full h-[2px] rounded-full"
+        style={{ backgroundColor: color }}
+      />
     </View>
   );
 }
