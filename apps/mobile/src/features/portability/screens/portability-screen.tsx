@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -6,6 +6,7 @@ import {
   Pressable,
   ScrollView,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -17,15 +18,19 @@ import {
   parseTransactionsFromCsv,
   serializeTransactionsToCsv,
   type BackupEnvelope,
-  type CreateTransactionInput,
   type ParseTransactionsCsvResult,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { SyncStatusBadge } from '@/common/components/sync-status-badge';
 import { ThemedText } from '@/common/components/themed-text';
+import {
+  BottomTabInset,
+  Fonts,
+  WebMaxPageWidth,
+} from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
-import { Colors, WebMaxPageWidth } from '@/common/constants/theme';
 import {
   copyTextToClipboard,
   downloadTextFile,
@@ -48,6 +53,9 @@ type ImportMode = 'merge' | 'overwrite';
 export function PortabilityScreen() {
   const { isAuthenticated, user } = useRequireAuth();
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 768;
+
   const syncStatus = useSyncStatus();
   const [activeTab, setActiveTab] = useState<PortabilityTab>('export');
   const [importFormat, setImportFormat] = useState<ImportFormat>('json');
@@ -76,7 +84,7 @@ export function PortabilityScreen() {
   // File Download Helper
   const downloadFile = async (content: string, filename: string, mimeType: string) => {
     if (downloadTextFile(content, filename, mimeType)) {
-      setToastMessage(`✓ Downloaded ${filename}`);
+      setToastMessage(`Downloaded ${filename}`);
     } else {
       await copyToClipboard(content, filename);
     }
@@ -85,7 +93,7 @@ export function PortabilityScreen() {
   // Clipboard Helper
   const copyToClipboard = async (text: string, label: string) => {
     const copied = await copyTextToClipboard(text);
-    setToastMessage(copied ? `✓ ${label} copied to clipboard!` : `✓ ${label} ready`);
+    setToastMessage(copied ? `${label} copied to clipboard` : `${label} ready`);
   };
 
   // File Upload Handler (Web)
@@ -166,7 +174,7 @@ export function PortabilityScreen() {
         return;
       }
       setValidatedBackup(parseResult.data);
-      setToastMessage('✓ Backup verified and ready to restore!');
+      setToastMessage('Backup verified and ready to restore');
     } catch (err: unknown) {
       setErrorMessage(
         `JSON Syntax Error: ${err instanceof Error ? err.message : 'Could not parse JSON string'}`,
@@ -185,9 +193,9 @@ export function PortabilityScreen() {
       });
 
       setToastMessage(
-        `✓ Backup restored successfully (${result.importedCount} transactions ${
+        `Backup restored (${result.importedCount} transactions ${
           importMode === 'overwrite' ? 'replaced' : 'merged'
-        })!`,
+        })`,
       );
       setValidatedBackup(null);
       setJsonInput('');
@@ -216,7 +224,7 @@ export function PortabilityScreen() {
           `Could not parse any valid transactions:\n${result.errors.slice(0, 3).join('\n')}`,
         );
       } else {
-        setToastMessage(`✓ CSV preview generated: ${result.valid.length} valid transactions.`);
+        setToastMessage(`CSV preview generated: ${result.valid.length} valid transactions`);
       }
     } catch (err: unknown) {
       setErrorMessage(err instanceof Error ? err.message : 'Failed to parse CSV.');
@@ -229,7 +237,7 @@ export function PortabilityScreen() {
 
     try {
       const created = await batchCreateMutation.mutateAsync(csvPreviewResult.valid);
-      setToastMessage(`✓ Successfully imported ${created.length} transactions from CSV!`);
+      setToastMessage(`Imported ${created.length} transactions from CSV`);
       setCsvPreviewResult(null);
       setCsvInput('');
     } catch (err: unknown) {
@@ -255,65 +263,63 @@ export function PortabilityScreen() {
   }
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
+    <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
+      <SafeAreaView className="flex-1" edges={['top', 'bottom', 'left', 'right']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           className="flex-1"
         >
-          {/* Top Bar Header */}
-          <View className="px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70">
-            <View
-              style={
-                Platform.OS === 'web'
-                  ? { width: '100%', maxWidth: WebMaxPageWidth, alignSelf: 'center' }
-                  : undefined
-              }
-              className="flex-row items-center justify-between"
-            >
-              <Pressable
-                onPress={() => {
-                  if (router.canGoBack()) {
-                    router.back();
-                  } else {
-                    router.replace('/dashboard' as any);
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Go back"
-                className="py-1.5 px-3 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 flex-row items-center gap-1"
-              >
-                <ThemedText className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  ← Back
-                </ThemedText>
-              </Pressable>
+          {/* Mobile / Standalone Top Bar Header (hidden when Desktop sidebar is visible) */}
+          {!isDesktopWeb && (
+            <View className="px-4 py-3 border-b border-ledger-border dark:border-ledger-border-dark bg-ledger-surface dark:bg-ledger-surface-dark">
+              <View className="flex-row items-center justify-between gap-2">
+                <Pressable
+                  onPress={() => {
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace('/dashboard');
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                  className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75 flex-row items-center gap-1.5"
+                >
+                  <AppIcon name="back" size={16} color={theme.text} />
+                  <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                    Back
+                  </ThemedText>
+                </Pressable>
 
-              <View className="items-center flex-1 px-1">
-                <ThemedText
-                  className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white text-center"
-                  numberOfLines={1}
-                >
-                  Data Portability & Backup
-                </ThemedText>
-                <ThemedText
-                  className="text-[10px] sm:text-[11px] text-slate-500 text-center"
-                  numberOfLines={1}
-                >
-                  Export for peace of mind or restore from backups
-                </ThemedText>
+                <View className="items-center flex-1 px-1">
+                  <ThemedText
+                    accessibilityRole="header"
+                    className="text-base font-extrabold text-ledger-ink dark:text-ledger-ink-dark text-center"
+                    numberOfLines={1}
+                  >
+                    Backup & Export
+                  </ThemedText>
+                  <ThemedText
+                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center"
+                    numberOfLines={1}
+                  >
+                    Snapshots, CSV reports & restore
+                  </ThemedText>
+                </View>
+
+                <View className="w-16" />
               </View>
-
-              <View className="w-12 sm:w-16" />
             </View>
-          </View>
+          )}
 
           <ScrollView
             className="flex-1"
+            keyboardShouldPersistTaps="handled"
             contentContainerStyle={{
               width: '100%',
               paddingHorizontal: 16,
               paddingTop: 16,
-              paddingBottom: 96,
+              paddingBottom: Math.max(96, BottomTabInset + 32),
               gap: 18,
               ...(Platform.OS === 'web'
                 ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
@@ -321,88 +327,107 @@ export function PortabilityScreen() {
             }}
             showsVerticalScrollIndicator={false}
           >
+            {/* Desktop Web Editorial Header */}
+            {isDesktopWeb && (
+              <View className="gap-0.5">
+                <ThemedText
+                  accessibilityRole="header"
+                  className="text-[28px] leading-9 font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark"
+                >
+                  Backup & Export
+                </ThemedText>
+                <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Export snapshots, CSV spreadsheets, or restore from backups
+                </ThemedText>
+              </View>
+            )}
+
             {/* Non-blocking Success Toast Banner */}
             {toastMessage && (
-              <View className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex-row items-center justify-between">
-                <View className="flex-1 mr-2">
-                  <ThemedText className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                    {toastMessage}
-                  </ThemedText>
-                </View>
+              <View className="px-4 py-3 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5">
+                <AppIcon name="checkCircle" size={16} color={theme.positive} />
+                <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                  {toastMessage}
+                </ThemedText>
                 <Pressable
                   onPress={() => setToastMessage(null)}
                   accessibilityRole="button"
                   accessibilityLabel="Dismiss notification"
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  className="px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/50 active:opacity-75"
+                  className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
                 >
-                  <ThemedText className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200">
-                    Dismiss
-                  </ThemedText>
+                  <AppIcon name="close" size={15} color={theme.positive} />
                 </Pressable>
               </View>
             )}
 
             {/* Error Banner */}
             {errorMessage && (
-              <View className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 flex-row items-center justify-between">
-                <View className="flex-1 mr-2">
-                  <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                    {errorMessage}
-                  </ThemedText>
-                </View>
+              <View
+                accessibilityRole="alert"
+                className="px-4 py-3 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5"
+              >
+                <AppIcon name="warning" size={16} color={theme.negative} />
+                <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                  {errorMessage}
+                </ThemedText>
                 <Pressable
                   onPress={() => setErrorMessage(null)}
                   accessibilityRole="button"
                   accessibilityLabel="Dismiss error"
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  className="px-2 py-1 rounded-full bg-rose-100 dark:bg-rose-900/50 active:opacity-75"
+                  className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
                 >
-                  <ThemedText className="text-[11px] font-bold text-rose-800 dark:text-rose-200">
-                    Dismiss
-                  </ThemedText>
+                  <AppIcon name="close" size={15} color={theme.negative} />
                 </Pressable>
               </View>
             )}
 
             {/* Cloud Sync Status Card */}
-            <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-3">
+            <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3.5">
               <View className="flex-row items-center justify-between gap-2">
-                <View className="flex-1 min-w-0">
-                  <ThemedText className="text-base font-extrabold text-slate-900 dark:text-white">
+                <View className="flex-1 min-w-0 gap-0.5">
+                  <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                     Cloud Sync
                   </ThemedText>
-                  <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
+                  <ThemedText
+                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                    numberOfLines={1}
+                  >
                     {user?.email ? `Signed in as ${user.email}` : 'Multi-device sync'}
                   </ThemedText>
                 </View>
                 <SyncStatusBadge />
               </View>
 
-              <View className="flex-row flex-wrap gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
-                <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                  <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                    Revision #{syncStatus.serverRevision}
-                  </ThemedText>
-                </View>
-                <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                  <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                    {syncStatus.pendingCount} Pending Offline Changes
-                  </ThemedText>
-                </View>
+              <View className="flex-row flex-wrap items-center gap-x-2 gap-y-1 pt-2.5 border-t border-ledger-border dark:border-ledger-border-dark">
+                <ThemedText className="text-xs font-mono text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Rev #{syncStatus.serverRevision}
+                </ThemedText>
+                <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                  ·
+                </ThemedText>
+                <ThemedText
+                  numeric
+                  className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                >
+                  {syncStatus.pendingCount} pending offline changes
+                </ThemedText>
                 {syncStatus.lastSyncedAt ? (
-                  <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                    <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
-                      Last Synced: {new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}
+                  <>
+                    <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                      ·
                     </ThemedText>
-                  </View>
+                    <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                      Last synced {new Date(syncStatus.lastSyncedAt).toLocaleTimeString()}
+                    </ThemedText>
+                  </>
                 ) : null}
               </View>
 
               {syncStatus.errorMessage ? (
                 <ThemedText
                   accessibilityRole="alert"
-                  className="text-xs font-medium text-rose-600 dark:text-rose-400">
+                  className="text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark"
+                >
                   {syncStatus.errorMessage}
                 </ThemedText>
               ) : null}
@@ -414,39 +439,52 @@ export function PortabilityScreen() {
                 disabled={syncStatus.phase === 'syncing'}
                 accessibilityRole="button"
                 accessibilityLabel="Sync Now"
-                className={`min-h-[44px] py-3 px-4 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm shadow-brand-500/20 ${
+                className={`min-h-[44px] py-3 px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-2 ${
                   syncStatus.phase === 'syncing' ? 'opacity-70' : ''
                 }`}
               >
                 {syncStatus.phase === 'syncing' ? (
-                  <ActivityIndicator color={Colors.dark.text} size="small" />
+                  <ActivityIndicator color={theme.onPrimary} size="small" />
                 ) : (
-                  <ThemedText className="text-white text-xs font-bold">
-                    Sync Now
-                  </ThemedText>
+                  <>
+                    <AppIcon name="sync" size={15} color={theme.onPrimary} />
+                    <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
+                      Sync Now
+                    </ThemedText>
+                  </>
                 )}
               </Pressable>
             </View>
 
             {/* Main Section Selector Tabs: [ Export ] vs [ Import ] */}
-            <View className="flex-row rounded-2xl bg-slate-200/70 dark:bg-slate-800/80 p-1">
+            <View className="flex-row rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark p-1 gap-1">
               <Pressable
                 onPress={() => {
                   setActiveTab('export');
                   setErrorMessage(null);
                 }}
-                className={`flex-1 py-2.5 rounded-xl items-center justify-center transition-colors ${
+                accessibilityRole="tab"
+                accessibilityLabel="Export Data"
+                accessibilityState={{ selected: activeTab === 'export' }}
+                className={`flex-1 min-h-[44px] rounded-lg flex-row items-center justify-center gap-1.5 ${
                   activeTab === 'export'
-                    ? 'bg-brand-500 shadow-sm'
-                    : 'bg-transparent active:opacity-70'
+                    ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                    : 'border border-transparent active:opacity-75'
                 }`}
               >
+                <AppIcon
+                  name="export"
+                  size={15}
+                  color={activeTab === 'export' ? theme.text : theme.textSecondary}
+                />
                 <ThemedText
                   className={`text-sm font-bold ${
-                    activeTab === 'export' ? 'text-white' : 'text-slate-600 dark:text-slate-400'
+                    activeTab === 'export'
+                      ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                      : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                   }`}
                 >
-                  📤 Export Data
+                  Export Data
                 </ThemedText>
               </Pressable>
 
@@ -455,18 +493,28 @@ export function PortabilityScreen() {
                   setActiveTab('import');
                   setErrorMessage(null);
                 }}
-                className={`flex-1 py-2.5 rounded-xl items-center justify-center transition-colors ${
+                accessibilityRole="tab"
+                accessibilityLabel="Import Data"
+                accessibilityState={{ selected: activeTab === 'import' }}
+                className={`flex-1 min-h-[44px] rounded-lg flex-row items-center justify-center gap-1.5 ${
                   activeTab === 'import'
-                    ? 'bg-brand-500 shadow-sm'
-                    : 'bg-transparent active:opacity-70'
+                    ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                    : 'border border-transparent active:opacity-75'
                 }`}
               >
+                <AppIcon
+                  name="import"
+                  size={15}
+                  color={activeTab === 'import' ? theme.text : theme.textSecondary}
+                />
                 <ThemedText
                   className={`text-sm font-bold ${
-                    activeTab === 'import' ? 'text-white' : 'text-slate-600 dark:text-slate-400'
+                    activeTab === 'import'
+                      ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                      : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                   }`}
                 >
-                  📥 Import Data
+                  Import Data
                 </ThemedText>
               </Pressable>
             </View>
@@ -475,118 +523,121 @@ export function PortabilityScreen() {
             {/* EXPORT SECTION */}
             {/* ============================================================== */}
             {activeTab === 'export' && (
-              <View className="gap-5">
+              <View className="gap-4">
                 {/* 1. Full JSON Backup Card */}
-                <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
+                <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
                   <View className="flex-row items-center gap-3">
-                    <View className="w-10 h-10 rounded-2xl bg-brand-50 dark:bg-brand-950/50 items-center justify-center border border-brand-500/20">
-                      <ThemedText className="text-xl">💾</ThemedText>
+                    <View className="w-10 h-10 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
+                      <AppIcon name="portability" size={20} color={theme.primary} />
                     </View>
-                    <View className="flex-1">
-                      <ThemedText className="text-base font-extrabold text-slate-900 dark:text-white">
+                    <View className="flex-1 min-w-0">
+                      <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                         Full JSON Backup
                       </ThemedText>
-                      <ThemedText className="text-xs text-slate-500">
-                        Complete Snapshot (Accounts, Categories, Transactions, Envelopes, Bills,
-                        Sinking Funds, Presets)
+                      <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                        Complete snapshot of accounts, categories, transactions, envelopes, bills,
+                        sinking funds, and presets
                       </ThemedText>
                     </View>
                   </View>
 
-                  {/* Summary Badges */}
-                  <View className="flex-row flex-wrap gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
-                    <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                      <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        {accounts.length} Accounts
-                      </ThemedText>
-                    </View>
-                    <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                      <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        {categories.length} Categories
-                      </ThemedText>
-                    </View>
-                    <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                      <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        {transactions.length} Transactions
-                      </ThemedText>
-                    </View>
+                  <View className="pt-2.5 border-t border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText
+                      numeric
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                    >
+                      {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'} ·{' '}
+                      {categories.length} {categories.length === 1 ? 'category' : 'categories'} ·{' '}
+                      {transactions.length}{' '}
+                      {transactions.length === 1 ? 'transaction' : 'transactions'}
+                    </ThemedText>
                   </View>
 
                   {/* Action Buttons */}
-                  <View className="flex-row gap-3 pt-2">
+                  <View className="flex-row flex-wrap gap-2.5">
                     <Pressable
                       onPress={() => handleExportJson('download')}
                       disabled={exportBackupMutation.isPending}
-                      className="flex-1 py-3 px-4 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm shadow-brand-500/20"
+                      accessibilityRole="button"
+                      accessibilityLabel="Export JSON Backup"
+                      className="flex-1 min-w-[160px] min-h-[44px] py-2.5 px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
                     >
                       {exportBackupMutation.isPending ? (
-                        <ActivityIndicator color={Colors.dark.text} size="small" />
+                        <ActivityIndicator color={theme.onPrimary} size="small" />
                       ) : (
-                        <ThemedText className="text-white text-xs font-bold">
-                          Export JSON Backup
-                        </ThemedText>
+                        <>
+                          <AppIcon name="export" size={15} color={theme.onPrimary} />
+                          <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
+                            Export JSON Backup
+                          </ThemedText>
+                        </>
                       )}
                     </Pressable>
 
                     <Pressable
                       onPress={() => handleExportJson('copy')}
                       disabled={exportBackupMutation.isPending}
-                      className="py-3 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 border border-slate-200/80 dark:border-slate-700 items-center justify-center"
+                      accessibilityRole="button"
+                      accessibilityLabel="Copy JSON backup to clipboard"
+                      className="min-h-[44px] py-2.5 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        Copy to Clipboard 📋
+                      <AppIcon name="copy" size={14} color={theme.textSecondary} />
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        Copy to Clipboard
                       </ThemedText>
                     </Pressable>
                   </View>
                 </View>
 
                 {/* 2. Transactions CSV Card */}
-                <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
+                <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
                   <View className="flex-row items-center gap-3">
-                    <View className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/50 items-center justify-center border border-emerald-500/20">
-                      <ThemedText className="text-xl">📊</ThemedText>
+                    <View className="w-10 h-10 rounded-xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
+                      <AppIcon name="chart" size={20} color={theme.positive} />
                     </View>
-                    <View className="flex-1">
-                      <ThemedText className="text-base font-extrabold text-slate-900 dark:text-white">
+                    <View className="flex-1 min-w-0">
+                      <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                         Transactions CSV
                       </ThemedText>
-                      <ThemedText className="text-xs text-slate-500">
-                        Spreadsheet-ready CSV (compatible with Excel, Google Sheets, Numbers)
+                      <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                        Spreadsheet-ready CSV compatible with Excel, Google Sheets, and Numbers
                       </ThemedText>
                     </View>
                   </View>
 
-                  {/* Summary Badges */}
-                  <View className="flex-row flex-wrap gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
-                    <View className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-500/20">
-                      <ThemedText className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
-                        {transactions.length} Transactions Ready
-                      </ThemedText>
-                    </View>
-                    <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800">
-                      <ThemedText className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">
-                        RFC 4180 Compliant
-                      </ThemedText>
-                    </View>
+                  <View className="pt-2.5 border-t border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText
+                      numeric
+                      className="text-xs font-medium text-ledger-pine dark:text-ledger-pine-dark"
+                    >
+                      {transactions.length}{' '}
+                      {transactions.length === 1 ? 'transaction' : 'transactions'} ready to export
+                    </ThemedText>
                   </View>
 
                   {/* Action Buttons */}
-                  <View className="flex-row gap-3 pt-2">
+                  <View className="flex-row flex-wrap gap-2.5">
                     <Pressable
                       onPress={() => handleExportCsv('download')}
-                      className="flex-1 py-3 px-4 rounded-2xl bg-emerald-600 active:bg-emerald-700 items-center justify-center shadow-sm shadow-emerald-600/20"
+                      accessibilityRole="button"
+                      accessibilityLabel="Export Transactions CSV"
+                      className="flex-1 min-w-[160px] min-h-[44px] py-2.5 px-4 rounded-xl bg-ledger-pine active:opacity-90 dark:bg-ledger-pine-dark flex-row items-center justify-center gap-1.5"
                     >
-                      <ThemedText className="text-white text-xs font-bold">
+                      <AppIcon name="export" size={15} color={theme.onPrimary} />
+                      <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
                         Export Transactions CSV
                       </ThemedText>
                     </Pressable>
 
                     <Pressable
                       onPress={() => handleExportCsv('copy')}
-                      className="py-3 px-4 rounded-2xl bg-slate-100 dark:bg-slate-800 active:bg-slate-200 dark:active:bg-slate-700 border border-slate-200/80 dark:border-slate-700 items-center justify-center"
+                      accessibilityRole="button"
+                      accessibilityLabel="Copy CSV to clipboard"
+                      className="min-h-[44px] py-2.5 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        Copy to Clipboard 📋
+                      <AppIcon name="copy" size={14} color={theme.textSecondary} />
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        Copy to Clipboard
                       </ThemedText>
                     </Pressable>
                   </View>
@@ -598,25 +649,28 @@ export function PortabilityScreen() {
             {/* IMPORT SECTION */}
             {/* ============================================================== */}
             {activeTab === 'import' && (
-              <View className="gap-5">
+              <View className="gap-4">
                 {/* Format Selector: [ JSON Backup ] | [ Transactions CSV ] */}
-                <View className="flex-row rounded-2xl bg-slate-200/60 dark:bg-slate-800/60 p-1">
+                <View className="flex-row rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark p-1 gap-1">
                   <Pressable
                     onPress={() => {
                       setImportFormat('json');
                       setErrorMessage(null);
                     }}
-                    className={`flex-1 py-2 rounded-xl items-center justify-center transition-colors ${
+                    accessibilityRole="tab"
+                    accessibilityLabel="JSON Backup format"
+                    accessibilityState={{ selected: importFormat === 'json' }}
+                    className={`flex-1 min-h-[44px] rounded-lg items-center justify-center ${
                       importFormat === 'json'
-                        ? 'bg-white dark:bg-slate-900 shadow-sm'
-                        : 'bg-transparent active:opacity-70'
+                        ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                        : 'border border-transparent active:opacity-75'
                     }`}
                   >
                     <ThemedText
                       className={`text-xs font-bold ${
                         importFormat === 'json'
-                          ? 'text-brand-600 dark:text-brand-400'
-                          : 'text-slate-600 dark:text-slate-400'
+                          ? 'text-brand-500 dark:text-brand-400'
+                          : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                       }`}
                     >
                       JSON Backup
@@ -628,17 +682,20 @@ export function PortabilityScreen() {
                       setImportFormat('csv');
                       setErrorMessage(null);
                     }}
-                    className={`flex-1 py-2 rounded-xl items-center justify-center transition-colors ${
+                    accessibilityRole="tab"
+                    accessibilityLabel="Transactions CSV format"
+                    accessibilityState={{ selected: importFormat === 'csv' }}
+                    className={`flex-1 min-h-[44px] rounded-lg items-center justify-center ${
                       importFormat === 'csv'
-                        ? 'bg-white dark:bg-slate-900 shadow-sm'
-                        : 'bg-transparent active:opacity-70'
+                        ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                        : 'border border-transparent active:opacity-75'
                     }`}
                   >
                     <ThemedText
                       className={`text-xs font-bold ${
                         importFormat === 'csv'
-                          ? 'text-brand-600 dark:text-brand-400'
-                          : 'text-slate-600 dark:text-slate-400'
+                          ? 'text-brand-500 dark:text-brand-400'
+                          : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                       }`}
                     >
                       Transactions CSV
@@ -650,13 +707,13 @@ export function PortabilityScreen() {
                 {/* JSON BACKUP IMPORT */}
                 {/* ---------------------------------------------------------- */}
                 {importFormat === 'json' && (
-                  <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
-                    <View className="flex-row items-center justify-between">
-                      <View className="gap-0.5">
-                        <ThemedText className="text-base font-extrabold text-slate-900 dark:text-white">
+                  <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
+                    <View className="flex-row flex-wrap items-center justify-between gap-2">
+                      <View className="gap-0.5 flex-1 min-w-[180px]">
+                        <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                           Restore JSON Backup
                         </ThemedText>
-                        <ThemedText className="text-xs text-slate-500">
+                        <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                           Paste backup payload or select a file
                         </ThemedText>
                       </View>
@@ -664,10 +721,13 @@ export function PortabilityScreen() {
                       {Platform.OS === 'web' && (
                         <Pressable
                           onPress={() => handleSelectFile('json')}
-                          className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700"
+                          accessibilityRole="button"
+                          accessibilityLabel="Choose JSON backup file"
+                          className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark active:opacity-75 border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1.5"
                         >
-                          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                            📂 Choose File
+                          <AppIcon name="file" size={14} color={theme.textSecondary} />
+                          <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                            Choose File
                           </ThemedText>
                         </Pressable>
                       )}
@@ -684,13 +744,14 @@ export function PortabilityScreen() {
                           setValidatedBackup(null);
                         }}
                         placeholder={`{\n  "version": 1,\n  "exportedAt": "...",\n  "data": { ... }\n}`}
-                        placeholderTextColor={theme.textSecondary}
+                        placeholderTextColor={theme.textMuted}
+                        accessibilityLabel="JSON backup payload"
                         style={{
                           minHeight: 140,
                           textAlignVertical: 'top',
-                          fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                          fontFamily: Fonts.mono,
                         }}
-                        className="w-full p-3.5 text-xs rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200"
+                        className="w-full p-3.5 text-xs rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark"
                       />
                       {jsonInput.length > 0 && (
                         <Pressable
@@ -700,10 +761,9 @@ export function PortabilityScreen() {
                           }}
                           accessibilityRole="button"
                           accessibilityLabel="Clear JSON input"
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800"
+                          className="absolute top-2 right-2 min-h-[44px] px-3 rounded-lg bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                         >
-                          <ThemedText className="text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                          <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                             Clear
                           </ThemedText>
                         </Pressable>
@@ -711,52 +771,58 @@ export function PortabilityScreen() {
                     </View>
 
                     {/* Mode Selection */}
-                    <View className="gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
-                      <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                    <View className="gap-2 pt-2 border-t border-ledger-border dark:border-ledger-border-dark">
+                      <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                         Restore Strategy
                       </ThemedText>
 
                       <View className="flex-row gap-3">
                         <Pressable
                           onPress={() => setImportMode('merge')}
-                          className={`flex-1 p-3 rounded-2xl border ${
+                          accessibilityRole="button"
+                          accessibilityLabel="Merge strategy"
+                          accessibilityState={{ selected: importMode === 'merge' }}
+                          className={`flex-1 min-h-[44px] p-3.5 rounded-xl border ${
                             importMode === 'merge'
-                              ? 'bg-brand-50 dark:bg-brand-950/40 border-brand-500'
-                              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                           }`}
                         >
                           <ThemedText
                             className={`text-xs font-bold mb-1 ${
                               importMode === 'merge'
-                                ? 'text-brand-700 dark:text-brand-300'
-                                : 'text-slate-700 dark:text-slate-300'
+                                ? 'text-brand-500 dark:text-brand-400'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
                             }`}
                           >
                             Merge (Recommended)
                           </ThemedText>
-                          <ThemedText className="text-[10px] text-slate-500">
+                          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                             Keep existing data and append new records, deduplicating by ID.
                           </ThemedText>
                         </Pressable>
 
                         <Pressable
                           onPress={() => setImportMode('overwrite')}
-                          className={`flex-1 p-3 rounded-2xl border ${
+                          accessibilityRole="button"
+                          accessibilityLabel="Overwrite strategy"
+                          accessibilityState={{ selected: importMode === 'overwrite' }}
+                          className={`flex-1 min-h-[44px] p-3.5 rounded-xl border ${
                             importMode === 'overwrite'
-                              ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-500'
-                              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                              ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-terracotta dark:border-ledger-terracotta-dark'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                           }`}
                         >
                           <ThemedText
                             className={`text-xs font-bold mb-1 ${
                               importMode === 'overwrite'
-                                ? 'text-rose-700 dark:text-rose-300'
-                                : 'text-slate-700 dark:text-slate-300'
+                                ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
                             }`}
                           >
                             Overwrite (Full Replace)
                           </ThemedText>
-                          <ThemedText className="text-[10px] text-slate-500">
+                          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                             Wipe all existing data and restore exactly what is in this backup.
                           </ThemedText>
                         </Pressable>
@@ -767,75 +833,70 @@ export function PortabilityScreen() {
                     {!validatedBackup && (
                       <Pressable
                         onPress={handleValidateJson}
-                        className="w-full py-3 px-4 rounded-2xl bg-slate-900 dark:bg-slate-100 active:opacity-80 items-center justify-center mt-1"
+                        accessibilityRole="button"
+                        accessibilityLabel="Validate Backup"
+                        className="w-full min-h-[44px] py-3 px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-2"
                       >
-                        <ThemedText className="text-white dark:text-slate-900 text-xs font-bold">
-                          Validate Backup 🔍
+                        <AppIcon name="search" size={15} color={theme.onPrimary} />
+                        <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
+                          Validate Backup
                         </ThemedText>
                       </Pressable>
                     )}
 
                     {/* Validated Summary Preview */}
                     {validatedBackup && (
-                      <View className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 gap-3 mt-1">
+                      <View className="p-4 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-3">
                         <View className="flex-row items-center gap-2">
-                          <ThemedText className="text-base">✓</ThemedText>
-                          <ThemedText className="text-xs font-extrabold text-emerald-800 dark:text-emerald-200">
-                            Ready to restore:
+                          <AppIcon name="checkCircle" size={16} color={theme.positive} />
+                          <ThemedText className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark">
+                            Backup verified and ready to restore
                           </ThemedText>
                         </View>
 
-                        <View className="flex-row flex-wrap gap-2">
-                          <View className="px-2.5 py-1 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <ThemedText className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                              {validatedBackup.data.accounts.length} Accounts
-                            </ThemedText>
-                          </View>
-                          <View className="px-2.5 py-1 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <ThemedText className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                              {validatedBackup.data.categories.length} Categories
-                            </ThemedText>
-                          </View>
-                          <View className="px-2.5 py-1 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <ThemedText className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                              {validatedBackup.data.transactions.length} Transactions
-                            </ThemedText>
-                          </View>
-                          <View className="px-2.5 py-1 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <ThemedText className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                              {validatedBackup.data.categoryBudgets.length} Envelopes
-                            </ThemedText>
-                          </View>
-                          <View className="px-2.5 py-1 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <ThemedText className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                              {validatedBackup.data.recurringCommitments.length} Bills
-                            </ThemedText>
-                          </View>
-                          <View className="px-2.5 py-1 rounded-full bg-white dark:bg-slate-900 border border-emerald-500/20">
-                            <ThemedText className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                              {validatedBackup.data.sinkingFunds.length} Sinking Funds
-                            </ThemedText>
-                          </View>
-                        </View>
+                        <ThemedText
+                          numeric
+                          className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        >
+                          {validatedBackup.data.accounts.length} accounts ·{' '}
+                          {validatedBackup.data.categories.length} categories ·{' '}
+                          {validatedBackup.data.transactions.length} transactions ·{' '}
+                          {validatedBackup.data.categoryBudgets.length} envelopes ·{' '}
+                          {validatedBackup.data.recurringCommitments.length} bills ·{' '}
+                          {validatedBackup.data.sinkingFunds.length} sinking funds
+                        </ThemedText>
 
                         {/* Confirm & Restore Action */}
                         <Pressable
                           onPress={handleConfirmRestoreJson}
                           disabled={importBackupMutation.isPending}
-                          className={`w-full py-3.5 px-4 rounded-2xl items-center justify-center mt-1 ${
+                          accessibilityRole="button"
+                          accessibilityLabel={
                             importMode === 'overwrite'
-                              ? 'bg-rose-600 active:bg-rose-700'
-                              : 'bg-emerald-600 active:bg-emerald-700'
+                              ? 'Confirm and overwrite all data'
+                              : 'Confirm and merge backup'
+                          }
+                          className={`w-full min-h-[44px] py-3 px-4 rounded-xl flex-row items-center justify-center gap-2 ${
+                            importMode === 'overwrite'
+                              ? 'bg-ledger-terracotta dark:bg-ledger-terracotta-dark active:opacity-85'
+                              : 'bg-brand-500 active:bg-brand-600 dark:bg-brand-400'
                           }`}
                         >
                           {importBackupMutation.isPending ? (
-                            <ActivityIndicator color={Colors.dark.text} size="small" />
+                            <ActivityIndicator color={theme.onPrimary} size="small" />
                           ) : (
-                            <ThemedText className="text-white text-xs font-bold">
-                              {importMode === 'overwrite'
-                                ? 'Confirm & Overwrite All Data ⚠️'
-                                : 'Confirm & Restore (Merge) ✨'}
-                            </ThemedText>
+                            <>
+                              <AppIcon
+                                name={importMode === 'overwrite' ? 'warning' : 'checkCircle'}
+                                size={15}
+                                color={theme.onPrimary}
+                              />
+                              <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
+                                {importMode === 'overwrite'
+                                  ? 'Confirm & Overwrite All Data'
+                                  : 'Confirm & Restore (Merge)'}
+                              </ThemedText>
+                            </>
                           )}
                         </Pressable>
                       </View>
@@ -847,23 +908,25 @@ export function PortabilityScreen() {
                 {/* CSV IMPORT */}
                 {/* ---------------------------------------------------------- */}
                 {importFormat === 'csv' && (
-                  <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
-                    <View className="flex-row items-center justify-between">
-                      <View className="gap-0.5">
-                        <ThemedText className="text-base font-extrabold text-slate-900 dark:text-white">
+                  <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
+                    <View className="flex-row flex-wrap items-center justify-between gap-2">
+                      <View className="gap-0.5 flex-1 min-w-[160px]">
+                        <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                           Import Transactions CSV
                         </ThemedText>
-                        <ThemedText className="text-xs text-slate-500">
+                        <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                           Paste CSV table or select a file
                         </ThemedText>
                       </View>
 
-                      <View className="flex-row gap-2">
+                      <View className="flex-row flex-wrap gap-2">
                         <Pressable
                           onPress={handleLoadCsvTemplate}
-                          className="px-2.5 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700"
+                          accessibilityRole="button"
+                          accessibilityLabel="Load sample CSV template"
+                          className="min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark active:opacity-75 border border-ledger-border dark:border-ledger-border-dark items-center justify-center"
                         >
-                          <ThemedText className="text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                          <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                             Sample Template
                           </ThemedText>
                         </Pressable>
@@ -871,10 +934,13 @@ export function PortabilityScreen() {
                         {Platform.OS === 'web' && (
                           <Pressable
                             onPress={() => handleSelectFile('csv')}
-                            className="px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 border border-slate-200 dark:border-slate-700"
+                            accessibilityRole="button"
+                            accessibilityLabel="Choose CSV file"
+                            className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark active:opacity-75 border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1.5"
                           >
-                            <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                              📂 Choose File
+                            <AppIcon name="file" size={14} color={theme.textSecondary} />
+                            <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                              Choose File
                             </ThemedText>
                           </Pressable>
                         )}
@@ -892,13 +958,14 @@ export function PortabilityScreen() {
                           setCsvPreviewResult(null);
                         }}
                         placeholder={`Date,Type,Amount,Currency,Account,ToAccount,Category,Merchant,Notes,Tags\n2026-11-01,EXPENSE,45.50,${DEFAULT_CURRENCY},"Main Bank",,"Groceries","Supermarket","Dinner groceries","food"`}
-                        placeholderTextColor={theme.textSecondary}
+                        placeholderTextColor={theme.textMuted}
+                        accessibilityLabel="CSV transactions input"
                         style={{
                           minHeight: 140,
                           textAlignVertical: 'top',
-                          fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                          fontFamily: Fonts.mono,
                         }}
-                        className="w-full p-3.5 text-xs rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200"
+                        className="w-full p-3.5 text-xs rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark"
                       />
                       {csvInput.length > 0 && (
                         <Pressable
@@ -908,10 +975,9 @@ export function PortabilityScreen() {
                           }}
                           accessibilityRole="button"
                           accessibilityLabel="Clear CSV input"
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          className="absolute top-2 right-2 px-2 py-0.5 rounded-full bg-slate-200/80 dark:bg-slate-800"
+                          className="absolute top-2 right-2 min-h-[44px] px-3 rounded-lg bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                         >
-                          <ThemedText className="text-[10px] font-bold text-slate-600 dark:text-slate-400">
+                          <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                             Clear
                           </ThemedText>
                         </Pressable>
@@ -922,33 +988,45 @@ export function PortabilityScreen() {
                     {!csvPreviewResult && (
                       <Pressable
                         onPress={handlePreviewCsv}
-                        className="w-full py-3 px-4 rounded-2xl bg-slate-900 dark:bg-slate-100 active:opacity-80 items-center justify-center mt-1"
+                        accessibilityRole="button"
+                        accessibilityLabel="Preview CSV Transactions"
+                        className="w-full min-h-[44px] py-3 px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-2"
                       >
-                        <ThemedText className="text-white dark:text-slate-900 text-xs font-bold">
-                          Preview CSV Transactions 🔍
+                        <AppIcon name="search" size={15} color={theme.onPrimary} />
+                        <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
+                          Preview CSV Transactions
                         </ThemedText>
                       </Pressable>
                     )}
 
                     {/* CSV Parse Results */}
                     {csvPreviewResult && (
-                      <View className="gap-3 mt-1">
+                      <View className="gap-3">
                         {/* Errors summary if any */}
                         {csvPreviewResult.errors.length > 0 && (
-                          <View className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-500/30 gap-1.5">
-                            <ThemedText className="text-xs font-bold text-amber-800 dark:text-amber-200">
-                              ⚠️ {csvPreviewResult.errors.length} issue(s) detected:
-                            </ThemedText>
+                          <View className="p-3.5 rounded-2xl bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-1.5">
+                            <View className="flex-row items-center gap-1.5">
+                              <AppIcon name="warning" size={15} color={theme.warning} />
+                              <ThemedText
+                                numeric
+                                className="text-xs font-bold text-ledger-ochre dark:text-ledger-ochre-dark"
+                              >
+                                {csvPreviewResult.errors.length} issue(s) detected:
+                              </ThemedText>
+                            </View>
                             {csvPreviewResult.errors.slice(0, 4).map((err, idx) => (
                               <ThemedText
                                 key={idx}
-                                className="text-[11px] text-amber-700 dark:text-amber-300"
+                                className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
                               >
-                                • {err}
+                                · {err}
                               </ThemedText>
                             ))}
                             {csvPreviewResult.errors.length > 4 && (
-                              <ThemedText className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                              <ThemedText
+                                numeric
+                                className="text-xs text-ledger-ochre dark:text-ledger-ochre-dark font-medium"
+                              >
                                 + {csvPreviewResult.errors.length - 4} more rows skipped
                               </ThemedText>
                             )}
@@ -957,31 +1035,47 @@ export function PortabilityScreen() {
 
                         {/* Valid transactions preview */}
                         {csvPreviewResult.valid.length > 0 ? (
-                          <View className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 gap-3">
-                            <ThemedText className="text-xs font-extrabold text-emerald-800 dark:text-emerald-200">
-                              ✓ {csvPreviewResult.valid.length} valid transaction(s) ready to import
-                            </ThemedText>
+                          <View className="p-4 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-3">
+                            <View className="flex-row items-center gap-2">
+                              <AppIcon name="checkCircle" size={16} color={theme.positive} />
+                              <ThemedText
+                                numeric
+                                className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark"
+                              >
+                                {csvPreviewResult.valid.length} valid transaction(s) ready to import
+                              </ThemedText>
+                            </View>
 
                             <Pressable
                               onPress={handleImportCsvTransactions}
                               disabled={batchCreateMutation.isPending}
-                              className="w-full py-3.5 px-4 rounded-2xl bg-emerald-600 active:bg-emerald-700 items-center justify-center"
+                              accessibilityRole="button"
+                              accessibilityLabel={`Import ${csvPreviewResult.valid.length} transactions`}
+                              className="w-full min-h-[44px] py-3 px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-2"
                             >
                               {batchCreateMutation.isPending ? (
-                                <ActivityIndicator color={Colors.dark.text} size="small" />
+                                <ActivityIndicator color={theme.onPrimary} size="small" />
                               ) : (
-                                <ThemedText className="text-white text-xs font-bold">
-                                  Import {csvPreviewResult.valid.length} Transactions 🚀
-                                </ThemedText>
+                                <>
+                                  <AppIcon name="import" size={15} color={theme.onPrimary} />
+                                  <ThemedText
+                                    numeric
+                                    className="text-ledger-canvas dark:text-brand-900 text-xs font-bold"
+                                  >
+                                    Import {csvPreviewResult.valid.length} Transactions
+                                  </ThemedText>
+                                </>
                               )}
                             </Pressable>
                           </View>
                         ) : (
                           <Pressable
                             onPress={() => setCsvPreviewResult(null)}
-                            className="w-full py-3 px-4 rounded-2xl bg-slate-200 dark:bg-slate-800 items-center justify-center"
+                            accessibilityRole="button"
+                            accessibilityLabel="Re-check CSV"
+                            className="w-full min-h-[44px] py-3 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                           >
-                            <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                               Re-check CSV
                             </ThemedText>
                           </Pressable>

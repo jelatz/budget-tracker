@@ -1,7 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -20,7 +19,10 @@ import {
   type CategoryBudget,
   type CategoryBudgetStatus,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
+import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAllCategories,
   useCategoryBudgets,
@@ -62,9 +64,10 @@ function shiftPeriodMonth(periodMonth: string, delta: number): string {
   return `${year}-${String(month).padStart(2, '0')}`;
 }
 
-const AMOUNT_PRESETS = [5000, 10000, 25000, 50000]; // in cents: $50, $100, $250, $500
+const AMOUNT_PRESETS = [5000, 10000, 25000, 50000];
 
 export function EnvelopeBudgetsCard() {
+  const theme = useTheme();
   const [periodMonth, setPeriodMonth] = useState<string>(getCurrentPeriod);
 
   // Queries & Mutations
@@ -76,6 +79,7 @@ export function EnvelopeBudgetsCard() {
   // Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [editingEnvelope, setEditingEnvelope] = useState<CategoryBudgetStatus | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Form Fields
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
@@ -86,7 +90,6 @@ export function EnvelopeBudgetsCard() {
 
   const isSubmitting = upsertMutation.isPending || deleteMutation.isPending;
 
-  // Category map for quick lookup
   const categoryMap = useMemo(() => {
     const map = new Map<string, { name: string; icon: string; color?: string }>();
     for (const c of categories) {
@@ -95,7 +98,6 @@ export function EnvelopeBudgetsCard() {
     return map;
   }, [categories]);
 
-  // Totals for this period
   const totals = useMemo(() => {
     let totalAssigned = 0;
     let totalSpent = 0;
@@ -108,7 +110,6 @@ export function EnvelopeBudgetsCard() {
     return { totalAssigned, totalSpent, totalRemaining };
   }, [envelopes]);
 
-  // Categories available for new envelopes
   const availableCategories = useMemo(() => {
     const usedCategoryIds = new Set(envelopes.map((e) => e.categoryId));
     return categories.filter((c) => c.type === 'EXPENSE' && !usedCategoryIds.has(c.id));
@@ -116,6 +117,7 @@ export function EnvelopeBudgetsCard() {
 
   const handleOpenCreateModal = () => {
     setEditingEnvelope(null);
+    setConfirmingDelete(false);
     setSelectedCategoryId(availableCategories[0]?.id ?? (categories[0]?.id ?? ''));
     setAssignedInput('100');
     setRolloverEnabled(true);
@@ -126,6 +128,7 @@ export function EnvelopeBudgetsCard() {
 
   const handleOpenEditModal = (envelope: CategoryBudgetStatus) => {
     setEditingEnvelope(envelope);
+    setConfirmingDelete(false);
     setSelectedCategoryId(envelope.categoryId);
     setAssignedInput(minorUnitsToDecimalInput(envelope.assignedMinor));
     setRolloverEnabled(envelope.rolloverEnabled);
@@ -138,6 +141,7 @@ export function EnvelopeBudgetsCard() {
     if (!isSubmitting) {
       setModalVisible(false);
       setEditingEnvelope(null);
+      setConfirmingDelete(false);
       setFormError(null);
     }
   };
@@ -171,54 +175,44 @@ export function EnvelopeBudgetsCard() {
       await upsertMutation.mutateAsync(budgetPayload);
       setModalVisible(false);
       setEditingEnvelope(null);
+      setConfirmingDelete(false);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : 'Failed to save envelope budget.';
       setFormError(msg);
     }
   };
 
-  const handleDeleteEnvelope = () => {
+  const handleConfirmDeleteEnvelope = async () => {
     if (!editingEnvelope) return;
-
-    const catName = categoryMap.get(editingEnvelope.categoryId)?.name ?? 'envelope';
-    const doDelete = async () => {
-      try {
-        if (editingEnvelope.id) {
-          await deleteMutation.mutateAsync(editingEnvelope.id);
-        }
-        setModalVisible(false);
-        setEditingEnvelope(null);
-      } catch (error: unknown) {
-        const msg = error instanceof Error ? error.message : 'Failed to delete envelope.';
-        setFormError(msg);
+    try {
+      setFormError(null);
+      if (editingEnvelope.id) {
+        await deleteMutation.mutateAsync(editingEnvelope.id);
       }
-    };
-
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      if (window.confirm(`Delete the "${catName}" envelope for ${formatPeriodDisplay(periodMonth)}?`)) {
-        void doDelete();
-      }
-    } else {
-      Alert.alert(
-        'Delete Envelope',
-        `Are you sure you want to remove the "${catName}" envelope for ${formatPeriodDisplay(periodMonth)}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
-        ],
-      );
+      setModalVisible(false);
+      setEditingEnvelope(null);
+      setConfirmingDelete(false);
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : 'Failed to delete envelope.';
+      setFormError(msg);
     }
   };
 
+  const editingCategory = editingEnvelope ? categoryMap.get(editingEnvelope.categoryId) : undefined;
+  const editingCategoryName = editingCategory?.name ?? 'envelope';
+
   return (
-    <View className="rounded-3xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
+    <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
       {/* 1. Header */}
       <View className="flex-row items-center justify-between flex-wrap gap-2">
         <View className="gap-0.5 flex-1 min-w-[140px] mr-2">
-          <ThemedText className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+          <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
             Category Envelopes
           </ThemedText>
-          <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
+          <ThemedText
+            className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+            numberOfLines={1}
+          >
             Dedicated monthly pots with rollovers
           </ThemedText>
         </View>
@@ -227,29 +221,32 @@ export function EnvelopeBudgetsCard() {
           onPress={handleOpenCreateModal}
           accessibilityRole="button"
           accessibilityLabel="Create New Envelope"
-          className="bg-brand-500 active:bg-brand-600 px-3 py-1.5 rounded-full flex-row items-center gap-1 shadow-sm"
+          className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-85 px-3.5 py-2 rounded-xl flex-row items-center gap-1.5"
         >
-          <ThemedText className="text-white text-xs font-bold">+ New Envelope</ThemedText>
+          <AppIcon name="add" size={15} color={theme.onPrimary} />
+          <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-xs font-bold">
+            New Envelope
+          </ThemedText>
         </Pressable>
       </View>
 
       {/* 2. Month Selector & Summary Bar */}
-      <View className="flex-row flex-wrap items-center justify-between gap-1.5 bg-slate-50 dark:bg-slate-950 p-2 sm:p-2.5 rounded-2xl border border-slate-200/60 dark:border-slate-800/80">
-        <View className="flex-row items-center gap-1">
+      <View className="flex-row flex-wrap items-center justify-between gap-2 bg-ledger-subtle dark:bg-ledger-subtle-dark p-2 rounded-xl border border-ledger-border dark:border-ledger-border-dark">
+        <View className="flex-row items-center gap-1.5">
           <Pressable
             onPress={() => setPeriodMonth((prev) => shiftPeriodMonth(prev, -1))}
             accessibilityRole="button"
             accessibilityLabel="Previous Month"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+            className="w-11 h-11 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
           >
-            <ThemedText className="text-xs font-bold text-slate-600 dark:text-slate-300">
-              ◀
-            </ThemedText>
+            <AppIcon name="chevronLeft" size={16} color={theme.textSecondary} />
           </Pressable>
 
-          <View className="px-2 py-0.5">
-            <ThemedText className="text-xs font-bold text-slate-900 dark:text-white">
+          <View className="px-2 py-1">
+            <ThemedText
+              numeric
+              className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+            >
               {formatPeriodDisplay(periodMonth)}
             </ThemedText>
           </View>
@@ -258,12 +255,9 @@ export function EnvelopeBudgetsCard() {
             onPress={() => setPeriodMonth((prev) => shiftPeriodMonth(prev, 1))}
             accessibilityRole="button"
             accessibilityLabel="Next Month"
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            className="w-7 h-7 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+            className="w-11 h-11 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
           >
-            <ThemedText className="text-xs font-bold text-slate-600 dark:text-slate-300">
-              ▶
-            </ThemedText>
+            <AppIcon name="chevronRight" size={16} color={theme.textSecondary} />
           </Pressable>
 
           {periodMonth !== getCurrentPeriod() && (
@@ -271,9 +265,9 @@ export function EnvelopeBudgetsCard() {
               onPress={() => setPeriodMonth(getCurrentPeriod())}
               accessibilityRole="button"
               accessibilityLabel="Reset to Current Month"
-              className="px-2 py-1 rounded-md bg-slate-200/70 dark:bg-slate-800 active:opacity-75 ml-1"
+              className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75 ml-1"
             >
-              <ThemedText className="text-[10px] font-semibold text-slate-700 dark:text-slate-300">
+              <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                 Today
               </ThemedText>
             </Pressable>
@@ -281,10 +275,13 @@ export function EnvelopeBudgetsCard() {
         </View>
 
         {envelopes.length > 0 && (
-          <View className="flex-row items-center gap-2">
-            <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
+          <View className="flex-row items-center px-2">
+            <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
               Assigned:{' '}
-              <ThemedText className="font-semibold text-slate-700 dark:text-slate-300">
+              <ThemedText
+                numeric
+                className="font-bold text-ledger-ink dark:text-ledger-ink-dark"
+              >
                 {formatMinorUnits(totals.totalAssigned)}
               </ThemedText>
             </ThemedText>
@@ -295,44 +292,48 @@ export function EnvelopeBudgetsCard() {
       {/* 3. List of Envelopes */}
       {isLoading ? (
         <View className="py-8 items-center justify-center">
-          <ActivityIndicator size="small" color="#0ea5e9" />
-          <ThemedText className="text-xs text-slate-400 mt-2">Loading envelopes...</ThemedText>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted mt-2">
+            Loading envelopes...
+          </ThemedText>
         </View>
       ) : envelopes.length === 0 ? (
-        <View className="py-6 items-center justify-center gap-2 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
-          <ThemedText className="text-3xl">✉️</ThemedText>
-          <ThemedText className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            No envelopes for {formatPeriodDisplay(periodMonth)}
+        <View className="py-6 px-4 items-center justify-center gap-2.5 bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-2xl border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark">
+          <View className="w-11 h-11 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
+            <AppIcon name="envelope" size={20} color={theme.textMuted} />
+          </View>
+          <ThemedText className="text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark text-center">
+            {`No envelopes for ${formatPeriodDisplay(periodMonth)}`}
           </ThemedText>
-          <ThemedText className="text-xs text-center text-slate-500 dark:text-slate-400 max-w-[260px]">
+          <ThemedText className="text-xs text-center text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary max-w-[260px]">
             Create category envelopes to set monthly spending boundaries with automatic rollover.
           </ThemedText>
           <Pressable
             onPress={handleOpenCreateModal}
             accessibilityRole="button"
             accessibilityLabel="Create First Envelope"
-            className="mt-1 px-3 py-1.5 rounded-xl bg-brand-500 active:bg-brand-600"
+            className="mt-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-85 flex-row items-center gap-1.5"
           >
-            <ThemedText className="text-white text-xs font-bold">+ Create Envelope</ThemedText>
+            <AppIcon name="add" size={15} color={theme.onPrimary} />
+            <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-xs font-bold">
+              Create Envelope
+            </ThemedText>
           </Pressable>
         </View>
       ) : (
         <View className="gap-3">
           {envelopes.map((env) => {
-            const cat = categoryMap.get(env.categoryId) ?? {
-              name: 'Category',
-              icon: '🏷️',
-            };
+            const cat = categoryMap.get(env.categoryId);
+            const catName = cat?.name ?? 'Category';
 
             const percent = env.utilizationPercent;
             const clampedPercent = Math.min(100, Math.max(0, percent));
 
-            // Bar color logic: emerald for <75%, amber for 75-100%, rose for >100%
-            let barColor = 'bg-emerald-500';
+            let barColor = 'bg-ledger-pine dark:bg-ledger-pine-dark';
             if (env.isOverspent || percent > 100) {
-              barColor = 'bg-rose-500';
+              barColor = 'bg-ledger-terracotta dark:bg-ledger-terracotta-dark';
             } else if (percent >= 75) {
-              barColor = 'bg-amber-500';
+              barColor = 'bg-ledger-ochre dark:bg-ledger-ochre-dark';
             }
 
             return (
@@ -340,95 +341,109 @@ export function EnvelopeBudgetsCard() {
                 key={env.id ?? env.categoryId}
                 onPress={() => handleOpenEditModal(env)}
                 accessibilityRole="button"
-                accessibilityLabel={`Edit ${cat.name} envelope`}
-                className="p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-950/60 border border-slate-200/70 dark:border-slate-800/80 active:opacity-80"
+                accessibilityLabel={`Edit ${catName} envelope`}
+                className="min-h-[44px] p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-80"
               >
-                {/* Row 1: Icon, Title, Rollover Status & Amount */}
-                <View className="flex-row items-center justify-between mb-2">
-                  <View className="flex-row items-center gap-2.5 flex-1 mr-2">
-                    <View className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 items-center justify-center shadow-xs">
-                      <ThemedText className="text-base">{cat.icon}</ThemedText>
+                {/* Row 1: Icon, Title, Assigned & Remaining */}
+                <View className="flex-row items-center justify-between mb-2.5 gap-2">
+                  <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
+                    <View className="w-9 h-9 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
+                      {cat ? (
+                        <ThemedText className="text-base">{cat.icon}</ThemedText>
+                      ) : (
+                        <AppIcon name="tag" size={16} color={theme.textSecondary} />
+                      )}
                     </View>
-                    <View className="flex-1">
+                    <View className="flex-1 min-w-0">
                       <ThemedText
-                        className="text-sm font-bold text-slate-900 dark:text-white"
+                        className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                         numberOfLines={1}
                       >
-                        {cat.name}
+                        {catName}
                       </ThemedText>
-                      <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Assigned: {formatMinorUnits(env.assignedMinor)}
-                        {env.rolloverEnabled && env.carriedOverMinor !== 0 && (
-                          <ThemedText className="text-[11px] text-slate-400">
-                            {' '}
-                            (Eff: {formatMinorUnits(env.effectiveBudgetMinor)})
-                          </ThemedText>
-                        )}
+                      <ThemedText
+                        numeric
+                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        numberOfLines={1}
+                      >
+                        {`Assigned: ${formatMinorUnits(env.assignedMinor)}${
+                          env.rolloverEnabled && env.carriedOverMinor !== 0
+                            ? ` · Eff: ${formatMinorUnits(env.effectiveBudgetMinor)}`
+                            : ''
+                        }`}
                       </ThemedText>
                     </View>
                   </View>
 
-                  <View className="items-end">
+                  <View className="items-end shrink-0">
                     <ThemedText
+                      numeric
                       className={`text-sm font-bold ${
                         env.isOverspent
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-slate-900 dark:text-white'
+                          ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                          : 'text-ledger-ink dark:text-ledger-ink-dark'
                       }`}
                     >
                       {formatMinorUnits(env.remainingMinor)}
                     </ThemedText>
-                    <ThemedText className="text-[10px] text-slate-400">
+                    <ThemedText className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       {env.isOverspent ? 'overspent' : 'remaining'}
                     </ThemedText>
                   </View>
                 </View>
 
                 {/* Row 2: Progress Bar */}
-                <View className="h-2 rounded-full bg-slate-200/70 dark:bg-slate-800 overflow-hidden mb-2">
+                <View className="h-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden mb-2.5">
                   <View
                     className={`h-full rounded-full ${barColor}`}
                     style={{ width: `${clampedPercent}%` }}
                   />
                 </View>
 
-                {/* Row 3: Spent info & Rollover Badges */}
+                {/* Row 3: Spent info & Rollover Badges (max 2 badges) */}
                 <View className="flex-row items-center justify-between flex-wrap gap-1.5">
-                  <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Spent: {formatMinorUnits(env.spentMinor)} ({percent}%)
+                  <ThemedText
+                    numeric
+                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                  >
+                    {`Spent: ${formatMinorUnits(env.spentMinor)} (${percent}%)`}
                   </ThemedText>
 
                   <View className="flex-row items-center gap-1.5 flex-wrap">
-                    {/* Rollover Carryover Badge */}
                     {env.rolloverEnabled && env.carriedOverMinor > 0 && (
-                      <View className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80">
-                        <ThemedText className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                          +{formatMinorUnits(env.carriedOverMinor)} rolled over
+                      <View className="px-2 py-0.5 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft">
+                        <ThemedText
+                          numeric
+                          className="text-[11px] font-semibold text-ledger-pine dark:text-ledger-pine-dark"
+                        >
+                          {`+${formatMinorUnits(env.carriedOverMinor)} rolled over`}
                         </ThemedText>
                       </View>
                     )}
 
                     {env.rolloverEnabled && env.carriedOverMinor < 0 && (
-                      <View className="px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/60 border border-rose-200/80 dark:border-rose-800/80">
-                        <ThemedText className="text-[10px] font-semibold text-rose-700 dark:text-rose-300">
-                          -{formatMinorUnits(Math.abs(env.carriedOverMinor))} deficit
+                      <View className="px-2 py-0.5 rounded-full bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft">
+                        <ThemedText
+                          numeric
+                          className="text-[11px] font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark"
+                        >
+                          {`-${formatMinorUnits(Math.abs(env.carriedOverMinor))} deficit`}
                         </ThemedText>
                       </View>
                     )}
 
-                    {/* Rollover Status Badge */}
                     <View
-                      className={`px-2 py-0.5 rounded-full border ${
+                      className={`px-2 py-0.5 rounded-full ${
                         env.rolloverEnabled
-                          ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-200/80 dark:border-indigo-800/80'
-                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200/60 dark:border-slate-700/60'
+                          ? 'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft'
+                          : 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
                       }`}
                     >
                       <ThemedText
-                        className={`text-[10px] font-semibold ${
+                        className={`text-[11px] font-semibold ${
                           env.rolloverEnabled
-                            ? 'text-indigo-700 dark:text-indigo-300'
-                            : 'text-slate-500 dark:text-slate-400'
+                            ? 'text-ledger-teal dark:text-ledger-teal-dark'
+                            : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
                         }`}
                       >
                         {env.rolloverEnabled ? 'Rollover ON' : 'Rollover OFF'}
@@ -451,63 +466,94 @@ export function EnvelopeBudgetsCard() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1 justify-center items-center p-4 bg-black/60"
+          className="flex-1 justify-center items-center p-4 bg-black/55"
         >
-          <Pressable className="absolute inset-0" onPress={handleCloseModal} />
+          <Pressable
+            className="absolute inset-0"
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss envelope dialog"
+            onPress={handleCloseModal}
+          />
 
-          <View className="w-full max-w-[440px] rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl gap-4">
+          <View
+            accessibilityViewIsModal
+            className="relative z-10 w-full max-w-[440px] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-6 gap-4"
+          >
             {/* Header */}
-            <View className="flex-row items-center justify-between">
-              <View>
-                <ThemedText className="text-lg font-bold text-slate-900 dark:text-white">
+            <View className="flex-row items-center justify-between gap-2">
+              <View className="flex-1">
+                <ThemedText
+                  accessibilityRole="header"
+                  className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                >
                   {editingEnvelope ? 'Edit Envelope' : 'New Envelope'}
                 </ThemedText>
-                <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
+                <ThemedText
+                  numeric
+                  className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                >
                   {formatPeriodDisplay(periodMonth)}
                 </ThemedText>
               </View>
 
               <Pressable
                 onPress={handleCloseModal}
+                disabled={isSubmitting}
                 accessibilityRole="button"
-                accessibilityLabel="Close Modal"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 items-center justify-center active:opacity-75"
+                accessibilityLabel="Close envelope modal"
+                className="w-11 h-11 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
-                <ThemedText className="text-xs text-slate-500 font-bold">✕</ThemedText>
+                <AppIcon name="close" size={18} color={theme.textSecondary} />
               </Pressable>
             </View>
 
             {formError && (
-              <View className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800">
-                <ThemedText className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              <View
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+                className="p-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
+              >
+                <AppIcon name="error" size={15} color={theme.negative} />
+                <ThemedText className="text-xs text-ledger-terracotta dark:text-ledger-terracotta-dark font-semibold flex-1">
                   {formError}
                 </ThemedText>
               </View>
             )}
 
-            <ScrollView className="max-h-[420px]" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              className="max-h-[420px]"
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View className="gap-4">
                 {/* Category Selection */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Category
                   </ThemedText>
 
                   {editingEnvelope ? (
-                    <View className="flex-row items-center gap-2.5 p-3 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
-                      <ThemedText className="text-xl">
-                        {categoryMap.get(editingEnvelope.categoryId)?.icon ?? '🏷️'}
+                    <View className="flex-row items-center gap-2.5 p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                      {editingCategory ? (
+                        <ThemedText className="text-xl">{editingCategory.icon}</ThemedText>
+                      ) : (
+                        <AppIcon name="tag" size={18} color={theme.textSecondary} />
+                      )}
+                      <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        {editingCategoryName}
                       </ThemedText>
-                      <ThemedText className="text-sm font-bold text-slate-900 dark:text-white">
-                        {categoryMap.get(editingEnvelope.categoryId)?.name ?? 'Category'}
+                    </View>
+                  ) : availableCategories.length === 0 ? (
+                    <View className="p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                      <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                        All expense categories already have envelopes for this month.
                       </ThemedText>
                     </View>
                   ) : (
                     <ScrollView
                       horizontal
                       showsHorizontalScrollIndicator={false}
-                      contentContainerClassName="gap-2 py-1"
+                      contentContainerClassName="gap-2 py-0.5"
                     >
                       {availableCategories.map((cat) => {
                         const isSelected = selectedCategoryId === cat.id;
@@ -515,18 +561,22 @@ export function EnvelopeBudgetsCard() {
                           <Pressable
                             key={cat.id}
                             onPress={() => setSelectedCategoryId(cat.id)}
+                            disabled={isSubmitting}
                             accessibilityRole="button"
+                            accessibilityState={{ selected: isSelected }}
                             accessibilityLabel={`Select ${cat.name}`}
-                            className={`px-3 py-2 rounded-xl flex-row items-center gap-1.5 border ${
+                            className={`min-h-[44px] px-3 py-2 rounded-xl flex-row items-center gap-1.5 border ${
                               isSelected
-                                ? 'bg-brand-500 border-brand-500'
-                                : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                                ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                             }`}
                           >
                             <ThemedText className="text-sm">{cat.icon}</ThemedText>
                             <ThemedText
                               className={`text-xs font-semibold ${
-                                isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                                isSelected
+                                  ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                                  : 'text-ledger-ink dark:text-ledger-ink-dark'
                               }`}
                             >
                               {cat.name}
@@ -540,43 +590,52 @@ export function EnvelopeBudgetsCard() {
 
                 {/* Assigned Amount */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Monthly Assigned Budget ({DEFAULT_CURRENCY_SYMBOL})
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                    {`Monthly Assigned Budget (${DEFAULT_CURRENCY_SYMBOL})`}
                   </ThemedText>
 
-                  <View className="flex-row items-center border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl px-4 py-3">
-                    <ThemedText className="text-2xl font-bold text-slate-400 dark:text-slate-500 mr-2">
+                  <View className="flex-row items-center border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl px-4 py-3">
+                    <ThemedText className="text-2xl font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
                       {DEFAULT_CURRENCY_SYMBOL}
                     </ThemedText>
                     <TextInput
-                      className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
+                      className="flex-1 text-2xl font-bold text-ledger-ink dark:text-ledger-ink-dark p-0"
+                      style={TABULAR_NUMS_STYLE}
                       value={assignedInput}
                       onChangeText={(t) => {
                         setAssignedInput(normalizeDecimalInput(t));
                         if (formError) setFormError(null);
                       }}
+                      accessibilityLabel="Monthly assigned budget amount"
                       keyboardType="decimal-pad"
                       inputMode="decimal"
                       autoCorrect={false}
                       spellCheck={false}
                       autoComplete="off"
                       placeholder="100"
-                      placeholderTextColor="#94A3B8"
+                      placeholderTextColor={theme.textMuted}
                       editable={!isSubmitting}
                     />
                   </View>
 
                   {/* Amount Presets */}
-                  <View className="flex-row gap-2 mt-1">
+                  <View className="flex-row gap-2 flex-wrap mt-1">
                     {AMOUNT_PRESETS.map((presetMinor) => (
                       <Pressable
                         key={presetMinor}
-                        onPress={() => setAssignedInput(minorUnitsToDecimalInput(presetMinor))}
+                        onPress={() => {
+                          setAssignedInput(minorUnitsToDecimalInput(presetMinor));
+                          if (formError) setFormError(null);
+                        }}
+                        disabled={isSubmitting}
                         accessibilityRole="button"
                         accessibilityLabel={`Set budget to ${formatMinorUnits(presetMinor)}`}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                       >
-                        <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                        <ThemedText
+                          numeric
+                          className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                        >
                           {formatMinorUnits(presetMinor)}
                         </ThemedText>
                       </Pressable>
@@ -585,35 +644,39 @@ export function EnvelopeBudgetsCard() {
                 </View>
 
                 {/* Rollover Switch */}
-                <View className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 gap-2">
+                <View className="p-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
                   <View className="flex-row items-center justify-between">
                     <View className="flex-1 mr-3">
-                      <ThemedText className="text-sm font-bold text-slate-900 dark:text-white">
+                      <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
                         Rollover Surplus / Deficit
                       </ThemedText>
-                      <ThemedText className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
                         Roll unspent surplus or overspending into next month
                       </ThemedText>
                     </View>
                     <Switch
                       value={rolloverEnabled}
                       onValueChange={setRolloverEnabled}
-                      trackColor={{ false: '#cbd5e1', true: '#0ea5e9' }}
+                      disabled={isSubmitting}
+                      accessibilityLabel="Rollover Surplus or Deficit"
+                      trackColor={{ false: theme.borderStrong, true: theme.primary }}
+                      thumbColor={Platform.OS === 'android' ? theme.surface : undefined}
                     />
                   </View>
                 </View>
 
                 {/* Optional Notes */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Notes (Optional)
                   </ThemedText>
                   <TextInput
-                    className="border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl p-3 text-sm text-slate-900 dark:text-white"
+                    className="min-h-[44px] border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl p-3 text-sm text-ledger-ink dark:text-ledger-ink-dark"
                     value={notes}
                     onChangeText={setNotes}
+                    accessibilityLabel="Envelope notes"
                     placeholder="e.g. Weekly grocery runs + bulk pantry"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={theme.textMuted}
                     maxLength={280}
                     editable={!isSubmitting}
                   />
@@ -622,35 +685,81 @@ export function EnvelopeBudgetsCard() {
             </ScrollView>
 
             {/* Actions */}
-            <View className="gap-2 pt-2">
+            <View className="gap-2.5 pt-2">
               <Pressable
                 onPress={handleSaveEnvelope}
                 disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Save Envelope"
-                className="bg-brand-500 active:bg-brand-600 py-3 rounded-2xl items-center justify-center shadow-md shadow-brand-500/20"
+                className={`min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-85 py-3 rounded-xl items-center justify-center ${
+                  isSubmitting ? 'opacity-60' : ''
+                }`}
               >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                {upsertMutation.isPending ? (
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                 ) : (
-                  <ThemedText className="text-white font-bold text-sm">
+                  <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark font-bold text-sm">
                     {editingEnvelope ? 'Update Envelope' : 'Create Envelope'}
                   </ThemedText>
                 )}
               </Pressable>
 
-              {editingEnvelope && (
+              {editingEnvelope && !confirmingDelete && (
                 <Pressable
-                  onPress={handleDeleteEnvelope}
+                  onPress={() => setConfirmingDelete(true)}
                   disabled={isSubmitting}
                   accessibilityRole="button"
                   accessibilityLabel="Delete Envelope"
-                  className="py-2.5 rounded-2xl items-center justify-center border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 active:opacity-75"
+                  className="min-h-[44px] py-2.5 rounded-xl items-center justify-center flex-row gap-1.5 border border-ledger-border dark:border-ledger-border-dark bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft active:opacity-75"
                 >
-                  <ThemedText className="text-rose-600 dark:text-rose-400 font-bold text-xs">
+                  <AppIcon name="delete" size={15} color={theme.negative} />
+                  <ThemedText className="text-ledger-terracotta dark:text-ledger-terracotta-dark font-bold text-xs">
                     Delete Envelope
                   </ThemedText>
                 </Pressable>
+              )}
+
+              {editingEnvelope && confirmingDelete && (
+                <View className="p-3.5 rounded-2xl border border-ledger-border dark:border-ledger-border-dark bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft gap-3">
+                  <View className="flex-row items-start gap-2">
+                    <AppIcon name="warning" size={16} color={theme.negative} />
+                    <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                      {`Delete the "${editingCategoryName}" envelope for ${formatPeriodDisplay(
+                        periodMonth,
+                      )}?`}
+                    </ThemedText>
+                  </View>
+                  <View className="flex-row gap-2">
+                    <Pressable
+                      onPress={() => setConfirmingDelete(false)}
+                      disabled={isSubmitting}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cancel deleting envelope"
+                      className="flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                    >
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        Cancel
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => void handleConfirmDeleteEnvelope()}
+                      disabled={isSubmitting}
+                      accessibilityRole="button"
+                      accessibilityLabel="Confirm delete envelope"
+                      className={`flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center ${
+                        deleteMutation.isPending ? 'opacity-60' : ''
+                      }`}
+                    >
+                      {deleteMutation.isPending ? (
+                        <ActivityIndicator size="small" color={theme.background} />
+                      ) : (
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                          Confirm Delete
+                        </ThemedText>
+                      )}
+                    </Pressable>
+                  </View>
+                </View>
               )}
             </View>
           </View>

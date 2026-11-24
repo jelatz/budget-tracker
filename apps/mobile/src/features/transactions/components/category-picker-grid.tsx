@@ -15,6 +15,7 @@ import type {
   CreateCategoryInput,
   TransactionSplit,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
 import { useTheme } from '@/common/hooks/use-theme';
@@ -35,7 +36,7 @@ type GridTileItem =
   | { kind: 'more' };
 
 const PRESET_ICONS = ['🏷️', '🛒', '🍔', '🚗', '🎮', '🐾', '🎁', '🛠️', '📚', '🏥'] as const;
-const PRESET_COLORS = ['#208AEF', '#10B981', '#F97316', '#8B5CF6', '#EC4899', '#EF4444'] as const;
+const PRESET_COLORS = ['#1B4332', '#1E6F4E', '#2C5F6E', '#B4432C', '#A16207', '#6D4C41'] as const;
 
 export function CategoryPickerGrid({
   type,
@@ -132,11 +133,18 @@ export function CategoryPickerGrid({
       <View className="flex-row justify-between items-center mb-2 px-0.5 gap-2">
         <View className="flex-1 min-w-0">
           {hasSplits ? (
-            <ThemedText className="text-xs font-bold text-brand-500" numberOfLines={1}>
-              🔀 Split across {splits?.length} categories
-            </ThemedText>
+            <View className="flex-row items-center gap-1.5">
+              <AppIcon name="split" size={13} color={theme.primary} />
+              <ThemedText
+                numeric
+                className="text-xs font-bold text-brand-500 dark:text-brand-400 flex-1"
+                numberOfLines={1}
+              >
+                Split across {splits?.length} categories
+              </ThemedText>
+            </View>
           ) : (
-            <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
               Category
             </ThemedText>
           )}
@@ -146,32 +154,40 @@ export function CategoryPickerGrid({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open Split Editor"
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            className={`min-h-[36px] px-3 py-1.5 rounded-full border items-center justify-center active:opacity-75 ${
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            className={`min-h-[44px] px-3 py-1.5 rounded-full border flex-row items-center justify-center gap-1.5 active:opacity-75 ${
               hasSplits
-                ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-500/50'
-                : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700'
+                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-200 dark:border-ledger-border-dark'
+                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
             }`}
             onPress={onOpenSplitEditor}
           >
+            <AppIcon
+              name="split"
+              size={14}
+              color={hasSplits ? theme.primary : theme.textSecondary}
+            />
             <ThemedText
               className={`text-xs font-bold ${
-                hasSplits ? 'text-brand-500' : 'text-slate-700 dark:text-slate-300'
+                hasSplits
+                  ? 'text-brand-500 dark:text-brand-400'
+                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
               }`}
             >
-              🔀 Split
+              Split
             </ThemedText>
           </Pressable>
 
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Search all categories"
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-            className="min-h-[36px] px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+            hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+            className="min-h-[44px] px-3 py-1.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
             onPress={() => handleOpenSearchWithQuery('')}
           >
-            <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-              🔍 All
+            <AppIcon name="search" size={14} color={theme.textSecondary} />
+            <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+              All
             </ThemedText>
           </Pressable>
         </View>
@@ -192,12 +208,14 @@ export function CategoryPickerGrid({
                     key="more-categories"
                     accessibilityRole="button"
                     accessibilityLabel="Browse more categories"
-                    className="flex-1 min-h-[68px] rounded-2xl px-1.5 py-2 items-center justify-center bg-slate-50/80 dark:bg-slate-800/60 border border-dashed border-slate-300 dark:border-slate-700 active:scale-95"
+                    className="flex-1 min-h-[68px] rounded-2xl px-1.5 py-2 items-center justify-center bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark active:scale-95"
                     onPress={() => handleOpenSearchWithQuery('')}
                   >
-                    <ThemedText className="text-xl mb-1">➕</ThemedText>
+                    <View className="mb-1">
+                      <AppIcon name="add" size={20} color={theme.textSecondary} />
+                    </View>
                     <ThemedText
-                      className="text-[11px] font-semibold text-center text-slate-600 dark:text-slate-300"
+                      className="text-[11px] font-semibold text-center text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
                       numberOfLines={1}
                       adjustsFontSizeToFit
                       minimumFontScale={0.8}
@@ -221,7 +239,7 @@ export function CategoryPickerGrid({
                   className={`flex-1 min-h-[68px] rounded-2xl px-1.5 py-2 items-center justify-center relative active:scale-95 ${
                     isSelected
                       ? 'border-2'
-                      : 'bg-slate-50/80 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80'
+                      : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark'
                   }`}
                   style={
                     isSelected
@@ -238,7 +256,7 @@ export function CategoryPickerGrid({
                     className={`text-[11px] text-center ${
                       isSelected
                         ? 'font-bold'
-                        : 'font-medium text-slate-700 dark:text-slate-300'
+                        : 'font-medium text-ledger-ink dark:text-ledger-ink-dark'
                     }`}
                     style={isSelected ? { color: category.color } : undefined}
                     numberOfLines={1}
@@ -268,19 +286,22 @@ export function CategoryPickerGrid({
         presentationStyle="pageSheet"
         onRequestClose={() => setIsSearchOpen(false)}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
           >
-            <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+            <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
               {/* Modal Header */}
               <View className="flex-row justify-between items-center mb-4">
                 <View>
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                    CATEGORIES ({type === 'EXPENSE' ? 'EXPENSE' : 'INCOME'})
+                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                    Categories · {type === 'EXPENSE' ? 'Expense' : 'Income'}
                   </ThemedText>
-                  <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                  <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                     Select Category
                   </ThemedText>
                 </View>
@@ -288,11 +309,12 @@ export function CategoryPickerGrid({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close category search"
-                  className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                  className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                   onPress={() => setIsSearchOpen(false)}
                 >
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    ✕ Done
+                  <AppIcon name="close" size={14} color={theme.textSecondary} />
+                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Done
                   </ThemedText>
                 </Pressable>
               </View>
@@ -300,9 +322,9 @@ export function CategoryPickerGrid({
               {/* Search Input */}
               <View className="mb-3">
                 <TextInput
-                  className="h-12 rounded-2xl border px-3.5 text-base bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100"
+                  className="h-12 rounded-xl border px-3.5 text-base bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark"
                   placeholder="Search category name..."
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor={theme.textMuted}
                   value={searchQuery}
                   onChangeText={(text) => {
                     setSearchQuery(text);
@@ -320,7 +342,7 @@ export function CategoryPickerGrid({
               >
                 {filteredCategories.length === 0 ? (
                   <View className="p-8 items-center justify-center">
-                    <ThemedText className="text-sm font-medium text-slate-400 dark:text-slate-500 text-center">
+                    <ThemedText className="text-sm font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-center">
                       No matching category found for &quot;{searchQuery}&quot;
                     </ThemedText>
                   </View>
@@ -337,7 +359,7 @@ export function CategoryPickerGrid({
                         className={`min-h-[56px] flex-row justify-between items-center p-3 rounded-2xl border mb-1.5 active:scale-[0.99] ${
                           isSelected
                             ? 'border-2'
-                            : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
+                            : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                         }`}
                         style={
                           isSelected
@@ -359,7 +381,7 @@ export function CategoryPickerGrid({
                               className={`text-base ${
                                 isSelected
                                   ? 'font-bold'
-                                  : 'font-semibold text-slate-800 dark:text-slate-100'
+                                  : 'font-semibold text-ledger-ink dark:text-ledger-ink-dark'
                               }`}
                               style={isSelected ? { color: cat.color } : undefined}
                               numberOfLines={1}
@@ -367,7 +389,7 @@ export function CategoryPickerGrid({
                               {cat.name}
                             </ThemedText>
                             {cat.isCustom && (
-                              <ThemedText className="text-[11px] font-medium text-slate-400 dark:text-slate-500">
+                              <ThemedText className="text-[11px] font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                                 Custom
                               </ThemedText>
                             )}
@@ -376,8 +398,11 @@ export function CategoryPickerGrid({
 
                         <View className="flex-row items-center gap-2">
                           {cat.usageCount > 0 && (
-                            <View className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800">
-                              <ThemedText className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                            <View className="px-2 py-0.5 rounded-md bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                              <ThemedText
+                                numeric
+                                className="text-[11px] font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                              >
                                 {cat.usageCount} uses
                               </ThemedText>
                             </View>
@@ -387,12 +412,7 @@ export function CategoryPickerGrid({
                             style={{ backgroundColor: cat.color }}
                           />
                           {isSelected && (
-                            <ThemedText
-                              className="text-sm font-bold ml-1"
-                              style={{ color: cat.color }}
-                            >
-                              ✓
-                            </ThemedText>
+                            <AppIcon name="check" size={16} color={cat.color} />
                           )}
                         </View>
                       </Pressable>
@@ -401,22 +421,25 @@ export function CategoryPickerGrid({
                 )}
 
                 {/* Quick Create Custom Category Section */}
-                <View className="mt-4 p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
-                  <ThemedText className="text-sm font-bold text-slate-900 dark:text-slate-100 mb-3">
-                    ➕ Create Custom Category
-                  </ThemedText>
+                <View className="mt-4 p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
+                  <View className="flex-row items-center gap-1.5 mb-3">
+                    <AppIcon name="add" size={16} color={theme.primary} />
+                    <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                      Create Custom Category
+                    </ThemedText>
+                  </View>
 
                   <TextInput
-                    className="h-12 rounded-xl border border-slate-200 dark:border-slate-700 px-3.5 text-sm bg-slate-50 dark:bg-slate-800/80 text-slate-900 dark:text-slate-100"
+                    className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-3.5 text-sm bg-ledger-subtle dark:bg-ledger-subtle-dark text-ledger-ink dark:text-ledger-ink-dark"
                     placeholder="Category name (e.g. Subscriptions)"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     value={newCategoryName}
                     onChangeText={setNewCategoryName}
                     maxLength={40}
                   />
 
                   {/* Icon preset picker */}
-                  <ThemedText className="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-3 mb-1.5">
+                  <ThemedText className="text-xs font-semibold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mt-3 mb-1.5">
                     Choose Icon
                   </ThemedText>
                   <ScrollView
@@ -431,8 +454,8 @@ export function CategoryPickerGrid({
                         accessibilityLabel={`Select icon ${icon}`}
                         className={`min-w-[44px] min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center active:scale-95 ${
                           selectedIcon === icon
-                            ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-500'
-                            : 'bg-slate-100 dark:bg-slate-800 border-transparent'
+                            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                         }`}
                         onPress={() => setSelectedIcon(icon)}
                       >
@@ -442,7 +465,7 @@ export function CategoryPickerGrid({
                   </ScrollView>
 
                   {/* Color preset picker */}
-                  <ThemedText className="text-xs font-semibold text-slate-400 dark:text-slate-500 mt-3 mb-1.5">
+                  <ThemedText className="text-xs font-semibold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mt-3 mb-1.5">
                     Choose Color
                   </ThemedText>
                   <View className="flex-row flex-wrap gap-2 mb-4">
@@ -453,7 +476,7 @@ export function CategoryPickerGrid({
                         accessibilityLabel={`Select color ${color}`}
                         className={`min-w-[44px] min-h-[44px] rounded-full items-center justify-center border-2 ${
                           selectedColor === color
-                            ? 'border-slate-900 dark:border-white'
+                            ? 'border-ledger-ink dark:border-ledger-ink-dark'
                             : 'border-transparent'
                         }`}
                         onPress={() => setSelectedColor(color)}
@@ -467,12 +490,15 @@ export function CategoryPickerGrid({
                   </View>
 
                   {errorMessage && (
-                    <ThemedText
+                    <View
                       accessibilityRole="alert"
-                      className="text-xs font-medium text-rose-500 mb-2"
+                      className="flex-row items-center gap-1.5 mb-2"
                     >
-                      {errorMessage}
-                    </ThemedText>
+                      <AppIcon name="warning" size={14} color={theme.negative} />
+                      <ThemedText className="flex-1 text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                        {errorMessage}
+                      </ThemedText>
+                    </View>
                   )}
 
                   <Pressable
@@ -481,16 +507,16 @@ export function CategoryPickerGrid({
                     disabled={!newCategoryName.trim() || isSubmitting}
                     className={`min-h-[44px] h-12 rounded-xl items-center justify-center mt-1 active:scale-[0.98] ${
                       !newCategoryName.trim() || isSubmitting
-                        ? 'bg-slate-200 dark:bg-slate-800 opacity-60'
-                        : 'bg-brand-500 active:bg-brand-600 shadow-md shadow-brand-500/25'
+                        ? 'bg-ledger-selected dark:bg-ledger-selected-dark border border-ledger-border dark:border-ledger-border-dark opacity-70'
+                        : 'bg-brand-500 dark:bg-brand-400 active:opacity-90'
                     }`}
                     onPress={handleCreateCategory}
                   >
                     <ThemedText
                       className={`text-sm font-bold ${
                         !newCategoryName.trim() || isSubmitting
-                          ? 'text-slate-400 dark:text-slate-500'
-                          : 'text-white'
+                          ? 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
+                          : 'text-ledger-canvas dark:text-ledger-canvas-dark'
                       }`}
                     >
                       {isSubmitting ? 'Creating...' : 'Create & Select Category'}

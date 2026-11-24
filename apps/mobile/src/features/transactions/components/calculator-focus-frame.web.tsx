@@ -24,8 +24,8 @@ export type {
 } from './calculator-frame-theme';
 
 const ACTIVE_RING_CLASSES: Record<TransactionType, string> = {
-  EXPENSE: 'ring-4 ring-rose-500/15 dark:ring-rose-400/20',
-  INCOME: 'ring-4 ring-emerald-500/15 dark:ring-emerald-400/20',
+  EXPENSE: 'ring-4 ring-ledger-terracotta/15 dark:ring-ledger-terracotta-dark/20',
+  INCOME: 'ring-4 ring-ledger-pine/15 dark:ring-ledger-pine-dark/20',
   TRANSFER: 'ring-4 ring-brand-500/15 dark:ring-brand-400/20',
 };
 
@@ -151,7 +151,7 @@ export const CalculatorFocusFrame = forwardRef<
   const baseFrameClass = getCalculatorFrameClassName(transactionType, isFocused);
   const frameClassName = isFocused
     ? `${baseFrameClass} ${ACTIVE_RING_CLASSES[transactionType]}`
-    : `${baseFrameClass} hover:border-slate-400 dark:hover:border-slate-600`;
+    : `${baseFrameClass} hover:border-ledger-border-strong dark:hover:border-ledger-border-strong-dark`;
 
   return (
     <div

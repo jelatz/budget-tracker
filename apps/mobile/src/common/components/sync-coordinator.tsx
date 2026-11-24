@@ -53,15 +53,15 @@ export function SyncCoordinator() {
   return (
     <View
       accessibilityRole="alert"
-      className="absolute inset-0 z-50 bg-slate-50 dark:bg-slate-950">
+      className="absolute inset-0 z-50 bg-ledger-canvas dark:bg-ledger-canvas-dark">
       <SafeAreaView
         edges={['top', 'bottom', 'left', 'right']}
         className="flex-1 items-center justify-center px-6">
-        <View className="w-full max-w-[400px] rounded-3xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 p-6 gap-3 shadow-lg">
-          <ThemedText className="text-lg font-extrabold text-slate-900 dark:text-white text-center">
+        <View className="w-full max-w-[400px] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-ochre/40 dark:border-ledger-ochre-dark/40 p-6 gap-3">
+          <ThemedText className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
             Update Required
           </ThemedText>
-          <ThemedText className="text-sm text-slate-600 dark:text-slate-300 text-center leading-5">
+          <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center leading-5">
             This version of Budget Tracker is no longer supported by the sync API. Please update the app to continue syncing safely.
           </ThemedText>
         </View>

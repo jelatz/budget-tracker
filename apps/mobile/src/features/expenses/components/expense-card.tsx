@@ -8,10 +8,9 @@ import {
   type Transaction,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
-import { Colors } from '@/common/constants/theme';
-
-const COMPACT_HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 } as const;
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface ExpenseCardProps {
   expense: Transaction;
@@ -32,7 +31,7 @@ function formatExpenseDate(isoString: string): string {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
-    })} • ${d.toLocaleTimeString(undefined, {
+    })} · ${d.toLocaleTimeString(undefined, {
       hour: '2-digit',
       minute: '2-digit',
     })}`;
@@ -49,6 +48,7 @@ export function ExpenseCard({
   onDelete,
   isDeleting,
 }: ExpenseCardProps) {
+  const theme = useTheme();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   useEffect(() => {
@@ -57,11 +57,11 @@ export function ExpenseCard({
 
   const account = accounts.find((a) => a.id === expense.accountId);
   const isSplit = Boolean(expense.splits && expense.splits.length > 0);
-  const singleCategory = !isSplit && expense.categoryId
-    ? categories.find((c) => c.id === expense.categoryId)
-    : undefined;
+  const singleCategory =
+    !isSplit && expense.categoryId
+      ? categories.find((c) => c.id === expense.categoryId)
+      : undefined;
 
-  const categoryIcon = isSplit ? '🔀' : (singleCategory?.icon ?? '🏷️');
   const categoryLabel = isSplit
     ? `Split (${expense.splits?.length ?? 0} categories)`
     : (singleCategory?.name ?? 'Uncategorized');
@@ -70,54 +70,65 @@ export function ExpenseCard({
   const primaryTitle = trimmedMerchant.length > 0 ? trimmedMerchant : categoryLabel;
   const formattedAmount = `-${formatMinorUnits(expense.amountMinor, expense.currency)}`;
 
+  const metadataParts = [
+    trimmedMerchant.length > 0 ? categoryLabel : null,
+    account ? `${account.name} (${getAccountTypeLabel(account.accountType)})` : null,
+    formatExpenseDate(expense.occurredAt),
+  ].filter((part): part is string => Boolean(part));
+
   return (
-    <View className="flex-1 justify-between p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-3">
-      <View className="gap-3">
-        {/* Top Row: Icon + Title/Meta + Amount */}
+    <View className="flex-1 justify-between p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
+      <View className="gap-2.5">
+        {/* Top Row: Category Avatar + Title/Metadata + Amount */}
         <View className="flex-row items-start justify-between gap-3">
           <View className="flex-row items-start gap-3 flex-1 min-w-0">
-            <View className="w-11 h-11 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-100 dark:border-rose-900/40 items-center justify-center shrink-0">
-              <ThemedText className="text-xl">{categoryIcon}</ThemedText>
+            <View className="w-10 h-10 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
+              {isSplit ? (
+                <AppIcon name="split" size={18} color={theme.negative} />
+              ) : singleCategory?.icon ? (
+                <ThemedText className="text-lg">{singleCategory.icon}</ThemedText>
+              ) : (
+                <AppIcon name="tag" size={18} color={theme.textSecondary} />
+              )}
             </View>
 
             <View className="flex-1 min-w-0 gap-1">
-              <ThemedText
-                className="text-base font-bold text-slate-900 dark:text-white"
-                numberOfLines={2}
-              >
-                {primaryTitle}
-              </ThemedText>
+              <View className="flex-row flex-wrap items-center gap-2">
+                <ThemedText
+                  className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  numberOfLines={2}
+                >
+                  {primaryTitle}
+                </ThemedText>
 
-              <View className="flex-row flex-wrap items-center gap-1.5">
-                {trimmedMerchant.length > 0 && (
-                  <View className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700">
-                    <ThemedText className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                      {categoryIcon} {categoryLabel}
-                    </ThemedText>
-                  </View>
-                )}
-
-                {account ? (
-                  <View className="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-brand-900/40 border border-brand-200/80 dark:border-brand-800/70">
-                    <ThemedText className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">
-                      {account.icon} {account.name} • {getAccountTypeLabel(account.accountType)}
+                {expense.receiptUri ? (
+                  <View className="px-2 py-0.5 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1">
+                    <AppIcon name="receipt" size={11} color={theme.positive} />
+                    <ThemedText className="text-[11px] font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                      Receipt
                     </ThemedText>
                   </View>
                 ) : null}
               </View>
 
-              <ThemedText className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                {formatExpenseDate(expense.occurredAt)}
+              <ThemedText
+                className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                numberOfLines={2}
+              >
+                {metadataParts.join(' · ')}
               </ThemedText>
             </View>
           </View>
 
-          <ThemedText className="text-base font-extrabold font-mono text-rose-600 dark:text-rose-400 shrink-0">
+          <ThemedText
+            numeric
+            className="text-base font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark shrink-0"
+          >
             {formattedAmount}
           </ThemedText>
         </View>
 
-        {/* Split Category Chips */}
+        {/* Split Category Breakdown */}
         {isSplit && expense.splits && expense.splits.length > 0 && (
           <View className="flex-row flex-wrap gap-1.5">
             {expense.splits.map((split) => {
@@ -125,10 +136,18 @@ export function ExpenseCard({
               return (
                 <View
                   key={split.id}
-                  className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70"
+                  className="px-2.5 py-1 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1"
                 >
-                  <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                    {splitCat?.icon ?? '🏷️'} {splitCat?.name ?? 'Category'}:{' '}
+                  {splitCat?.icon ? (
+                    <ThemedText className="text-xs">{splitCat.icon}</ThemedText>
+                  ) : (
+                    <AppIcon name="tag" size={11} color={theme.textMuted} />
+                  )}
+                  <ThemedText
+                    numeric
+                    className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                  >
+                    {splitCat?.name ?? 'Category'}:{' '}
                     {formatMinorUnits(split.amountMinor, expense.currency)}
                   </ThemedText>
                 </View>
@@ -137,35 +156,29 @@ export function ExpenseCard({
           </View>
         )}
 
-        {/* Metadata Pills (Tags, Note, Receipt) */}
-        {(expense.tags.length > 0 || Boolean(expense.note) || Boolean(expense.receiptUri)) && (
-          <View className="flex-row flex-wrap gap-1.5">
-            {expense.tags.map((tag) => (
-              <View
-                key={tag}
-                className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800/90"
-              >
-                <ThemedText className="text-xs font-medium text-slate-600 dark:text-slate-300">
-                  #{tag}
-                </ThemedText>
-              </View>
-            ))}
-
+        {/* Compact Note & Tags */}
+        {(expense.tags.length > 0 || Boolean(expense.note)) && (
+          <View className="gap-1 pt-0.5">
             {expense.note ? (
-              <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800/90 max-w-full">
+              <View className="flex-row items-center gap-1.5">
+                <AppIcon name="note" size={13} color={theme.textMuted} />
                 <ThemedText
-                  className="text-xs font-medium text-slate-600 dark:text-slate-300"
+                  className="flex-1 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
                   numberOfLines={1}
                 >
-                  📝 {expense.note}
+                  {expense.note}
                 </ThemedText>
               </View>
             ) : null}
 
-            {expense.receiptUri ? (
-              <View className="px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/60">
-                <ThemedText className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  📷 Receipt ✓
+            {expense.tags.length > 0 ? (
+              <View className="flex-row items-center gap-1.5">
+                <AppIcon name="tag" size={13} color={theme.textMuted} />
+                <ThemedText
+                  className="flex-1 text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                  numberOfLines={1}
+                >
+                  {expense.tags.map((tag) => `#${tag}`).join(' · ')}
                 </ThemedText>
               </View>
             ) : null}
@@ -174,38 +187,36 @@ export function ExpenseCard({
       </View>
 
       {/* Bottom Action Row */}
-      <View className="border-t border-slate-100 dark:border-slate-800/80 pt-2.5 flex-row flex-wrap items-center justify-end gap-1.5">
+      <View className="border-t border-ledger-border dark:border-ledger-border-dark pt-3 flex-row flex-wrap items-center justify-end gap-2">
         {confirmingDelete ? (
           <>
-            <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400 mr-auto">
+            <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark mr-auto">
               Delete this expense?
             </ThemedText>
             <Pressable
               onPress={() => setConfirmingDelete(false)}
               disabled={isDeleting}
-              hitSlop={COMPACT_HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel="Cancel delete expense"
-              className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+              className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
             >
-              <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+              <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                 Cancel
               </ThemedText>
             </Pressable>
             <Pressable
               onPress={() => onDelete(expense.id)}
               disabled={isDeleting}
-              hitSlop={COMPACT_HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel={`Confirm delete ${primaryTitle}`}
-              className={`h-8 px-3 rounded-lg bg-rose-600 active:bg-rose-700 items-center justify-center ${
+              className={`min-h-[44px] px-3.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85 ${
                 isDeleting ? 'opacity-60' : ''
               }`}
             >
               {isDeleting ? (
-                <ActivityIndicator size="small" color={Colors.dark.text} />
+                <ActivityIndicator size="small" color={theme.onPrimary} />
               ) : (
-                <ThemedText className="text-xs font-bold text-white">
+                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                   Confirm Delete
                 </ThemedText>
               )}
@@ -219,12 +230,12 @@ export function ExpenseCard({
                 onEdit(expense);
               }}
               disabled={isDeleting}
-              hitSlop={COMPACT_HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel={`Edit ${primaryTitle}`}
-              className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+              className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
             >
-              <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+              <AppIcon name="edit" size={14} color={theme.textSecondary} />
+              <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                 Edit
               </ThemedText>
             </Pressable>
@@ -232,12 +243,12 @@ export function ExpenseCard({
             <Pressable
               onPress={() => setConfirmingDelete(true)}
               disabled={isDeleting}
-              hitSlop={COMPACT_HIT_SLOP}
               accessibilityRole="button"
               accessibilityLabel={`Delete ${primaryTitle}`}
-              className="h-8 px-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200/80 dark:border-rose-900/50 items-center justify-center active:opacity-75"
+              className="min-h-[44px] px-3.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
             >
-              <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+              <AppIcon name="delete" size={14} color={theme.negative} />
+              <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                 Delete
               </ThemedText>
             </Pressable>

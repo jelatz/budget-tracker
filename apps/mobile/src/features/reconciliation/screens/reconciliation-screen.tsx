@@ -7,6 +7,7 @@ import {
   ScrollView,
   Switch,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,8 +24,13 @@ import {
   type BalanceReconciliation,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
-import { Colors, WebMaxPageWidth } from '@/common/constants/theme';
+import {
+  BottomTabInset,
+  TABULAR_NUMS_STYLE,
+  WebMaxPageWidth,
+} from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
 import { useTheme } from '@/common/hooks/use-theme';
 import {
@@ -39,6 +45,9 @@ const EMPTY_HISTORY: BalanceReconciliation[] = [];
 export function ReconciliationScreen() {
   const { isAuthenticated, isHydrating } = useRequireAuth();
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const isDesktopWeb = Platform.OS === 'web' && width >= 768;
+
   const {
     data: accounts = EMPTY_ACCOUNTS,
     isLoading: isAccountsLoading,
@@ -113,7 +122,7 @@ export function ReconciliationScreen() {
       const adjustmentNotice = result.adjustmentTransaction
         ? ' (Adjustment transaction recorded)'
         : '';
-      setToastMessage(`✓ Account reconciled to ${formattedActual}${adjustmentNotice}`);
+      setToastMessage(`Account reconciled to ${formattedActual}${adjustmentNotice}`);
     } catch (err: unknown) {
       setErrorText(err instanceof Error ? err.message : 'Failed to apply reconciliation.');
     }
@@ -133,9 +142,9 @@ export function ReconciliationScreen() {
 
   if (isHydrating) {
     return (
-      <View className="flex-1 bg-slate-50 dark:bg-slate-950 items-center justify-center">
+      <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark items-center justify-center">
         <SafeAreaView style={{ flex: 1 }} className="flex-1 items-center justify-center">
-          <ActivityIndicator size="large" color={theme.text} />
+          <ActivityIndicator size="large" color={theme.primary} />
         </SafeAreaView>
       </View>
     );
@@ -146,58 +155,55 @@ export function ReconciliationScreen() {
   }
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
-      <SafeAreaView style={{ flex: 1 }} className="flex-1" edges={['top', 'left', 'right']}>
+    <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
+      <SafeAreaView style={{ flex: 1 }} className="flex-1" edges={['top', 'bottom', 'left', 'right']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
           className="flex-1"
         >
-          {/* Top Bar Header */}
-          <View className="px-4 py-3 border-b border-slate-200/80 dark:border-slate-800 bg-white/70 dark:bg-slate-900/70">
-            <View
-              style={
-                Platform.OS === 'web'
-                  ? { width: '100%', maxWidth: WebMaxPageWidth, alignSelf: 'center' }
-                  : undefined
-              }
-              className="flex-row items-center justify-between"
-            >
-              <Pressable
-                onPress={() => {
-                  if (router.canGoBack()) {
-                    router.back();
-                  } else {
-                    router.replace('/dashboard');
-                  }
-                }}
-                accessibilityRole="button"
-                accessibilityLabel="Go back"
-                className="min-h-[44px] py-2 px-3 rounded-full bg-slate-100 dark:bg-slate-800 active:opacity-75 flex-row items-center gap-1"
-              >
-                <ThemedText className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                  ← Back
-                </ThemedText>
-              </Pressable>
+          {/* Mobile / Standalone Top Bar Header (hidden when Desktop sidebar is visible) */}
+          {!isDesktopWeb && (
+            <View className="px-4 py-3 border-b border-ledger-border dark:border-ledger-border-dark bg-ledger-surface dark:bg-ledger-surface-dark">
+              <View className="flex-row items-center justify-between gap-2">
+                <Pressable
+                  onPress={() => {
+                    if (router.canGoBack()) {
+                      router.back();
+                    } else {
+                      router.replace('/dashboard');
+                    }
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Go back"
+                  className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75 flex-row items-center gap-1.5"
+                >
+                  <AppIcon name="back" size={16} color={theme.text} />
+                  <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                    Back
+                  </ThemedText>
+                </Pressable>
 
-              <View className="items-center flex-1 px-1">
-                <ThemedText
-                  className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white text-center"
-                  numberOfLines={1}
-                >
-                  Balance Reconciliation
-                </ThemedText>
-                <ThemedText
-                  className="text-[10px] sm:text-[11px] text-slate-500 text-center"
-                  numberOfLines={1}
-                >
-                  Actual vs. App Balance Sanity Check
-                </ThemedText>
+                <View className="items-center flex-1 px-1">
+                  <ThemedText
+                    accessibilityRole="header"
+                    className="text-base font-extrabold text-ledger-ink dark:text-ledger-ink-dark text-center"
+                    numberOfLines={1}
+                  >
+                    Reconciliation
+                  </ThemedText>
+                  <ThemedText
+                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center"
+                    numberOfLines={1}
+                  >
+                    Actual vs. ledger balance check
+                  </ThemedText>
+                </View>
+
+                <View className="w-16" />
               </View>
-
-              <View className="w-12 sm:w-16" />
             </View>
-          </View>
+          )}
 
           <ScrollView
             className="flex-1"
@@ -206,7 +212,7 @@ export function ReconciliationScreen() {
               width: '100%',
               paddingHorizontal: 16,
               paddingTop: 16,
-              paddingBottom: 96,
+              paddingBottom: Math.max(96, BottomTabInset + 32),
               gap: 18,
               ...(Platform.OS === 'web'
                 ? { maxWidth: WebMaxPageWidth, alignSelf: 'center' as const }
@@ -214,32 +220,47 @@ export function ReconciliationScreen() {
             }}
             showsVerticalScrollIndicator={false}
           >
+            {/* Desktop Web Editorial Header */}
+            {isDesktopWeb && (
+              <View className="gap-0.5">
+                <ThemedText
+                  accessibilityRole="header"
+                  className="text-[28px] leading-9 font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark"
+                >
+                  Reconciliation
+                </ThemedText>
+                <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Compare actual statement balances with your ledger records
+                </ThemedText>
+              </View>
+            )}
+
             {/* Non-blocking Success Toast Banner */}
             {toastMessage && (
-              <View className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex-row items-center justify-between">
-                <View className="flex-1 mr-2">
-                  <ThemedText className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                    {toastMessage}
-                  </ThemedText>
-                </View>
+              <View className="px-4 py-3 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5">
+                <AppIcon name="checkCircle" size={16} color={theme.positive} />
+                <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                  {toastMessage}
+                </ThemedText>
                 <Pressable
                   onPress={() => setToastMessage(null)}
                   accessibilityRole="button"
                   accessibilityLabel="Dismiss message"
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  className="px-2 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/50"
+                  className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
                 >
-                  <ThemedText className="text-[11px] font-bold text-emerald-800 dark:text-emerald-200">
-                    Dismiss
-                  </ThemedText>
+                  <AppIcon name="close" size={15} color={theme.positive} />
                 </Pressable>
               </View>
             )}
 
             {/* Error Banner */}
             {errorText && (
-              <View className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50">
-                <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+              <View
+                accessibilityRole="alert"
+                className="p-3.5 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
+              >
+                <AppIcon name="warning" size={16} color={theme.negative} />
+                <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                   {errorText}
                 </ThemedText>
               </View>
@@ -247,15 +268,15 @@ export function ReconciliationScreen() {
 
             {/* 1. Account Selector Tabs */}
             <View className="gap-2">
-              <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Select Account to Reconcile
               </ThemedText>
 
               {isAccountsLoading ? (
-                <ActivityIndicator size="small" color={theme.text} />
+                <ActivityIndicator size="small" color={theme.primary} />
               ) : isAccountsError ? (
-                <View className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 gap-2.5 items-start">
-                  <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                <View className="p-4 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-2.5 items-start">
+                  <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                     Unable to load accounts right now.
                   </ThemedText>
                   <Pressable
@@ -264,28 +285,32 @@ export function ReconciliationScreen() {
                     }}
                     accessibilityRole="button"
                     accessibilityLabel="Retry loading accounts"
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-100 dark:bg-rose-900/50 items-center justify-center active:opacity-75"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
                   >
-                    <ThemedText className="text-xs font-bold text-rose-700 dark:text-rose-200">
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                       Retry
                     </ThemedText>
                   </Pressable>
                 </View>
               ) : accounts.length === 0 ? (
-                <View className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-200 dark:border-slate-700 items-center gap-2.5">
-                  <ThemedText className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark items-center gap-2.5">
+                  <View className="w-12 h-12 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark items-center justify-center">
+                    <AppIcon name="accounts" size={24} color={theme.textMuted} />
+                  </View>
+                  <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
                     No accounts available
                   </ThemedText>
-                  <ThemedText className="text-xs text-slate-500 text-center">
+                  <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
                     Add an account first to start reconciling balances.
                   </ThemedText>
                   <Pressable
                     onPress={() => router.push('/accounts')}
                     accessibilityRole="button"
                     accessibilityLabel="Add account"
-                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
                   >
-                    <ThemedText className="text-xs font-bold text-white">
+                    <AppIcon name="add" size={15} color={theme.onPrimary} />
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
                       Add Account
                     </ThemedText>
                   </Pressable>
@@ -299,6 +324,7 @@ export function ReconciliationScreen() {
                   {accounts.map((account) => {
                     const isSelected = selectedAccount?.id === account.id;
                     const formatted = formatMinorUnits(account.balanceMinor, account.currency);
+                    const isNegative = account.balanceMinor < 0;
                     return (
                       <Pressable
                         key={account.id}
@@ -306,31 +332,37 @@ export function ReconciliationScreen() {
                         accessibilityRole="button"
                         accessibilityLabel={`Select ${account.name}`}
                         accessibilityState={{ selected: isSelected }}
-                        className={`min-h-[44px] p-3.5 rounded-2xl border min-w-[148px] ${
+                        className={`min-h-[44px] p-3.5 rounded-2xl border min-w-[152px] gap-0.5 ${
                           isSelected
-                            ? 'bg-brand-50 dark:bg-brand-950/40 border-brand-500 dark:border-brand-500 shadow-sm'
-                            : 'bg-white dark:bg-slate-900 border-slate-200/80 dark:border-slate-800'
+                            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                            : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                         }`}
                       >
-                        <View className="flex-row items-center gap-1.5 mb-1">
+                        <View className="flex-row items-center gap-1.5 mb-0.5">
                           <ThemedText className="text-base">{account.icon}</ThemedText>
                           <ThemedText
                             className={`text-xs font-bold flex-1 ${
                               isSelected
-                                ? 'text-brand-700 dark:text-brand-300'
-                                : 'text-slate-700 dark:text-slate-300'
+                                ? 'text-brand-500 dark:text-brand-400'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
                             }`}
                             numberOfLines={1}
                           >
                             {account.name}
                           </ThemedText>
                         </View>
-                        <ThemedText className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">
+                        <ThemedText className="text-[11px] font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                           {getAccountTypeLabel(account.accountType)}
                         </ThemedText>
                         <ThemedText
-                          className="text-sm font-extrabold"
-                          style={{ color: account.color }}
+                          numeric
+                          className={`text-sm font-extrabold ${
+                            isNegative
+                              ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                              : isSelected
+                                ? 'text-brand-500 dark:text-brand-400'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
+                          }`}
                         >
                           {formatted}
                         </ThemedText>
@@ -343,117 +375,134 @@ export function ReconciliationScreen() {
 
             {/* 2. Selected Account Card & Statement Input */}
             {selectedAccount && (
-              <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
+              <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
                 {/* Current App Balance Info */}
-                <View className="flex-row items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                  <View className="flex-row items-center gap-2.5">
-                    <View className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 items-center justify-center">
+                <View className="flex-row items-center justify-between gap-3 pb-3.5 border-b border-ledger-border dark:border-ledger-border-dark">
+                  <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
+                    <View className="w-10 h-10 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
                       <ThemedText className="text-xl">{selectedAccount.icon}</ThemedText>
                     </View>
-                    <View>
-                      <ThemedText className="text-base font-bold text-slate-900 dark:text-white">
+                    <View className="flex-1 min-w-0">
+                      <ThemedText
+                        className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                        numberOfLines={1}
+                      >
                         {selectedAccount.name}
                       </ThemedText>
-                      <ThemedText className="text-xs text-slate-500">
-                        {getAccountTypeLabel(selectedAccount.accountType)} • Current App Record
+                      <ThemedText
+                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        numberOfLines={1}
+                      >
+                        {getAccountTypeLabel(selectedAccount.accountType)} · Book Balance
                       </ThemedText>
                     </View>
                   </View>
 
-                  <View className="items-end">
+                  <View className="items-end shrink-0">
                     <ThemedText
-                      className="text-lg font-extrabold"
-                      style={{ color: selectedAccount.color }}
+                      numeric
+                      className={`text-lg font-extrabold ${
+                        selectedAccount.balanceMinor < 0
+                          ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                          : 'text-ledger-ink dark:text-ledger-ink-dark'
+                      }`}
                     >
                       {formatMinorUnits(selectedAccount.balanceMinor, selectedAccount.currency)}
                     </ThemedText>
-                    <ThemedText className="text-[11px] text-slate-500">
+                    <ThemedText className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       Calculated Balance
                     </ThemedText>
                   </View>
                 </View>
 
-                {/* Actual Balance Input */}
-                <View className="gap-2">
-                  <View className="flex-row items-center justify-between">
-                    <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                      Actual Statement / Account Balance ({DEFAULT_CURRENCY_SYMBOL})
-                    </ThemedText>
-                    <Pressable
-                      onPress={handleMatchAppBalance}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Reset to app balance of ${formatMinorUnits(selectedAccount.balanceMinor, selectedAccount.currency)}`}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 active:opacity-75"
-                    >
-                      <ThemedText className="text-[11px] font-semibold text-brand-600 dark:text-brand-400">
-                        Reset to App ({formatMinorUnits(selectedAccount.balanceMinor, selectedAccount.currency)})
+                {/* Actual Statement Balance Well */}
+                <View className="gap-2.5">
+                  <View className="p-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2">
+                    <View className="flex-row flex-wrap items-center justify-between gap-2">
+                      <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                        Actual Statement Balance ({DEFAULT_CURRENCY_SYMBOL})
                       </ThemedText>
-                    </Pressable>
-                  </View>
+                      <Pressable
+                        onPress={handleMatchAppBalance}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reset to app balance of ${formatMinorUnits(selectedAccount.balanceMinor, selectedAccount.currency)}`}
+                        hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+                        className="min-h-[32px] px-2.5 py-1 rounded-lg bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1 active:opacity-75"
+                      >
+                        <AppIcon name="sync" size={12} color={theme.primary} />
+                        <ThemedText numeric className="text-xs font-semibold text-brand-500 dark:text-brand-400">
+                          Match ({formatMinorUnits(selectedAccount.balanceMinor, selectedAccount.currency)})
+                        </ThemedText>
+                      </Pressable>
+                    </View>
 
-                  <TextInput
-                    value={actualBalanceInput}
-                    onChangeText={(val) => {
-                      setActualBalanceInput(normalizeDecimalInput(val));
-                      setToastMessage(null);
-                      if (errorText) setErrorText(null);
-                    }}
-                    placeholder="0.00"
-                    placeholderTextColor={theme.textSecondary}
-                    accessibilityLabel="Actual account balance"
-                    keyboardType="decimal-pad"
-                    inputMode="decimal"
-                    autoCorrect={false}
-                    spellCheck={false}
-                    autoComplete="off"
-                    className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white text-2xl font-extrabold tracking-tight"
-                  />
+                    <View className="flex-row items-center">
+                      <ThemedText className="text-xl font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
+                        {DEFAULT_CURRENCY_SYMBOL}
+                      </ThemedText>
+                      <TextInput
+                        value={actualBalanceInput}
+                        onChangeText={(val) => {
+                          setActualBalanceInput(normalizeDecimalInput(val));
+                          setToastMessage(null);
+                          if (errorText) setErrorText(null);
+                        }}
+                        placeholder="0.00"
+                        placeholderTextColor={theme.textMuted}
+                        accessibilityLabel="Actual account balance"
+                        keyboardType="decimal-pad"
+                        inputMode="decimal"
+                        autoCorrect={false}
+                        spellCheck={false}
+                        autoComplete="off"
+                        style={TABULAR_NUMS_STYLE}
+                        className="flex-1 min-h-[44px] text-ledger-ink dark:text-ledger-ink-dark text-2xl sm:text-3xl font-extrabold tracking-tight"
+                      />
+                    </View>
+                  </View>
 
                   {/* Quick Delta Adjuster Helpers */}
                   <View className="flex-row items-center gap-1.5 flex-wrap pt-0.5">
-                    <ThemedText className="text-[11px] text-slate-500 mr-1">Quick nudge:</ThemedText>
+                    <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mr-1">
+                      Quick nudge:
+                    </ThemedText>
                     <Pressable
                       onPress={() => handleQuickDelta(-5000)}
                       accessibilityRole="button"
-                      accessibilityLabel="Subtract 50 pesos"
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      accessibilityLabel="Subtract 50"
+                      className="min-h-[44px] px-3 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <ThemedText numeric className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         -{DEFAULT_CURRENCY_SYMBOL}50
                       </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => handleQuickDelta(-1000)}
                       accessibilityRole="button"
-                      accessibilityLabel="Subtract 10 pesos"
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      accessibilityLabel="Subtract 10"
+                      className="min-h-[44px] px-3 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <ThemedText numeric className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         -{DEFAULT_CURRENCY_SYMBOL}10
                       </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => handleQuickDelta(1000)}
                       accessibilityRole="button"
-                      accessibilityLabel="Add 10 pesos"
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      accessibilityLabel="Add 10"
+                      className="min-h-[44px] px-3 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <ThemedText numeric className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         +{DEFAULT_CURRENCY_SYMBOL}10
                       </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => handleQuickDelta(5000)}
                       accessibilityRole="button"
-                      accessibilityLabel="Add 50 pesos"
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:opacity-75"
+                      accessibilityLabel="Add 50"
+                      className="min-h-[44px] px-3 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <ThemedText numeric className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         +{DEFAULT_CURRENCY_SYMBOL}50
                       </ThemedText>
                     </Pressable>
@@ -462,72 +511,103 @@ export function ReconciliationScreen() {
 
                 {/* 3. Live Discrepancy Card */}
                 {deltaResult !== null && (
-                  <View className="pt-2">
+                  <View className="pt-1">
                     {deltaResult.discrepancyMinor === 0 ? (
                       /* Balanced State */
-                      <View className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 gap-1.5 items-center text-center">
-                        <ThemedText className="text-2xl">🎉</ThemedText>
-                        <ThemedText className="text-sm font-bold text-emerald-800 dark:text-emerald-200">
-                          Account is perfectly balanced!
+                      <View className="p-4 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-2 items-center">
+                        <View className="w-10 h-10 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
+                          <AppIcon name="checkCircle" size={22} color={theme.positive} />
+                        </View>
+                        <ThemedText className="text-sm font-bold text-ledger-pine dark:text-ledger-pine-dark text-center">
+                          Account is balanced
                         </ThemedText>
-                        <ThemedText className="text-xs text-emerald-600 dark:text-emerald-400 text-center">
-                          App records match your actual bank balance to the penny. No adjustment is necessary.
+                        <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
+                          App records match your actual bank balance to the cent. No adjustment is necessary.
                         </ThemedText>
                       </View>
                     ) : (
                       /* Discrepancy Detected State */
-                      <View className="p-4 rounded-2xl bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 gap-3">
-                        <View className="flex-row items-center justify-between">
-                          <View className="flex-1 mr-2">
-                            <ThemedText className="text-xs font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                              Discrepancy Detected
-                            </ThemedText>
-                            <ThemedText className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                              {deltaResult.discrepancyMinor < 0
-                                ? `App shows ${formatMinorUnits(Math.abs(deltaResult.discrepancyMinor), selectedAccount.currency)} more than statement`
-                                : `Statement has ${formatMinorUnits(deltaResult.discrepancyMinor, selectedAccount.currency)} more than app`}
-                            </ThemedText>
+                      <View className="gap-3">
+                        <View
+                          className={`p-4 rounded-2xl border gap-2 ${
+                            deltaResult.discrepancyMinor < 0
+                              ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-border dark:border-ledger-border-dark'
+                              : 'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border-ledger-border dark:border-ledger-border-dark'
+                          }`}
+                        >
+                          <View className="flex-row items-start justify-between gap-2">
+                            <View className="flex-row items-start gap-2 flex-1">
+                              <View className="mt-0.5">
+                                <AppIcon
+                                  name="warning"
+                                  size={16}
+                                  color={
+                                    deltaResult.discrepancyMinor < 0
+                                      ? theme.negative
+                                      : theme.warning
+                                  }
+                                />
+                              </View>
+                              <View className="flex-1">
+                                <ThemedText
+                                  numeric
+                                  className={`text-xs font-bold ${
+                                    deltaResult.discrepancyMinor < 0
+                                      ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                                      : 'text-ledger-ochre dark:text-ledger-ochre-dark'
+                                  }`}
+                                >
+                                  {deltaResult.discrepancyMinor > 0 ? '+' : ''}
+                                  {formatMinorUnits(
+                                    deltaResult.discrepancyMinor,
+                                    selectedAccount.currency,
+                                  )}{' '}
+                                  Discrepancy Found
+                                </ThemedText>
+                                <ThemedText
+                                  numeric
+                                  className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
+                                >
+                                  {deltaResult.discrepancyMinor < 0
+                                    ? `Ledger shows ${formatMinorUnits(Math.abs(deltaResult.discrepancyMinor), selectedAccount.currency)} more than statement.`
+                                    : `Statement has ${formatMinorUnits(deltaResult.discrepancyMinor, selectedAccount.currency)} more than ledger.`}
+                                </ThemedText>
+                              </View>
+                            </View>
                           </View>
-                          <ThemedText
-                            className={`text-lg font-extrabold ${
-                              deltaResult.discrepancyMinor < 0
-                                ? 'text-rose-600 dark:text-rose-400'
-                                : 'text-emerald-600 dark:text-emerald-400'
-                            }`}
-                          >
-                            {deltaResult.discrepancyMinor > 0 ? '+' : ''}
-                            {formatMinorUnits(deltaResult.discrepancyMinor, selectedAccount.currency)}
-                          </ThemedText>
                         </View>
 
                         {/* Auto-adjustment Switch */}
-                        <View className="flex-row items-center justify-between p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+                        <View className="flex-row items-center justify-between p-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
                           <View className="flex-1 mr-3">
-                            <ThemedText className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                               Create auto-adjustment transaction
                             </ThemedText>
-                            <ThemedText className="text-[11px] text-slate-500">
-                              Records a {deltaResult.adjustmentType} transaction tagged &quot;reconciliation&quot;.
+                            <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                              Records a {deltaResult.adjustmentType} entry tagged &quot;reconciliation&quot;.
                             </ThemedText>
                           </View>
                           <Switch
                             value={createAdjustment}
                             onValueChange={setCreateAdjustment}
-                            trackColor={{ false: '#cbd5e1', true: '#3b82f6' }}
+                            trackColor={{ false: theme.borderStrong, true: theme.primary }}
+                            thumbColor={theme.surface}
+                            accessibilityLabel="Create auto-adjustment transaction"
                           />
                         </View>
 
                         {/* Note Input */}
                         <View className="gap-1">
-                          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                          <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                             Adjustment Note
                           </ThemedText>
                           <TextInput
                             value={notes}
                             onChangeText={setNotes}
                             placeholder="e.g. Month-end statement sanity check"
-                            placeholderTextColor={theme.textSecondary}
-                            className="min-h-[44px] px-3.5 py-2 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-base sm:text-xs"
+                            placeholderTextColor={theme.textMuted}
+                            accessibilityLabel="Adjustment note"
+                            className="min-h-[44px] px-3.5 py-2 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-canvas dark:bg-ledger-subtle-dark text-ledger-ink dark:text-ledger-ink-dark text-sm"
                           />
                         </View>
 
@@ -537,17 +617,25 @@ export function ReconciliationScreen() {
                           disabled={applyMutation.isPending}
                           accessibilityRole="button"
                           accessibilityLabel="Apply reconciliation adjustment"
-                          className="w-full min-h-[44px] py-3 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-sm"
+                          className={`w-full min-h-[48px] py-3 px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-2 ${
+                            applyMutation.isPending ? 'opacity-70' : ''
+                          }`}
                         >
                           {applyMutation.isPending ? (
-                            <ActivityIndicator size="small" color={Colors.dark.text} />
+                            <ActivityIndicator size="small" color={theme.onPrimary} />
                           ) : (
-                            <ThemedText className="text-white font-bold text-sm">
-                              Apply Reconciliation Adjustment (
-                              {deltaResult.discrepancyMinor > 0 ? '+' : ''}
-                              {formatMinorUnits(deltaResult.discrepancyMinor, selectedAccount.currency)}
-                              )
-                            </ThemedText>
+                            <>
+                              <AppIcon name="check" size={16} color={theme.onPrimary} />
+                              <ThemedText
+                                numeric
+                                className="text-ledger-canvas dark:text-brand-900 font-bold text-sm"
+                              >
+                                Apply Reconciliation (
+                                {deltaResult.discrepancyMinor > 0 ? '+' : ''}
+                                {formatMinorUnits(deltaResult.discrepancyMinor, selectedAccount.currency)}
+                                )
+                              </ThemedText>
+                            </>
                           )}
                         </Pressable>
                       </View>
@@ -558,21 +646,21 @@ export function ReconciliationScreen() {
             )}
 
             {/* 4. Reconciliation History Section */}
-            <View className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-3">
+            <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
               <View className="flex-row items-center justify-between">
-                <ThemedText className="text-sm font-bold text-slate-900 dark:text-white">
+                <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
                   Reconciliation History
                 </ThemedText>
-                <ThemedText className="text-xs text-slate-500">
+                <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   {selectedAccount?.name ?? 'Account'} Log
                 </ThemedText>
               </View>
 
               {isHistoryLoading ? (
-                <ActivityIndicator size="small" color={theme.text} className="my-3" />
+                <ActivityIndicator size="small" color={theme.primary} className="my-3" />
               ) : isHistoryError ? (
-                <View className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 gap-2.5 items-start">
-                  <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                <View className="p-4 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-2.5 items-start">
+                  <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                     Unable to load reconciliation history.
                   </ThemedText>
                   <Pressable
@@ -581,17 +669,17 @@ export function ReconciliationScreen() {
                     }}
                     accessibilityRole="button"
                     accessibilityLabel="Retry loading reconciliation history"
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-100 dark:bg-rose-900/50 items-center justify-center active:opacity-75"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
                   >
-                    <ThemedText className="text-xs font-bold text-rose-700 dark:text-rose-200">
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                       Retry
                     </ThemedText>
                   </Pressable>
                 </View>
               ) : history.length === 0 ? (
-                <View className="py-6 items-center justify-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-700">
-                  <ThemedText className="text-xl mb-1">⚖️</ThemedText>
-                  <ThemedText className="text-xs font-medium text-slate-500">
+                <View className="py-6 px-4 items-center justify-center bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark gap-2">
+                  <AppIcon name="reconcile" size={24} color={theme.textMuted} />
+                  <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
                     No past reconciliation records for this account yet.
                   </ThemedText>
                 </View>
@@ -609,40 +697,51 @@ export function ReconciliationScreen() {
                     return (
                       <View
                         key={record.id}
-                        className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/80 dark:border-slate-700/80 flex-row items-center justify-between"
+                        className="p-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-3"
                       >
-                        <View className="flex-1 mr-3">
-                          <View className="flex-row items-center gap-1.5 mb-0.5">
-                            <ThemedText className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                        <View className="flex-1 min-w-0 gap-0.5">
+                          <View className="flex-row flex-wrap items-center gap-1.5">
+                            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                               {dateFormatted}
                             </ThemedText>
                             {record.adjustmentTransactionId && (
-                              <View className="px-1.5 py-0.5 rounded bg-brand-100 dark:bg-brand-900/40">
-                                <ThemedText className="text-[10px] font-semibold text-brand-700 dark:text-brand-300">
+                              <View className="px-2 py-0.5 rounded-full bg-brand-50 dark:bg-ledger-pine-dark-soft">
+                                <ThemedText className="text-[11px] font-semibold text-brand-500 dark:text-brand-400">
                                   Auto-Adjusted
                                 </ThemedText>
                               </View>
                             )}
                           </View>
-                          <ThemedText className="text-[11px] text-slate-500">
-                            App: {formatMinorUnits(record.appBalanceMinor)} ➔ Reconciled: {formatMinorUnits(record.actualBalanceMinor)}
+                          <ThemedText
+                            numeric
+                            className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                          >
+                            Book: {formatMinorUnits(record.appBalanceMinor)} · Reconciled:{' '}
+                            {formatMinorUnits(record.actualBalanceMinor)}
                           </ThemedText>
                         </View>
 
-                        <View className="items-end">
-                          <ThemedText
-                            className={`text-xs font-bold ${
-                              isZero
-                                ? 'text-emerald-600 dark:text-emerald-400'
-                                : record.discrepancyMinor > 0
-                                  ? 'text-emerald-600 dark:text-emerald-400'
-                                  : 'text-rose-600 dark:text-rose-400'
-                            }`}
-                          >
-                            {isZero
-                              ? 'Matched ✓'
-                              : `${record.discrepancyMinor > 0 ? '+' : ''}${formatMinorUnits(record.discrepancyMinor)}`}
-                          </ThemedText>
+                        <View className="items-end shrink-0">
+                          {isZero ? (
+                            <View className="flex-row items-center gap-1">
+                              <AppIcon name="check" size={12} color={theme.positive} />
+                              <ThemedText className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark">
+                                Matched
+                              </ThemedText>
+                            </View>
+                          ) : (
+                            <ThemedText
+                              numeric
+                              className={`text-xs font-bold ${
+                                record.discrepancyMinor > 0
+                                  ? 'text-ledger-pine dark:text-ledger-pine-dark'
+                                  : 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                              }`}
+                            >
+                              {record.discrepancyMinor > 0 ? '+' : ''}
+                              {formatMinorUnits(record.discrepancyMinor)}
+                            </ThemedText>
+                          )}
                         </View>
                       </View>
                     );

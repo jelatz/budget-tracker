@@ -5,7 +5,9 @@ import type {
   CalculatorKey,
   TransactionType,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface CalculatorKeypadProps {
   evaluation: CalculatorEvaluation;
@@ -48,29 +50,32 @@ const KEY_ROWS: readonly (readonly KeyConfig[])[] = [
   [
     { key: '.', label: '.', accessibilityLabel: 'Decimal point' },
     { key: '0', label: '0', accessibilityLabel: 'Key 0' },
-    { key: 'BACKSPACE', label: '⌫', accessibilityLabel: 'Backspace', isAction: true },
+    { key: 'BACKSPACE', label: 'Backspace', accessibilityLabel: 'Backspace', isAction: true },
     { key: '+', label: '+', accessibilityLabel: 'Add', isOperator: true },
   ],
 ] as const;
 
 const SAVE_CTA_STYLES: Record<TransactionType, string> = {
-  EXPENSE: 'bg-rose-500 active:bg-rose-600 shadow-sm shadow-rose-500/25',
-  INCOME: 'bg-emerald-500 active:bg-emerald-600 shadow-sm shadow-emerald-500/25',
-  TRANSFER: 'bg-brand-500 active:bg-brand-600 shadow-sm shadow-brand-500/25',
+  EXPENSE: 'bg-ledger-terracotta dark:bg-ledger-terracotta-dark active:opacity-90',
+  INCOME: 'bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-90',
+  TRANSFER: 'bg-brand-500 dark:bg-brand-400 active:opacity-90',
 };
 
 export function CalculatorKeypad({
   evaluation,
   canSave,
   isSaving = false,
-  saveLabel = '✓ Save',
+  saveLabel = 'Save',
   transactionType = 'EXPENSE',
   onKeyPress,
   onClearAll,
   onSave,
 }: CalculatorKeypadProps) {
+  const theme = useTheme();
   const needsCalculation =
     evaluation.hasOperator || evaluation.endsWithOperator;
+
+  const cleanSaveLabel = saveLabel.replace(/^✓\s*/, '');
 
   const handleClearAll = () => {
     if (onClearAll) {
@@ -82,7 +87,7 @@ export function CalculatorKeypad({
 
   return (
     <View className="w-full gap-2">
-      {/* Compact 4x4 Keypad Grid (keeps >= 44px touch targets) */}
+      {/* Tactile 4x4 Keypad Grid (keeps >= 44px touch targets) */}
       <View className="gap-1.5">
         {KEY_ROWS.map((row, rowIndex) => (
           <View key={`row-${rowIndex}`} className="flex-row gap-1.5">
@@ -98,23 +103,26 @@ export function CalculatorKeypad({
                   onPress={() => onKeyPress(item.key)}
                   className={`flex-1 min-h-[44px] py-1 rounded-xl items-center justify-center border active:scale-95 ${
                     isOp
-                      ? 'bg-brand-50/80 dark:bg-brand-950/40 border-brand-200/80 dark:border-brand-800/60 hover:bg-brand-100/70 dark:hover:bg-brand-900/50'
+                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-200 dark:border-ledger-border-dark hover:bg-brand-100 dark:hover:bg-ledger-selected-dark'
                       : isAction
-                        ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:bg-slate-200/70 dark:hover:bg-slate-700/80'
-                        : 'bg-white dark:bg-slate-800/70 border-slate-200/90 dark:border-slate-700/80 hover:bg-slate-100/70 dark:hover:bg-slate-800'
+                        ? 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border-strong dark:border-ledger-border-strong-dark hover:bg-ledger-selected dark:hover:bg-ledger-selected-dark'
+                        : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark hover:bg-ledger-selected dark:hover:bg-ledger-selected-dark'
                   }`}
                 >
-                  <ThemedText
-                    className={`${
-                      isOp
-                        ? 'text-lg font-extrabold text-brand-600 dark:text-brand-400'
-                        : isAction
-                          ? 'text-base font-bold text-slate-600 dark:text-slate-300'
-                          : 'text-lg font-bold font-mono text-slate-900 dark:text-slate-100'
-                    }`}
-                  >
-                    {item.label}
-                  </ThemedText>
+                  {isAction ? (
+                    <AppIcon name="backspace" size={20} color={theme.textSecondary} />
+                  ) : (
+                    <ThemedText
+                      numeric={!isOp}
+                      className={
+                        isOp
+                          ? 'text-lg font-extrabold text-brand-500 dark:text-brand-400'
+                          : 'text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark'
+                      }
+                    >
+                      {item.label}
+                    </ThemedText>
+                  )}
                 </Pressable>
               );
             })}
@@ -128,10 +136,10 @@ export function CalculatorKeypad({
           accessibilityRole="button"
           accessibilityLabel="Clear all"
           onPress={handleClearAll}
-          className="min-h-[44px] min-w-[78px] px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 items-center justify-center active:scale-95 hover:bg-slate-200/70 dark:hover:bg-slate-700/80"
+          className="min-h-[44px] min-w-[78px] px-3 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark items-center justify-center active:scale-95 hover:bg-ledger-selected dark:hover:bg-ledger-selected-dark"
         >
           <ThemedText
-            className="text-xs font-bold text-slate-700 dark:text-slate-200"
+            className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
             numberOfLines={1}
           >
             Clear All
@@ -143,34 +151,43 @@ export function CalculatorKeypad({
             accessibilityRole="button"
             accessibilityLabel="Calculate expression"
             onPress={() => onKeyPress('=')}
-            className="flex-1 min-h-[44px] px-3.5 rounded-xl bg-brand-500 active:bg-brand-600 shadow-sm shadow-brand-500/25 items-center justify-center active:scale-[0.98]"
+            className="flex-1 min-h-[44px] px-3.5 rounded-xl bg-brand-500 dark:bg-brand-400 items-center justify-center active:scale-[0.98]"
           >
-            <ThemedText className="text-sm font-bold text-white" numberOfLines={1}>
+            <ThemedText
+              className="text-sm font-bold text-ledger-canvas dark:text-ledger-canvas-dark"
+              numberOfLines={1}
+            >
               Calculate (=)
             </ThemedText>
           </Pressable>
         ) : (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={saveLabel}
+            accessibilityLabel={cleanSaveLabel}
             accessibilityState={{ disabled: !canSave || isSaving }}
             disabled={!canSave || isSaving}
             onPress={canSave && !isSaving ? onSave : undefined}
-            className={`flex-1 min-h-[44px] px-3.5 rounded-xl items-center justify-center ${
+            className={`flex-1 min-h-[44px] px-3.5 rounded-xl flex-row items-center justify-center gap-1.5 ${
               canSave && !isSaving
                 ? `${SAVE_CTA_STYLES[transactionType]} active:scale-[0.98]`
-                : 'bg-slate-200 dark:bg-slate-800 opacity-60'
+                : 'bg-ledger-selected dark:bg-ledger-selected-dark border border-ledger-border dark:border-ledger-border-dark opacity-70'
             }`}
           >
+            <AppIcon
+              name="check"
+              size={15}
+              color={canSave && !isSaving ? theme.onPrimary : theme.textMuted}
+            />
             <ThemedText
+              numeric
               className={`text-sm font-bold ${
                 canSave && !isSaving
-                  ? 'text-white'
-                  : 'text-slate-500 dark:text-slate-400'
+                  ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                  : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
               }`}
               numberOfLines={1}
             >
-              {isSaving ? 'Saving...' : saveLabel}
+              {isSaving ? 'Saving...' : cleanSaveLabel}
             </ThemedText>
           </Pressable>
         )}

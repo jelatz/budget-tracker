@@ -1,6 +1,6 @@
 import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 
-import { Fonts, ThemeColor } from '@/constants/theme';
+import { Fonts, TABULAR_NUMS_STYLE, ThemeColor } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -9,6 +9,7 @@ export type ThemedTextProps = TextProps & {
   themeColor?: ThemeColor;
   lightColor?: string;
   darkColor?: string;
+  numeric?: boolean;
   className?: string;
 };
 
@@ -104,6 +105,7 @@ export function ThemedText({
   themeColor,
   lightColor,
   darkColor,
+  numeric = false,
   className,
   ...rest
 }: ThemedTextProps) {
@@ -157,10 +159,11 @@ export function ThemedText({
   const combinedClassName = [filteredTypeClasses, className].filter(Boolean).join(' ');
   const hasResolvedBaseStyle = Object.keys(resolvedBaseStyle).length > 0;
   const mergedStyle =
-    hasResolvedBaseStyle || colorStyle || style
+    hasResolvedBaseStyle || colorStyle || numeric || style
       ? StyleSheet.flatten([
           hasResolvedBaseStyle ? resolvedBaseStyle : undefined,
           colorStyle,
+          numeric ? TABULAR_NUMS_STYLE : undefined,
           style,
         ])
       : undefined;

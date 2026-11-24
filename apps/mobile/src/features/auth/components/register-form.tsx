@@ -2,12 +2,11 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  Text,
   TextInput,
   View,
 } from 'react-native';
 
-import { Colors } from '@/constants/theme';
+import { ThemedText } from '@/common/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { useAuth } from '../context/auth-context';
 
@@ -87,17 +86,17 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
       {isGeneralError ? (
         <View
           accessibilityRole="alert"
-          className="rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/60 p-3.5">
-          <Text className="text-xs font-medium text-rose-600 dark:text-rose-400">
+          className="rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-terracotta/30 dark:border-ledger-terracotta-dark/40 p-3.5">
+          <ThemedText className="text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark">
             {errorMessage}
-          </Text>
+          </ThemedText>
         </View>
       ) : null}
 
       <View className="gap-1.5">
-        <Text className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
           Full Name
-        </Text>
+        </ThemedText>
         <TextInput
           value={name}
           onChangeText={(text) => {
@@ -105,29 +104,29 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             if (errorMessage) setErrorMessage(null);
           }}
           placeholder="Jane Doe"
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.textMuted}
           accessibilityLabel="Full Name"
           autoCapitalize="words"
           autoComplete="name"
           textContentType="name"
           editable={!isLoading}
-          className={`h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border ${
+          className={`h-12 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border ${
             isNameError
-              ? 'border-rose-500 dark:border-rose-500'
-              : 'border-slate-200 dark:border-slate-700'
-          } text-slate-900 dark:text-slate-100 text-base`}
+              ? 'border-ledger-terracotta dark:border-ledger-terracotta-dark'
+              : 'border-ledger-border dark:border-ledger-border-dark'
+          } text-ledger-ink dark:text-ledger-ink-dark text-base`}
         />
         {isNameError ? (
-          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <ThemedText accessibilityRole="alert" className="text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark mt-0.5">
             {errorMessage}
-          </Text>
+          </ThemedText>
         ) : null}
       </View>
 
       <View className="gap-1.5">
-        <Text className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
           Email address
-        </Text>
+        </ThemedText>
         <TextInput
           value={email}
           onChangeText={(text) => {
@@ -135,35 +134,35 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             if (errorMessage) setErrorMessage(null);
           }}
           placeholder="you@example.com"
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.textMuted}
           accessibilityLabel="Email address"
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
           textContentType="emailAddress"
           editable={!isLoading}
-          className={`h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border ${
+          className={`h-12 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border ${
             isEmailError
-              ? 'border-rose-500 dark:border-rose-500'
-              : 'border-slate-200 dark:border-slate-700'
-          } text-slate-900 dark:text-slate-100 text-base`}
+              ? 'border-ledger-terracotta dark:border-ledger-terracotta-dark'
+              : 'border-ledger-border dark:border-ledger-border-dark'
+          } text-ledger-ink dark:text-ledger-ink-dark text-base`}
         />
         {isEmailError ? (
-          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <ThemedText accessibilityRole="alert" className="text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark mt-0.5">
             {errorMessage}
-          </Text>
+          </ThemedText>
         ) : null}
       </View>
 
       <View className="gap-1.5">
-        <Text className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
           Password
-        </Text>
+        </ThemedText>
         <View
-          className={`h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border ${
+          className={`h-12 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border ${
             isPasswordError
-              ? 'border-rose-500 dark:border-rose-500'
-              : 'border-slate-200 dark:border-slate-700'
+              ? 'border-ledger-terracotta dark:border-ledger-terracotta-dark'
+              : 'border-ledger-border dark:border-ledger-border-dark'
           } flex-row items-center justify-between`}>
           <TextInput
             value={password}
@@ -172,14 +171,14 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
               if (errorMessage) setErrorMessage(null);
             }}
             placeholder="At least 8 characters"
-            placeholderTextColor={theme.textSecondary}
+            placeholderTextColor={theme.textMuted}
             accessibilityLabel="Password"
             secureTextEntry={!showPassword}
             autoCapitalize="none"
             autoComplete="new-password"
             textContentType="newPassword"
             editable={!isLoading}
-            className="flex-1 h-full text-slate-900 dark:text-slate-100 text-base pr-2"
+            className="flex-1 h-full text-ledger-ink dark:text-ledger-ink-dark text-base pr-2"
           />
           <Pressable
             onPress={() => setShowPassword((prev) => !prev)}
@@ -187,22 +186,22 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             className="px-2 py-1 active:opacity-75">
-            <Text className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
               {showPassword ? 'Hide' : 'Show'}
-            </Text>
+            </ThemedText>
           </Pressable>
         </View>
         {isPasswordError ? (
-          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <ThemedText accessibilityRole="alert" className="text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark mt-0.5">
             {errorMessage}
-          </Text>
+          </ThemedText>
         ) : null}
       </View>
 
       <View className="gap-1.5">
-        <Text className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
           Confirm Password
-        </Text>
+        </ThemedText>
         <TextInput
           value={confirmPassword}
           onChangeText={(text) => {
@@ -210,23 +209,23 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
             if (errorMessage) setErrorMessage(null);
           }}
           placeholder="Re-enter password"
-          placeholderTextColor={theme.textSecondary}
+          placeholderTextColor={theme.textMuted}
           accessibilityLabel="Confirm Password"
           secureTextEntry={!showPassword}
           autoCapitalize="none"
           autoComplete="new-password"
           textContentType="newPassword"
           editable={!isLoading}
-          className={`h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border ${
+          className={`h-12 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border ${
             isConfirmError
-              ? 'border-rose-500 dark:border-rose-500'
-              : 'border-slate-200 dark:border-slate-700'
-          } text-slate-900 dark:text-slate-100 text-base`}
+              ? 'border-ledger-terracotta dark:border-ledger-terracotta-dark'
+              : 'border-ledger-border dark:border-ledger-border-dark'
+          } text-ledger-ink dark:text-ledger-ink-dark text-base`}
         />
         {isConfirmError ? (
-          <Text accessibilityRole="alert" className="text-xs font-medium text-rose-600 dark:text-rose-400 mt-0.5">
+          <ThemedText accessibilityRole="alert" className="text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark mt-0.5">
             {errorMessage}
-          </Text>
+          </ThemedText>
         ) : null}
       </View>
 
@@ -235,13 +234,15 @@ export function RegisterForm({ onSuccess }: RegisterFormProps) {
         disabled={isLoading}
         accessibilityRole="button"
         accessibilityLabel="Create Account"
-        className={`h-12 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-md shadow-brand-500/25 mt-2 ${
+        className={`h-12 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-90 items-center justify-center mt-2 ${
           isLoading ? 'opacity-70' : ''
         }`}>
         {isLoading ? (
-          <ActivityIndicator color={Colors.dark.text} size="small" />
+          <ActivityIndicator color={theme.onPrimary} size="small" />
         ) : (
-          <Text className="text-base font-semibold text-white">Create Account</Text>
+          <ThemedText className="text-base font-semibold text-ledger-canvas dark:text-ledger-canvas-dark">
+            Create Account
+          </ThemedText>
         )}
       </Pressable>
     </View>

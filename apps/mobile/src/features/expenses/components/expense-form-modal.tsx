@@ -36,8 +36,9 @@ import {
   type TransactionSplit,
 } from '@repo/contracts';
 
+import { AppIcon, type AppIconName } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
-import { Colors } from '@/common/constants/theme';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
 
 export type ExpenseFormMode = 'ONE_TIME' | 'RECURRING' | 'INSTALLMENT';
@@ -73,10 +74,10 @@ const QUICK_DAY_PRESETS = [1, 5, 10, 15, 20, 25, 30] as const;
 const CUSTOM_CATEGORY_ICONS = ['🏷️', '🏠', '🛒', '🚕', '🎬', '💊', '🏦', '📅', '📱', '✨'] as const;
 const DEFAULT_CUSTOM_CATEGORY_COLOR = DEFAULT_CATEGORIES[0].color;
 
-const MODE_OPTIONS: readonly { key: ExpenseFormMode; label: string }[] = [
-  { key: 'ONE_TIME', label: '🧾 One-Time' },
-  { key: 'RECURRING', label: '🔄 Recurring' },
-  { key: 'INSTALLMENT', label: '🏦 Loan / Installment' },
+const MODE_OPTIONS: readonly { key: ExpenseFormMode; label: string; icon: AppIconName }[] = [
+  { key: 'ONE_TIME', label: 'One-Time', icon: 'receipt' },
+  { key: 'RECURRING', label: 'Recurring', icon: 'sync' },
+  { key: 'INSTALLMENT', label: 'Loan / Installment', icon: 'loan' },
 ];
 
 const FREQUENCY_OPTIONS: readonly { value: CommitmentFrequency; label: string }[] = [
@@ -582,7 +583,7 @@ export function ExpenseFormModal({
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
-        className="flex-1 bg-slate-950/60 items-center justify-center p-3 sm:p-6"
+        className="flex-1 bg-black/50 items-center justify-center p-3 sm:p-6"
       >
         <Pressable
           onPress={() => {
@@ -595,7 +596,7 @@ export function ExpenseFormModal({
         />
         <View
           style={{ width: modalWidth, maxHeight: '92%' }}
-          className="relative z-10 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden"
+          className="relative z-10 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden"
         >
           <ScrollView
             keyboardShouldPersistTaps="handled"
@@ -608,10 +609,10 @@ export function ExpenseFormModal({
             {/* Header */}
             <View className="flex-row items-center justify-between gap-2">
               <View className="flex-1">
-                <ThemedText className="text-lg font-bold text-slate-900 dark:text-white">
+                <ThemedText className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark">
                   {modalTitle}
                 </ThemedText>
-                <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
+                <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   {modalSubtitle}
                 </ThemedText>
               </View>
@@ -621,18 +622,16 @@ export function ExpenseFormModal({
                 disabled={isBusy}
                 accessibilityRole="button"
                 accessibilityLabel="Close dialog"
-                className="min-w-[44px] min-h-[44px] rounded-xl items-center justify-center bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                className="min-w-[44px] min-h-[44px] rounded-xl items-center justify-center bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75"
               >
-                <ThemedText className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                  ✕
-                </ThemedText>
+                <AppIcon name="close" size={18} color={theme.textSecondary} />
               </Pressable>
             </View>
 
             {/* Expense Type Segmented Selector */}
             {!isEditing ? (
               <View className="gap-1.5">
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                   Expense Type
                 </ThemedText>
                 <View className="flex-row flex-wrap gap-2">
@@ -646,17 +645,24 @@ export function ExpenseFormModal({
                         accessibilityRole="button"
                         accessibilityLabel={`Select ${opt.label}`}
                         accessibilityState={{ selected: isSelected }}
-                        className={`min-h-[44px] px-3.5 py-2 rounded-xl border flex-row items-center justify-center ${
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl border flex-row items-center justify-center gap-1.5 ${
                           isWide ? 'flex-1' : ''
                         } ${
                           isSelected
-                            ? 'bg-brand-500 border-brand-600 shadow-sm'
-                            : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
+                            ? 'bg-brand-500 border-brand-500 dark:bg-brand-400 dark:border-brand-400'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                         }`}
                       >
+                        <AppIcon
+                          name={opt.icon}
+                          size={14}
+                          color={isSelected ? theme.onPrimary : theme.textSecondary}
+                        />
                         <ThemedText
                           className={`text-xs font-bold ${
-                            isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-200'
+                            isSelected
+                              ? 'text-ledger-canvas dark:text-brand-900'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
                           {opt.label}
@@ -672,9 +678,10 @@ export function ExpenseFormModal({
             {formError ? (
               <View
                 accessibilityRole="alert"
-                className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800/80"
+                className="p-3.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
               >
-                <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                <AppIcon name="warning" size={16} color={theme.negative} />
+                <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                   {formError}
                 </ThemedText>
               </View>
@@ -684,7 +691,7 @@ export function ExpenseFormModal({
             <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
               {mode !== 'ONE_TIME' && (
                 <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     {mode === 'INSTALLMENT' ? 'Loan / Installment Name' : 'Recurring Expense Name'}
                   </ThemedText>
                   <TextInput
@@ -698,21 +705,21 @@ export function ExpenseFormModal({
                         ? 'e.g. Car Loan, Phone Installment'
                         : 'e.g. Apartment Rent, Netflix, Internet'
                     }
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     accessibilityLabel="Scheduled expense name"
                     editable={!isBusy}
-                    className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
+                    className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-base"
                   />
                 </View>
               )}
 
               {/* Amount Input */}
               <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                   {mode === 'INSTALLMENT' ? 'Payment Per Term' : 'Amount'}
                 </ThemedText>
-                <View className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 flex-row items-center">
-                  <ThemedText className="text-lg font-bold text-slate-400 dark:text-slate-500 mr-2">
+                <View className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center">
+                  <ThemedText className="text-lg font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
                     {DEFAULT_CURRENCY_SYMBOL}
                   </ThemedText>
                   <TextInput
@@ -722,7 +729,7 @@ export function ExpenseFormModal({
                       if (formError) setFormError(null);
                     }}
                     placeholder="0.00"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     accessibilityLabel="Expense amount"
                     keyboardType="decimal-pad"
                     inputMode="decimal"
@@ -730,7 +737,8 @@ export function ExpenseFormModal({
                     spellCheck={false}
                     autoComplete="off"
                     editable={!isBusy}
-                    className="flex-1 h-full text-slate-900 dark:text-slate-100 text-base font-bold"
+                    style={TABULAR_NUMS_STYLE}
+                    className="flex-1 h-full text-ledger-ink dark:text-ledger-ink-dark text-base font-bold"
                   />
                 </View>
               </View>
@@ -738,7 +746,7 @@ export function ExpenseFormModal({
               {/* Date Input (One-Time only) */}
               {mode === 'ONE_TIME' && (
                 <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Date (YYYY-MM-DD)
                   </ThemedText>
                   <View className="flex-row flex-wrap items-center gap-2">
@@ -753,15 +761,15 @@ export function ExpenseFormModal({
                       accessibilityState={{ selected: dateInput === todayStr }}
                       className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center ${
                         dateInput === todayStr
-                          ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                       }`}
                     >
                       <ThemedText
                         className={`text-xs font-semibold ${
                           dateInput === todayStr
-                            ? 'text-brand-700 dark:text-brand-300'
-                            : 'text-slate-700 dark:text-slate-300'
+                            ? 'text-brand-500 dark:text-brand-400'
+                            : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                         }`}
                       >
                         Today
@@ -779,15 +787,15 @@ export function ExpenseFormModal({
                       accessibilityState={{ selected: dateInput === yesterdayStr }}
                       className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center ${
                         dateInput === yesterdayStr
-                          ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                          : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                       }`}
                     >
                       <ThemedText
                         className={`text-xs font-semibold ${
                           dateInput === yesterdayStr
-                            ? 'text-brand-700 dark:text-brand-300'
-                            : 'text-slate-700 dark:text-slate-300'
+                            ? 'text-brand-500 dark:text-brand-400'
+                            : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                         }`}
                       >
                         Yesterday
@@ -801,11 +809,12 @@ export function ExpenseFormModal({
                         if (formError) setFormError(null);
                       }}
                       placeholder="YYYY-MM-DD"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                       accessibilityLabel="Expense date"
                       keyboardType="numbers-and-punctuation"
                       editable={!isBusy}
-                      className="flex-1 min-w-[130px] h-12 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm font-mono"
+                      style={TABULAR_NUMS_STYLE}
+                      className="flex-1 min-w-[130px] h-12 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-medium"
                     />
                   </View>
                 </View>
@@ -815,7 +824,7 @@ export function ExpenseFormModal({
             {/* Category or Split Summary */}
             <View className="gap-2">
               <View className="flex-row items-center justify-between gap-2">
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                   Category
                 </ThemedText>
                 <View className="flex-row items-center gap-2">
@@ -824,9 +833,9 @@ export function ExpenseFormModal({
                     disabled={isBusy}
                     accessibilityRole="button"
                     accessibilityLabel="Create custom expense category"
-                    className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                   >
-                    <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                    <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                       {showCustomCategoryForm ? 'Close' : '+ Custom'}
                     </ThemedText>
                   </Pressable>
@@ -846,10 +855,11 @@ export function ExpenseFormModal({
                       accessibilityLabel={
                         hasSplits ? 'Edit split categories' : 'Split across categories'
                       }
-                      className="min-h-[44px] px-3 py-2 rounded-xl bg-brand-50 dark:bg-brand-900/40 border border-brand-200 dark:border-brand-800/70 items-center justify-center active:opacity-75"
+                      className="min-h-[44px] px-3 py-2 rounded-xl bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-bold text-brand-600 dark:text-brand-300">
-                        {hasSplits ? '🔀 Edit Splits' : '🔀 Split'}
+                      <AppIcon name="split" size={14} color={theme.primary} />
+                      <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                        {hasSplits ? 'Edit Splits' : 'Split'}
                       </ThemedText>
                     </Pressable>
                   )}
@@ -858,18 +868,18 @@ export function ExpenseFormModal({
 
               {/* Inline Custom Category Creator */}
               {showCustomCategoryForm && (
-                <View className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 gap-2.5">
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                <View className="p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2.5">
+                  <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                     New Custom Category
                   </ThemedText>
                   <TextInput
                     value={customCategoryName}
                     onChangeText={setCustomCategoryName}
                     placeholder="e.g. Pets, Education, Parking"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     accessibilityLabel="Custom category name"
                     editable={!isBusy}
-                    className="h-12 px-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm"
+                    className="h-12 px-3.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm"
                   />
                   <View className="flex-row flex-wrap gap-1.5">
                     {CUSTOM_CATEGORY_ICONS.map((icon) => {
@@ -883,8 +893,8 @@ export function ExpenseFormModal({
                           accessibilityState={{ selected }}
                           className={`min-w-[44px] min-h-[44px] rounded-xl border items-center justify-center ${
                             selected
-                              ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700'
+                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                           }`}
                         >
                           <ThemedText className="text-base">{icon}</ThemedText>
@@ -897,12 +907,12 @@ export function ExpenseFormModal({
                     disabled={isBusy}
                     accessibilityRole="button"
                     accessibilityLabel="Save custom category"
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 items-center justify-center"
                   >
                     {isCreatingCategory ? (
-                      <ActivityIndicator size="small" color={Colors.dark.text} />
+                      <ActivityIndicator size="small" color={theme.onPrimary} />
                     ) : (
-                      <ThemedText className="text-xs font-bold text-white">
+                      <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
                         Create Category
                       </ThemedText>
                     )}
@@ -911,17 +921,25 @@ export function ExpenseFormModal({
               )}
 
               {hasSplits ? (
-                <View className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 gap-2.5">
+                <View className="p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2.5">
                   <View className="flex-row flex-wrap gap-1.5">
                     {draftSplits.map((split) => {
                       const cat = expenseCategories.find((c) => c.id === split.categoryId);
                       return (
                         <View
                           key={split.id}
-                          className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                          className="px-2.5 py-1.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1"
                         >
-                          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                            {cat?.icon ?? '🏷️'} {cat?.name ?? 'Category'}:{' '}
+                          {cat?.icon ? (
+                            <ThemedText className="text-xs">{cat.icon}</ThemedText>
+                          ) : (
+                            <AppIcon name="tag" size={12} color={theme.textSecondary} />
+                          )}
+                          <ThemedText
+                            numeric
+                            className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                          >
+                            {cat?.name ?? 'Category'}:{' '}
                             {formatMinorUnits(split.amountMinor, activeCurrency)}
                           </ThemedText>
                         </View>
@@ -930,10 +948,13 @@ export function ExpenseFormModal({
                   </View>
 
                   {splitRemainderMinor !== 0 && (
-                    <ThemedText className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                      ⚠️ Split differs from amount by{' '}
-                      {formatMinorUnits(Math.abs(splitRemainderMinor), activeCurrency)}
-                    </ThemedText>
+                    <View className="flex-row items-center gap-1.5">
+                      <AppIcon name="warning" size={14} color={theme.warning} />
+                      <ThemedText numeric className="text-xs font-semibold text-ledger-ochre dark:text-ledger-ochre-dark">
+                        Split differs from amount by{' '}
+                        {formatMinorUnits(Math.abs(splitRemainderMinor), activeCurrency)}
+                      </ThemedText>
+                    </View>
                   )}
 
                   <View className="flex-row gap-2">
@@ -942,9 +963,9 @@ export function ExpenseFormModal({
                       disabled={isBusy}
                       accessibilityRole="button"
                       accessibilityLabel="Clear split categories"
-                      className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 items-center justify-center active:opacity-75"
+                      className="min-h-[44px] px-3.5 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                      <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                         Clear Splits
                       </ThemedText>
                     </Pressable>
@@ -967,21 +988,19 @@ export function ExpenseFormModal({
                         accessibilityState={{ selected: isSelected }}
                         className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                           isSelected
-                            ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                            : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 active:opacity-75'
+                            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                         }`}
                       >
                         {isSelected && (
-                          <ThemedText className="text-xs font-extrabold text-brand-600 dark:text-brand-300">
-                            ✓
-                          </ThemedText>
+                          <AppIcon name="check" size={13} color={theme.primary} />
                         )}
                         <ThemedText className="text-sm">{cat.icon}</ThemedText>
                         <ThemedText
                           className={`text-xs font-semibold ${
                             isSelected
-                              ? 'text-brand-700 dark:text-brand-300'
-                              : 'text-slate-700 dark:text-slate-300'
+                              ? 'text-brand-500 dark:text-brand-400'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
                           {cat.name}
@@ -995,7 +1014,7 @@ export function ExpenseFormModal({
 
             {/* Account Selector */}
             <View className="gap-1.5">
-              <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Paid From Account
               </ThemedText>
               <View className="flex-row flex-wrap gap-2">
@@ -1014,19 +1033,20 @@ export function ExpenseFormModal({
                       accessibilityState={{ selected: isSelected }}
                       className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                          : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 active:opacity-75'
+                          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                       }`}
                     >
                       <ThemedText className="text-sm">{acc.icon}</ThemedText>
                       <ThemedText
+                        numeric
                         className={`text-xs font-semibold ${
                           isSelected
-                            ? 'text-brand-700 dark:text-brand-300'
-                            : 'text-slate-700 dark:text-slate-200'
+                            ? 'text-brand-500 dark:text-brand-400'
+                            : 'text-ledger-ink dark:text-ledger-ink-dark'
                         }`}
                       >
-                        {acc.name} ({getAccountTypeLabel(acc.accountType)}) •{' '}
+                        {acc.name} ({getAccountTypeLabel(acc.accountType)}) ·{' '}
                         {formatMinorUnits(acc.balanceMinor, acc.currency)}
                       </ThemedText>
                     </Pressable>
@@ -1041,7 +1061,7 @@ export function ExpenseFormModal({
                 {/* Frequency & Due Day Row */}
                 <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
                   <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       Billing Frequency
                     </ThemedText>
                     <View className="flex-row flex-wrap gap-2">
@@ -1057,15 +1077,15 @@ export function ExpenseFormModal({
                             accessibilityState={{ selected: isSelected }}
                             className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
                               isSelected
-                                ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                                : 'bg-slate-50 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700 active:opacity-75'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                             }`}
                           >
                             <ThemedText
                               className={`text-xs font-semibold ${
                                 isSelected
-                                  ? 'text-brand-700 dark:text-brand-300'
-                                  : 'text-slate-700 dark:text-slate-300'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                               }`}
                             >
                               {opt.label}
@@ -1077,7 +1097,7 @@ export function ExpenseFormModal({
                   </View>
 
                   <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       Due Day of Month (1 - 31)
                     </ThemedText>
                     <View className="flex-row flex-wrap items-center gap-2">
@@ -1088,11 +1108,12 @@ export function ExpenseFormModal({
                           if (formError) setFormError(null);
                         }}
                         placeholder="15"
-                        placeholderTextColor={theme.textSecondary}
+                        placeholderTextColor={theme.textMuted}
                         accessibilityLabel="Due day of month"
                         keyboardType="number-pad"
                         editable={!isBusy}
-                        className="w-20 h-12 px-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm font-bold text-center"
+                        style={TABULAR_NUMS_STYLE}
+                        className="w-20 h-12 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-bold text-center"
                       />
                       {QUICK_DAY_PRESETS.map((day) => {
                         const isSelected = dueDayNumeric === day;
@@ -1109,15 +1130,16 @@ export function ExpenseFormModal({
                             accessibilityState={{ selected: isSelected }}
                             className={`min-w-[44px] min-h-[44px] px-2.5 py-2 rounded-xl border items-center justify-center ${
                               isSelected
-                                ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                             }`}
                           >
                             <ThemedText
+                              numeric
                               className={`text-xs font-bold ${
                                 isSelected
-                                  ? 'text-brand-700 dark:text-brand-300'
-                                  : 'text-slate-700 dark:text-slate-300'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                               }`}
                             >
                               {day}
@@ -1131,7 +1153,7 @@ export function ExpenseFormModal({
 
                 {/* Next Due Date (Optional) */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Next Due Date (Optional)
                   </ThemedText>
                   <View className="flex-row flex-wrap items-center gap-2">
@@ -1146,10 +1168,11 @@ export function ExpenseFormModal({
                         if (formError) setFormError(null);
                       }}
                       placeholder="YYYY-MM-DD, e.g. 2026-12-15"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                       accessibilityLabel="Next due date"
                       editable={!isBusy}
-                      className="flex-1 min-w-[200px] h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm font-medium"
+                      style={TABULAR_NUMS_STYLE}
+                      className="flex-1 min-w-[200px] h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-medium"
                     />
                     {(
                       [
@@ -1181,15 +1204,15 @@ export function ExpenseFormModal({
                           accessibilityState={{ selected: isSelected }}
                           className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
                             isSelected
-                              ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
+                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                           }`}
                         >
                           <ThemedText
                             className={`text-xs font-semibold ${
                               isSelected
-                                ? 'text-brand-700 dark:text-brand-300'
-                                : 'text-slate-700 dark:text-slate-300'
+                                ? 'text-brand-500 dark:text-brand-400'
+                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                             }`}
                           >
                             {preset.label}
@@ -1206,9 +1229,9 @@ export function ExpenseFormModal({
                         disabled={isBusy}
                         accessibilityRole="button"
                         accessibilityLabel="Clear next due date"
-                        className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                           Clear
                         </ThemedText>
                       </Pressable>
@@ -1218,7 +1241,7 @@ export function ExpenseFormModal({
 
                 {/* Schedule Label (Optional) */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Schedule Label (Optional)
                   </ThemedText>
                   <View className="flex-row flex-wrap items-center gap-2">
@@ -1229,10 +1252,10 @@ export function ExpenseFormModal({
                         if (formError) setFormError(null);
                       }}
                       placeholder="e.g. PAYROLL, April 25, Weekly, No fixed date"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                       accessibilityLabel="Schedule label"
                       editable={!isBusy}
-                      className="flex-1 min-w-[200px] h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-sm font-medium"
+                      className="flex-1 min-w-[200px] h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm font-medium"
                     />
                     {(['PAYROLL', 'Weekly', 'No fixed date'] as const).map((presetLabel) => {
                       const isSelected =
@@ -1258,15 +1281,15 @@ export function ExpenseFormModal({
                           accessibilityState={{ selected: isSelected }}
                           className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
                             isSelected
-                              ? 'bg-brand-50 dark:bg-brand-900/30 border-brand-500'
-                              : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
+                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                           }`}
                         >
                           <ThemedText
                             className={`text-xs font-semibold ${
                               isSelected
-                                ? 'text-brand-700 dark:text-brand-300'
-                                : 'text-slate-700 dark:text-slate-300'
+                                ? 'text-brand-500 dark:text-brand-400'
+                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                             }`}
                           >
                             {presetLabel}
@@ -1278,14 +1301,14 @@ export function ExpenseFormModal({
                 </View>
 
                 {/* Term Details (Optional for both Recurring & Loans) */}
-                <View className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 gap-3">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                <View className="p-4 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Term Schedule (Optional)
                   </ThemedText>
 
                   <View className={isWide ? 'flex-row items-start gap-4' : 'gap-3'}>
                     <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                         Total Terms
                       </ThemedText>
                       <TextInput
@@ -1295,16 +1318,17 @@ export function ExpenseFormModal({
                           if (formError) setFormError(null);
                         }}
                         placeholder="Optional, e.g. 12"
-                        placeholderTextColor={theme.textSecondary}
+                        placeholderTextColor={theme.textMuted}
                         accessibilityLabel="Total terms"
                         keyboardType="number-pad"
                         editable={!isBusy}
-                        className="h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base font-bold"
+                        style={TABULAR_NUMS_STYLE}
+                        className="h-12 px-4 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-base font-bold"
                       />
                     </View>
 
                     <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                         Remaining Terms
                       </ThemedText>
                       <TextInput
@@ -1314,20 +1338,21 @@ export function ExpenseFormModal({
                           if (formError) setFormError(null);
                         }}
                         placeholder="Optional, e.g. 6"
-                        placeholderTextColor={theme.textSecondary}
+                        placeholderTextColor={theme.textMuted}
                         accessibilityLabel="Remaining terms"
                         keyboardType="number-pad"
                         editable={!isBusy}
-                        className="h-12 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base font-bold"
+                        style={TABULAR_NUMS_STYLE}
+                        className="h-12 px-4 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-base font-bold"
                       />
                     </View>
                   </View>
 
                   {installmentPreview && (
-                    <ThemedText className="text-xs font-semibold text-brand-600 dark:text-brand-300">
+                    <ThemedText numeric className="text-xs font-semibold text-brand-500 dark:text-brand-400">
                       Total: {formatMinorUnits(installmentPreview.totalLoanMinor, activeCurrency)}{' '}
-                      • Completed: {installmentPreview.completedTerms}/{installmentPreview.totalTerms}{' '}
-                      • Remaining: {installmentPreview.remainingTerms} terms (
+                      · Completed: {installmentPreview.completedTerms}/{installmentPreview.totalTerms}{' '}
+                      · Remaining: {installmentPreview.remainingTerms} terms (
                       {formatMinorUnits(
                         installmentPreview.remainingBalanceMinor,
                         activeCurrency,
@@ -1340,34 +1365,36 @@ export function ExpenseFormModal({
                 {/* Auto-Pay & Note Row */}
                 <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
                   <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       Auto-Pay
                     </ThemedText>
-                    <View className="min-h-[48px] px-4 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 flex-row items-center justify-between gap-3">
-                      <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200 flex-1">
+                    <View className="min-h-[48px] px-4 py-2 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center justify-between gap-3">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark flex-1">
                         Automatically debited on due date
                       </ThemedText>
                       <Switch
                         value={isAutoPaid}
                         onValueChange={setIsAutoPaid}
                         disabled={isBusy}
+                        trackColor={{ false: theme.borderStrong, true: theme.primary }}
+                        thumbColor={theme.surface}
                         accessibilityLabel="Auto-pay enabled"
                       />
                     </View>
                   </View>
 
                   <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                    <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       Note (Optional)
                     </ThemedText>
                     <TextInput
                       value={noteInput}
                       onChangeText={setNoteInput}
                       placeholder="Add details or reminder..."
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                       accessibilityLabel="Scheduled expense note"
                       editable={!isBusy}
-                      className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
+                      className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-base"
                     />
                   </View>
                 </View>
@@ -1379,33 +1406,33 @@ export function ExpenseFormModal({
               <View className={isWide ? 'flex-row items-start gap-5' : 'gap-4'}>
                 {/* Merchant / Payee */}
                 <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Merchant / Payee (Optional)
                   </ThemedText>
                   <TextInput
                     value={merchantInput}
                     onChangeText={setMerchantInput}
                     placeholder="e.g. Whole Foods, Starbucks, Grab"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     accessibilityLabel="Merchant or payee"
                     editable={!isBusy}
-                    className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
+                    className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-base"
                   />
                 </View>
 
                 {/* Note Input */}
                 <View className={isWide ? 'flex-1 min-w-0 gap-1.5' : 'gap-1.5'}>
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Note (Optional)
                   </ThemedText>
                   <TextInput
                     value={noteInput}
                     onChangeText={setNoteInput}
                     placeholder="Add details or reminder..."
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     accessibilityLabel="Expense note"
                     editable={!isBusy}
-                    className="h-12 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 text-base"
+                    className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-base"
                   />
                 </View>
               </View>
@@ -1415,8 +1442,8 @@ export function ExpenseFormModal({
             <View
               className={
                 isWide
-                  ? 'flex-row-reverse items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800/80'
-                  : 'gap-2.5 pt-2'
+                  ? 'flex-row-reverse items-center justify-between gap-3 pt-3 border-t border-ledger-border dark:border-ledger-border-dark'
+                  : 'gap-2.5 pt-3 border-t border-ledger-border dark:border-ledger-border-dark'
               }
             >
               <Pressable
@@ -1424,14 +1451,14 @@ export function ExpenseFormModal({
                 disabled={isBusy}
                 accessibilityRole="button"
                 accessibilityLabel={primarySaveLabel}
-                className={`min-h-[44px] py-3 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center shadow-md shadow-brand-500/25 ${
+                className={`min-h-[44px] py-3 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 items-center justify-center ${
                   isWide ? 'min-w-[200px] px-6' : 'w-full'
                 } ${isBusy ? 'opacity-70' : ''}`}
               >
                 {isSaving ? (
-                  <ActivityIndicator size="small" color={Colors.dark.text} />
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                 ) : (
-                  <ThemedText className="text-sm font-bold text-white">
+                  <ThemedText className="text-sm font-bold text-ledger-canvas dark:text-brand-900">
                     {primarySaveLabel}
                   </ThemedText>
                 )}
@@ -1445,9 +1472,9 @@ export function ExpenseFormModal({
                       disabled={isBusy}
                       accessibilityRole="button"
                       accessibilityLabel="Keep item"
-                      className={`${isWide ? 'px-4' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75`}
+                      className={`${isWide ? 'px-4' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75`}
                     >
-                      <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                         Keep Item
                       </ThemedText>
                     </Pressable>
@@ -1456,12 +1483,12 @@ export function ExpenseFormModal({
                       disabled={isBusy}
                       accessibilityRole="button"
                       accessibilityLabel="Confirm delete"
-                      className={`${isWide ? 'px-4' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-rose-600 active:bg-rose-700 items-center justify-center`}
+                      className={`${isWide ? 'px-4' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85`}
                     >
                       {isDeleting ? (
-                        <ActivityIndicator size="small" color={Colors.dark.text} />
+                        <ActivityIndicator size="small" color={theme.onPrimary} />
                       ) : (
-                        <ThemedText className="text-xs font-bold text-white">
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                           Confirm Delete
                         </ThemedText>
                       )}
@@ -1474,9 +1501,9 @@ export function ExpenseFormModal({
                       disabled={isBusy}
                       accessibilityRole="button"
                       accessibilityLabel="Cancel"
-                      className={`${isWide ? 'px-5' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75`}
+                      className={`${isWide ? 'px-5' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75`}
                     >
-                      <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                         Cancel
                       </ThemedText>
                     </Pressable>
@@ -1487,9 +1514,9 @@ export function ExpenseFormModal({
                         disabled={isBusy}
                         accessibilityRole="button"
                         accessibilityLabel="Delete item"
-                        className={`${isWide ? 'px-4' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 items-center justify-center active:opacity-75`}
+                        className={`${isWide ? 'px-4' : 'flex-1'} min-h-[44px] py-2.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75`}
                       >
-                        <ThemedText className="text-xs font-bold text-rose-600 dark:text-rose-400">
+                        <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                           Delete
                         </ThemedText>
                       </Pressable>

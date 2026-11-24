@@ -1,7 +1,9 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { DEFAULT_CURRENCY, formatMinorUnits, type TagSpendItem } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface TagInsightsCardProps {
   items: readonly TagSpendItem[];
@@ -14,23 +16,30 @@ export function TagInsightsCard({
   currency = DEFAULT_CURRENCY,
   onTagPress,
 }: TagInsightsCardProps) {
+  const theme = useTheme();
+
   return (
-    <View className="rounded-3xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+    <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
       {/* Card Header */}
       <View className="mb-3">
-        <ThemedText className="text-base font-bold text-slate-900 dark:text-white mb-0.5">
-          🏷️ Top #Tags Spending
-        </ThemedText>
-        <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
+        <View className="flex-row items-center gap-2 mb-0.5">
+          <AppIcon name="tag" size={16} color={theme.primary} />
+          <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
+            Top #Tags Spending
+          </ThemedText>
+        </View>
+        <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
           Track #vacation, #reimbursable, and custom tags
         </ThemedText>
       </View>
 
       {/* Empty State vs Tag Pills Grid */}
       {items.length === 0 ? (
-        <View className="items-center justify-center py-6 gap-2">
-          <ThemedText className="text-3xl mb-1">🏷️</ThemedText>
-          <ThemedText className="text-xs text-slate-500 dark:text-slate-400 text-center max-w-[280px]">
+        <View className="items-center justify-center py-6 gap-2.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark">
+          <View className="w-11 h-11 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
+            <AppIcon name="tag" size={20} color={theme.textMuted} />
+          </View>
+          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[280px] px-4">
             Add #tags when capturing transactions to track project or trip spending
           </ThemedText>
         </View>
@@ -45,7 +54,7 @@ export function TagInsightsCard({
             return (
               <Pressable
                 key={item.tag}
-                className="flex-grow flex-1 basis-[48%] min-w-[125px] p-2.5 sm:p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-800 justify-between active:opacity-75"
+                className="flex-grow flex-1 basis-[48%] min-w-[130px] min-h-[44px] p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-between active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                 disabled={!onTagPress}
                 onPress={() => onTagPress?.(item)}
                 accessibilityRole={onTagPress ? 'button' : undefined}
@@ -54,20 +63,26 @@ export function TagInsightsCard({
                   currency,
                 )}, ${txCountText}`}
               >
-                <View className="flex-row items-center justify-between gap-1 mb-1.5">
+                <View className="flex-row items-center justify-between gap-1.5 mb-1.5">
                   <ThemedText
-                    className="text-xs font-bold text-brand-500 flex-shrink"
+                    className="text-xs font-bold text-brand-500 dark:text-brand-400 flex-shrink"
                     numberOfLines={1}
                   >
                     {displayTag}
                   </ThemedText>
-                  <View className="px-1.5 py-0.5 rounded-md bg-slate-200/70 dark:bg-slate-700/60">
-                    <ThemedText className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                  <View className="px-2 py-0.5 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark shrink-0">
+                    <ThemedText
+                      numeric
+                      className="text-[11px] font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                    >
                       {txCountText}
                     </ThemedText>
                   </View>
                 </View>
-                <ThemedText className="text-sm font-bold text-slate-900 dark:text-white">
+                <ThemedText
+                  numeric
+                  className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                >
                   {formatMinorUnits(item.amountMinor, currency)}
                 </ThemedText>
               </Pressable>

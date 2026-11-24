@@ -18,8 +18,10 @@ import {
   type QuickPreset,
   type TransactionType,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAccounts,
@@ -240,36 +242,39 @@ export function QuickPresetBar({
               accessibilityRole="button"
               accessibilityLabel={`Preset: ${preset.label}, amount ${formatMinorUnits(preset.amountMinor, currency)}`}
               onPress={() => onSelectPreset(preset)}
-              className="min-h-[44px] flex-row items-center gap-2 px-3 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm active:scale-95"
+              className="min-h-[44px] flex-row items-center gap-2 px-3 py-2 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark active:scale-95"
             >
               <ThemedText className="text-base">{preset.icon}</ThemedText>
               <View>
                 <ThemedText
-                  className="text-xs font-bold text-slate-800 dark:text-slate-100"
+                  className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
                   numberOfLines={1}
                 >
                   {preset.label}
                 </ThemedText>
                 <View className="flex-row items-center gap-1.5 mt-0.5">
-                  <ThemedText className="text-[11px] font-bold font-mono text-brand-600 dark:text-brand-400">
+                  <ThemedText
+                    numeric
+                    className="text-[11px] font-bold text-brand-500 dark:text-brand-400"
+                  >
                     {formatMinorUnits(preset.amountMinor, currency)}
                   </ThemedText>
                   <View
                     className={`px-1 py-0.5 rounded ${
                       preset.type === 'EXPENSE'
-                        ? 'bg-rose-50 dark:bg-rose-950/60'
+                        ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft'
                         : preset.type === 'INCOME'
-                          ? 'bg-emerald-50 dark:bg-emerald-950/60'
-                          : 'bg-indigo-50 dark:bg-indigo-950/60'
+                          ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft'
+                          : 'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft'
                     }`}
                   >
                     <ThemedText
-                      className={`text-[9px] font-bold ${
+                      className={`text-[10px] font-bold ${
                         preset.type === 'EXPENSE'
-                          ? 'text-rose-600 dark:text-rose-400'
+                          ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
                           : preset.type === 'INCOME'
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-indigo-600 dark:text-indigo-400'
+                            ? 'text-ledger-pine dark:text-ledger-pine-dark'
+                            : 'text-ledger-teal dark:text-ledger-teal-dark'
                       }`}
                     >
                       {typeBadge}
@@ -286,10 +291,11 @@ export function QuickPresetBar({
           accessibilityRole="button"
           accessibilityLabel="Manage or create quick presets"
           onPress={handleOpenModal}
-          className="min-h-[44px] flex-row items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-dashed border-brand-300 dark:border-brand-800/80 bg-brand-50/60 dark:bg-brand-950/30 active:scale-95"
+          className="min-h-[44px] flex-row items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark active:scale-95"
         >
-          <ThemedText className="text-xs font-bold text-brand-600 dark:text-brand-400">
-            ➕ Preset
+          <AppIcon name="add" size={14} color={theme.primary} />
+          <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+            Preset
           </ThemedText>
         </Pressable>
       </ScrollView>
@@ -301,19 +307,22 @@ export function QuickPresetBar({
         presentationStyle="pageSheet"
         onRequestClose={() => setIsModalOpen(false)}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
           >
-            <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+            <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
               {/* Header */}
               <View className="flex-row justify-between items-center mb-3">
                 <View>
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                    1-TAP CAPTURE
+                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                    1-Tap Capture
                   </ThemedText>
-                  <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                  <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                     Quick Presets
                   </ThemedText>
                 </View>
@@ -321,39 +330,45 @@ export function QuickPresetBar({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close quick preset modal"
-                  className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                  className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                   onPress={() => setIsModalOpen(false)}
                 >
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    ✕ Close
+                  <AppIcon name="close" size={14} color={theme.textSecondary} />
+                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Close
                   </ThemedText>
                 </Pressable>
               </View>
 
               {/* Tab Selector: Create vs Manage */}
-              <View className="flex-row rounded-xl bg-slate-200 dark:bg-slate-800 p-1 mb-3 gap-1">
+              <View className="flex-row rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark p-1 mb-3 gap-1">
                 <Pressable
                   accessibilityRole="tab"
                   accessibilityLabel="Create new preset tab"
                   accessibilityState={{ selected: modalTab === 'create' }}
-                  className={`flex-1 min-h-[44px] rounded-lg items-center justify-center ${
+                  className={`flex-1 min-h-[44px] rounded-xl flex-row items-center justify-center gap-1 ${
                     modalTab === 'create'
-                      ? 'bg-white dark:bg-slate-900 shadow-sm'
-                      : 'opacity-70'
+                      ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                      : 'opacity-75'
                   }`}
                   onPress={() => {
                     setModalTab('create');
                     setConfirmingDeleteId(null);
                   }}
                 >
+                  <AppIcon
+                    name="add"
+                    size={13}
+                    color={modalTab === 'create' ? theme.primary : theme.textSecondary}
+                  />
                   <ThemedText
                     className={`text-xs font-bold ${
                       modalTab === 'create'
-                        ? 'text-brand-600 dark:text-brand-400'
-                        : 'text-slate-600 dark:text-slate-400'
+                        ? 'text-brand-500 dark:text-brand-400'
+                        : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                     }`}
                   >
-                    + New Preset
+                    New Preset
                   </ThemedText>
                 </Pressable>
 
@@ -361,10 +376,10 @@ export function QuickPresetBar({
                   accessibilityRole="tab"
                   accessibilityLabel="Manage existing presets tab"
                   accessibilityState={{ selected: modalTab === 'manage' }}
-                  className={`flex-1 min-h-[44px] rounded-lg items-center justify-center ${
+                  className={`flex-1 min-h-[44px] rounded-xl items-center justify-center ${
                     modalTab === 'manage'
-                      ? 'bg-white dark:bg-slate-900 shadow-sm'
-                      : 'opacity-70'
+                      ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                      : 'opacity-75'
                   }`}
                   onPress={() => {
                     setModalTab('manage');
@@ -372,10 +387,11 @@ export function QuickPresetBar({
                   }}
                 >
                   <ThemedText
+                    numeric
                     className={`text-xs font-bold ${
                       modalTab === 'manage'
-                        ? 'text-brand-600 dark:text-brand-400'
-                        : 'text-slate-600 dark:text-slate-400'
+                        ? 'text-brand-500 dark:text-brand-400'
+                        : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                     }`}
                   >
                     Manage ({presets.length})
@@ -393,32 +409,33 @@ export function QuickPresetBar({
                   {errorMessage && (
                     <View
                       accessibilityRole="alert"
-                      className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800"
+                      className="p-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
                     >
-                      <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                        ⚠️ {errorMessage}
+                      <AppIcon name="warning" size={15} color={theme.negative} />
+                      <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                        {errorMessage}
                       </ThemedText>
                     </View>
                   )}
 
                   {/* Label */}
                   <View>
-                    <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                       Preset Label
                     </ThemedText>
                     <TextInput
-                      className="h-12 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                      className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-3 text-sm bg-ledger-surface dark:bg-ledger-surface-dark text-ledger-ink dark:text-ledger-ink-dark"
                       value={label}
                       onChangeText={setLabel}
                       placeholder="e.g. Daily Coffee"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                       maxLength={50}
                     />
                   </View>
 
                   {/* Icon Picker */}
                   <View>
-                    <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                       Icon ({activeIcon})
                     </ThemedText>
                     <ScrollView
@@ -430,11 +447,11 @@ export function QuickPresetBar({
                         <Pressable
                           key={emoji}
                           accessibilityRole="button"
-                          accessibilityLabel={`Select emoji ${emoji}`}
+                          accessibilityLabel={`Select icon ${emoji}`}
                           className={`w-11 h-11 rounded-xl items-center justify-center border ${
                             icon === emoji && !customIconInput
-                              ? 'bg-brand-50 dark:bg-brand-950 border-brand-500'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                           }`}
                           onPress={() => {
                             setIcon(emoji);
@@ -449,7 +466,7 @@ export function QuickPresetBar({
 
                   {/* Transaction Type */}
                   <View>
-                    <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                       Transaction Type
                     </ThemedText>
                     <View className="flex-row gap-2">
@@ -460,14 +477,16 @@ export function QuickPresetBar({
                           accessibilityLabel={`Set type to ${t}`}
                           className={`flex-1 min-h-[44px] py-2 rounded-xl items-center justify-center border ${
                             type === t
-                              ? 'bg-brand-500 border-brand-500'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                              ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                           }`}
                           onPress={() => setType(t)}
                         >
                           <ThemedText
                             className={`text-xs font-bold ${
-                              type === t ? 'text-white' : 'text-slate-600 dark:text-slate-400'
+                              type === t
+                                ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                             }`}
                           >
                             {t}
@@ -479,11 +498,12 @@ export function QuickPresetBar({
 
                   {/* Amount */}
                   <View>
-                    <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                       Amount ({currency})
                     </ThemedText>
                     <TextInput
-                      className="h-12 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-base font-mono font-bold bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                      className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-3 text-base font-bold bg-ledger-surface dark:bg-ledger-surface-dark text-ledger-ink dark:text-ledger-ink-dark"
+                      style={TABULAR_NUMS_STYLE}
                       keyboardType="decimal-pad"
                       inputMode="decimal"
                       autoCorrect={false}
@@ -492,13 +512,13 @@ export function QuickPresetBar({
                       value={amountInput}
                       onChangeText={(text) => setAmountInput(normalizeDecimalInput(text))}
                       placeholder="0.00"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                     />
                   </View>
 
                   {/* Account */}
                   <View>
-                    <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                       {type === 'TRANSFER' ? 'Source Account' : 'Account'}
                     </ThemedText>
                     <ScrollView
@@ -514,8 +534,8 @@ export function QuickPresetBar({
                           accessibilityState={{ selected: accountId === a.id }}
                           className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                             accountId === a.id
-                              ? 'bg-brand-50 dark:bg-brand-950 border-brand-500'
-                              : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                           }`}
                           onPress={() => setAccountId(a.id)}
                         >
@@ -523,8 +543,8 @@ export function QuickPresetBar({
                           <ThemedText
                             className={`text-xs font-semibold ${
                               accountId === a.id
-                                ? 'text-brand-600 dark:text-brand-400'
-                                : 'text-slate-700 dark:text-slate-300'
+                                ? 'text-brand-500 dark:text-brand-400'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
                             }`}
                           >
                             {a.name}
@@ -537,7 +557,7 @@ export function QuickPresetBar({
                   {/* Destination Account (Transfer only) */}
                   {type === 'TRANSFER' && (
                     <View>
-                      <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                      <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                         Destination Account
                       </ThemedText>
                       <ScrollView
@@ -553,8 +573,8 @@ export function QuickPresetBar({
                             accessibilityState={{ selected: toAccountId === a.id }}
                             className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                               toAccountId === a.id
-                                ? 'bg-brand-50 dark:bg-brand-950 border-brand-500'
-                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                             }`}
                             onPress={() => setToAccountId(a.id)}
                           >
@@ -562,8 +582,8 @@ export function QuickPresetBar({
                             <ThemedText
                               className={`text-xs font-semibold ${
                                 toAccountId === a.id
-                                  ? 'text-brand-600 dark:text-brand-400'
-                                  : 'text-slate-700 dark:text-slate-300'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink dark:text-ledger-ink-dark'
                               }`}
                             >
                               {a.name}
@@ -577,7 +597,7 @@ export function QuickPresetBar({
                   {/* Category (Expense / Income only) */}
                   {type !== 'TRANSFER' && filteredCategories.length > 0 && (
                     <View>
-                      <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                      <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                         Category
                       </ThemedText>
                       <ScrollView
@@ -592,19 +612,19 @@ export function QuickPresetBar({
                             accessibilityLabel={`Category ${c.name}`}
                             className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-1.5 ${
                               categoryId === c.id
-                                ? 'border-brand-500'
-                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                                ? 'border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                             }`}
                             style={
                               categoryId === c.id
-                                ? { backgroundColor: `${c.color}25` }
+                                ? { backgroundColor: `${c.color}20`, borderColor: c.color }
                                 : undefined
                             }
                             onPress={() => setCategoryId(c.id)}
                           >
                             <ThemedText className="text-sm">{c.icon}</ThemedText>
                             <ThemedText
-                              className="text-xs font-semibold text-slate-800 dark:text-slate-200"
+                              className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
                               style={categoryId === c.id ? { color: c.color } : undefined}
                             >
                               {c.name}
@@ -617,15 +637,15 @@ export function QuickPresetBar({
 
                   {/* Merchant (optional) */}
                   <View>
-                    <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                    <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mb-1">
                       Merchant / Payee (Optional)
                     </ThemedText>
                     <TextInput
-                      className="h-12 rounded-xl border border-slate-200 dark:border-slate-800 px-3 text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                      className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-3 text-sm bg-ledger-surface dark:bg-ledger-surface-dark text-ledger-ink dark:text-ledger-ink-dark"
                       value={merchant}
                       onChangeText={setMerchant}
                       placeholder="e.g. Starbucks"
-                      placeholderTextColor={theme.textSecondary}
+                      placeholderTextColor={theme.textMuted}
                       maxLength={80}
                     />
                   </View>
@@ -635,10 +655,12 @@ export function QuickPresetBar({
                     accessibilityRole="button"
                     accessibilityLabel="Save preset"
                     disabled={upsertPresetMutation.isPending}
-                    className="mt-2 min-h-[48px] h-12 rounded-2xl bg-brand-500 active:bg-brand-600 items-center justify-center active:scale-[0.98]"
+                    className={`mt-2 min-h-[48px] h-12 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-90 items-center justify-center active:scale-[0.98] ${
+                      upsertPresetMutation.isPending ? 'opacity-70' : ''
+                    }`}
                     onPress={handleSavePreset}
                   >
-                    <ThemedText className="text-base font-bold text-white">
+                    <ThemedText className="text-base font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                       {upsertPresetMutation.isPending ? 'Saving...' : 'Save Quick Preset'}
                     </ThemedText>
                   </Pressable>
@@ -654,27 +676,29 @@ export function QuickPresetBar({
                   {manageError && (
                     <View
                       accessibilityRole="alert"
-                      className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800"
+                      className="p-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
                     >
-                      <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-                        ⚠️ {manageError}
+                      <AppIcon name="warning" size={15} color={theme.negative} />
+                      <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                        {manageError}
                       </ThemedText>
                     </View>
                   )}
 
                   {presets.length === 0 ? (
                     <View className="p-8 items-center justify-center gap-3">
-                      <ThemedText className="text-sm text-slate-500 dark:text-slate-400">
+                      <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                         No presets created yet.
                       </ThemedText>
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Create first preset"
                         onPress={() => setModalTab('create')}
-                        className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                        className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-90 flex-row items-center justify-center gap-1.5"
                       >
-                        <ThemedText className="text-xs font-bold text-white">
-                          + Create Preset
+                        <AppIcon name="add" size={14} color={theme.onPrimary} />
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                          Create Preset
                         </ThemedText>
                       </Pressable>
                     </View>
@@ -685,19 +709,22 @@ export function QuickPresetBar({
                       return (
                         <View
                           key={preset.id}
-                          className="p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex-row items-center justify-between gap-2"
+                          className="p-3 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2"
                         >
                           <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
                             <ThemedText className="text-2xl">{preset.icon}</ThemedText>
                             <View className="flex-1 min-w-0">
                               <ThemedText
-                                className="text-sm font-bold text-slate-900 dark:text-slate-100"
+                                className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                                 numberOfLines={1}
                               >
                                 {preset.label}
                               </ThemedText>
-                              <ThemedText className="text-xs font-semibold text-brand-600 dark:text-brand-400">
-                                {formatMinorUnits(preset.amountMinor, currency)} • {preset.type}
+                              <ThemedText
+                                numeric
+                                className="text-xs font-semibold text-brand-500 dark:text-brand-400"
+                              >
+                                {formatMinorUnits(preset.amountMinor, currency)} · {preset.type}
                               </ThemedText>
                             </View>
                           </View>
@@ -708,10 +735,10 @@ export function QuickPresetBar({
                                 accessibilityRole="button"
                                 accessibilityLabel={`Cancel deleting preset ${preset.label}`}
                                 disabled={deletePresetMutation.isPending}
-                                className="min-h-[44px] px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 items-center justify-center active:opacity-75"
+                                className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                                 onPress={() => setConfirmingDeleteId(null)}
                               >
-                                <ThemedText className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                                <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                                   Cancel
                                 </ThemedText>
                               </Pressable>
@@ -719,10 +746,10 @@ export function QuickPresetBar({
                                 accessibilityRole="button"
                                 accessibilityLabel={`Confirm delete preset ${preset.label}`}
                                 disabled={deletePresetMutation.isPending}
-                                className="min-h-[44px] px-3 py-2 rounded-xl bg-rose-600 items-center justify-center active:opacity-75"
+                                className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-75"
                                 onPress={() => handleConfirmDeletePreset(preset.id)}
                               >
-                                <ThemedText className="text-xs font-bold text-white">
+                                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                                   {deletePresetMutation.isPending ? '...' : 'Confirm'}
                                 </ThemedText>
                               </Pressable>
@@ -732,13 +759,13 @@ export function QuickPresetBar({
                               accessibilityRole="button"
                               accessibilityLabel={`Delete preset ${preset.label}`}
                               disabled={deletePresetMutation.isPending}
-                              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 items-center justify-center active:opacity-75"
+                              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft items-center justify-center active:opacity-75"
                               onPress={() => {
                                 setManageError(null);
                                 setConfirmingDeleteId(preset.id);
                               }}
                             >
-                              <ThemedText className="text-xs font-bold text-rose-500">
+                              <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                                 Delete
                               </ThemedText>
                             </Pressable>

@@ -21,8 +21,10 @@ import {
   type Category,
   type TransactionSplit,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
 
 export interface SplitEditorModalProps {
@@ -287,19 +289,22 @@ export function SplitEditorModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+      <SafeAreaView
+        className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+        edges={['top', 'bottom', 'left', 'right']}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1 }}
         >
-          <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 pt-4">
+          <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark pt-4">
             {/* Header */}
             <View className="flex-row justify-between items-center px-4 mb-3">
               <View>
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                  SPLIT TRANSACTION
+                <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                  Split Transaction
                 </ThemedText>
-                <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                   Split Across Categories
                 </ThemedText>
               </View>
@@ -307,61 +312,71 @@ export function SplitEditorModal({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close split editor"
-                className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                 onPress={onClose}
               >
-                <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">✕ Cancel</ThemedText>
+                <AppIcon name="close" size={14} color={theme.textSecondary} />
+                <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Cancel
+                </ThemedText>
               </Pressable>
             </View>
 
             {/* Live Remainder & Status Bar */}
             <View
-              className={`mx-4 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border mb-3 ${
+              className={`mx-4 p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border mb-3 ${
                 isBalanced
-                  ? 'border-emerald-500/60 dark:border-emerald-500/60'
+                  ? 'border-ledger-pine dark:border-ledger-pine-dark'
                   : remainderMinor > 0
-                    ? 'border-amber-500/60 dark:border-amber-500/60'
-                    : 'border-rose-500/60 dark:border-rose-500/60'
+                    ? 'border-ledger-ochre dark:border-ledger-ochre-dark'
+                    : 'border-ledger-terracotta dark:border-ledger-terracotta-dark'
               }`}
             >
               <View className="flex-row justify-between items-center">
                 <View className="items-center">
-                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">
+                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-0.5">
                     Total
                   </ThemedText>
-                  <ThemedText className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  <ThemedText
+                    numeric
+                    className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
                     {formatMinorUnits(totalAmountMinor, currency)}
                   </ThemedText>
                 </View>
 
-                <ThemedText className="text-slate-300 dark:text-slate-600 font-bold">
-                  •
+                <ThemedText className="text-ledger-border-strong dark:text-ledger-border-strong-dark font-bold">
+                  ·
                 </ThemedText>
 
                 <View className="items-center">
-                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">
+                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-0.5">
                     Allocated
                   </ThemedText>
-                  <ThemedText className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                  <ThemedText
+                    numeric
+                    className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
                     {formatMinorUnits(sumMinor, currency)}
                   </ThemedText>
                 </View>
 
-                <ThemedText className="text-slate-300 dark:text-slate-600 font-bold">
-                  •
+                <ThemedText className="text-ledger-border-strong dark:text-ledger-border-strong-dark font-bold">
+                  ·
                 </ThemedText>
 
                 <View className="items-center">
-                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">
+                  <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-0.5">
                     Remaining
                   </ThemedText>
                   <ThemedText
+                    numeric
                     className={`text-sm font-bold ${
                       isBalanced
-                        ? 'text-emerald-500'
+                        ? 'text-ledger-pine dark:text-ledger-pine-dark'
                         : remainderMinor > 0
-                          ? 'text-amber-500'
-                          : 'text-rose-500'
+                          ? 'text-ledger-ochre dark:text-ledger-ochre-dark'
+                          : 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
                     }`}
                   >
                     {formatMinorUnits(remainderMinor, currency)}
@@ -374,11 +389,12 @@ export function SplitEditorModal({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Split total evenly among categories"
-                  className="flex-1 min-h-[44px] py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:scale-[0.98]"
+                  className="flex-1 min-h-[44px] py-2 px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:scale-[0.98]"
                   onPress={handleSplitEvenly}
                 >
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                    ⚖️ Split Evenly
+                  <AppIcon name="reconcile" size={15} color={theme.textSecondary} />
+                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Split Evenly
                   </ThemedText>
                 </Pressable>
 
@@ -386,11 +402,12 @@ export function SplitEditorModal({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Auto-balance remainder to last split category"
-                    className="flex-1 min-h-[44px] py-2 px-3 rounded-xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 items-center justify-center active:scale-[0.98]"
+                    className="flex-1 min-h-[44px] py-2 px-3 rounded-xl bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:scale-[0.98]"
                     onPress={handleAutoBalanceRemainder}
                   >
-                    <ThemedText className="text-xs font-bold text-amber-700 dark:text-amber-400">
-                      🪄 Auto-balance
+                    <AppIcon name="sparkle" size={15} color={theme.warning} />
+                    <ThemedText className="text-xs font-bold text-ledger-ochre dark:text-ledger-ochre-dark">
+                      Auto-balance
                     </ThemedText>
                   </Pressable>
                 )}
@@ -401,11 +418,15 @@ export function SplitEditorModal({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Update total amount to match sum"
-                  className="mt-2.5 min-h-[44px] bg-emerald-500 active:bg-emerald-600 rounded-xl py-2 px-3 items-center justify-center active:scale-[0.98]"
+                  className="mt-2.5 min-h-[44px] bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-90 rounded-xl py-2 px-3 flex-row items-center justify-center gap-1.5 active:scale-[0.98]"
                   onPress={handleApplyWithUpdatedTotal}
                 >
-                  <ThemedText className="text-xs font-bold text-white">
-                    ⚡ Update Total to {formatMinorUnits(sumMinor, currency)} & Apply
+                  <AppIcon name="autopay" size={15} color={theme.onPrimary} />
+                  <ThemedText
+                    numeric
+                    className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark"
+                  >
+                    Update Total to {formatMinorUnits(sumMinor, currency)} & Apply
                   </ThemedText>
                 </Pressable>
               )}
@@ -424,7 +445,7 @@ export function SplitEditorModal({
                 return (
                   <View
                     key={row.id}
-                    className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800"
+                    className="p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark"
                     style={
                       currentCat?.color
                         ? { borderColor: `${currentCat.color}80` }
@@ -439,36 +460,41 @@ export function SplitEditorModal({
                         className="min-h-[44px] flex-row items-center gap-2 px-3 py-1.5 rounded-xl border active:opacity-75"
                         style={{
                           backgroundColor: currentCat?.color ? `${currentCat.color}15` : undefined,
-                          borderColor: currentCat?.color ?? theme.backgroundSelected,
+                          borderColor: currentCat?.color ?? theme.borderStrong,
                         }}
                         onPress={() =>
                           setActiveCategoryPickerRowId(isPickerOpen ? null : row.id)
                         }
                       >
-                        <ThemedText className="text-lg">
-                          {currentCat?.icon ?? '🏷️'}
-                        </ThemedText>
+                        {currentCat?.icon ? (
+                          <ThemedText className="text-lg">{currentCat.icon}</ThemedText>
+                        ) : (
+                          <AppIcon name="tag" size={16} color={theme.textSecondary} />
+                        )}
                         <ThemedText
-                          className="text-sm font-bold max-w-[160px]"
+                          className="text-sm font-bold max-w-[160px] text-ledger-ink dark:text-ledger-ink-dark"
                           style={currentCat?.color ? { color: currentCat.color } : undefined}
                           numberOfLines={1}
                         >
                           {currentCat?.name ?? 'Select Category'}
                         </ThemedText>
-                        <ThemedText className="text-xs text-slate-400">
-                          {isPickerOpen ? '▲' : '▼'}
-                        </ThemedText>
+                        <AppIcon
+                          name={isPickerOpen ? 'chevronUp' : 'chevronDown'}
+                          size={14}
+                          color={theme.textMuted}
+                        />
                       </Pressable>
 
                       {rows.length > 2 && (
                         <Pressable
                           accessibilityRole="button"
                           accessibilityLabel={`Delete split line ${index + 1}`}
-                          className="min-h-[44px] px-3 py-2 rounded-xl bg-rose-50 dark:bg-rose-950/60 items-center justify-center active:opacity-75"
+                          className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft flex-row items-center justify-center gap-1 active:opacity-75"
                           onPress={() => handleRemoveSplitLine(index)}
                         >
-                          <ThemedText className="text-xs font-bold text-rose-500">
-                            ✕ Remove
+                          <AppIcon name="close" size={13} color={theme.negative} />
+                          <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                            Remove
                           </ThemedText>
                         </Pressable>
                       )}
@@ -487,14 +513,14 @@ export function SplitEditorModal({
                               key={cat.id}
                               accessibilityRole="button"
                               accessibilityLabel={`Choose ${cat.name}`}
-                              className="min-h-[44px] flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border active:scale-95"
+                              className="min-h-[44px] flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border active:scale-95 bg-ledger-subtle dark:bg-ledger-subtle-dark"
                               style={{
                                 backgroundColor:
                                   row.categoryId === cat.id
-                                    ? `${cat.color}25`
+                                    ? `${cat.color}20`
                                     : undefined,
                                 borderColor:
-                                  row.categoryId === cat.id ? cat.color : theme.backgroundSelected,
+                                  row.categoryId === cat.id ? cat.color : theme.border,
                               }}
                               onPress={() => handleSelectCategoryForRow(row.id, cat.id)}
                             >
@@ -503,7 +529,7 @@ export function SplitEditorModal({
                                 className={`text-xs ${
                                   row.categoryId === cat.id
                                     ? 'font-bold'
-                                    : 'font-medium text-slate-700 dark:text-slate-300'
+                                    : 'font-medium text-ledger-ink dark:text-ledger-ink-dark'
                                 }`}
                                 style={row.categoryId === cat.id ? { color: cat.color } : undefined}
                                 numberOfLines={1}
@@ -519,11 +545,12 @@ export function SplitEditorModal({
                     {/* Inputs: Amount and Note */}
                     <View className="flex-row gap-2.5">
                       <View className="flex-1">
-                        <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
+                        <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-1">
                           Amount ({currency})
                         </ThemedText>
                         <TextInput
-                          className="h-12 rounded-xl border border-slate-200 dark:border-slate-700 px-3 text-base font-mono font-bold bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-slate-100"
+                          className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-3 text-base font-bold bg-ledger-subtle dark:bg-ledger-subtle-dark text-ledger-ink dark:text-ledger-ink-dark"
+                          style={TABULAR_NUMS_STYLE}
                           keyboardType="decimal-pad"
                           inputMode="decimal"
                           autoCorrect={false}
@@ -532,20 +559,20 @@ export function SplitEditorModal({
                           value={row.amountInput}
                           onChangeText={(val) => handleAmountChange(index, normalizeDecimalInput(val))}
                           placeholder="0.00"
-                          placeholderTextColor={theme.textSecondary}
+                          placeholderTextColor={theme.textMuted}
                         />
                       </View>
 
                       <View className="flex-[1.5]">
-                        <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1">
+                        <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-1">
                           Note (optional)
                         </ThemedText>
                         <TextInput
-                          className="h-12 rounded-xl border border-slate-200 dark:border-slate-700 px-3 text-sm bg-slate-50 dark:bg-slate-800/70 text-slate-900 dark:text-slate-100"
+                          className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-3 text-sm bg-ledger-subtle dark:bg-ledger-subtle-dark text-ledger-ink dark:text-ledger-ink-dark"
                           value={row.note}
                           onChangeText={(val) => handleNoteChange(index, val)}
                           placeholder="e.g. personal share"
-                          placeholderTextColor={theme.textSecondary}
+                          placeholderTextColor={theme.textMuted}
                           maxLength={120}
                         />
                       </View>
@@ -558,31 +585,35 @@ export function SplitEditorModal({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Add another split line"
-                className="min-h-[48px] rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-700 p-3.5 items-center justify-center active:scale-[0.99] mt-1 bg-white/50 dark:bg-slate-900/50"
+                className="min-h-[48px] rounded-2xl border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark p-3.5 flex-row items-center justify-center gap-1.5 active:scale-[0.99] mt-1 bg-ledger-subtle dark:bg-ledger-subtle-dark"
                 onPress={handleAddSplitLine}
               >
-                <ThemedText className="text-xs font-bold text-brand-500">
-                  ➕ Add Split Line
+                <AppIcon name="add" size={15} color={theme.primary} />
+                <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                  Add Split Line
                 </ThemedText>
               </Pressable>
             </ScrollView>
 
             {/* Footer Actions */}
-            <View className="px-4 pt-3 pb-4 border-t border-slate-200 dark:border-slate-800 items-center gap-2 bg-white dark:bg-slate-900">
+            <View className="px-4 pt-3 pb-4 border-t border-ledger-border dark:border-ledger-border-dark items-center gap-2 bg-ledger-surface dark:bg-ledger-surface-dark">
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Apply split changes"
                 disabled={!isBalanced}
-                className={`w-full min-h-[48px] h-12 rounded-2xl items-center justify-center active:scale-[0.98] ${
+                className={`w-full min-h-[48px] h-12 rounded-xl items-center justify-center active:scale-[0.98] ${
                   isBalanced
-                    ? 'bg-brand-500 active:bg-brand-600 shadow-md shadow-brand-500/25'
-                    : 'bg-slate-200 dark:bg-slate-800 opacity-60'
+                    ? 'bg-brand-500 dark:bg-brand-400 active:opacity-90'
+                    : 'bg-ledger-selected dark:bg-ledger-selected-dark border border-ledger-border dark:border-ledger-border-dark opacity-70'
                 }`}
                 onPress={handleApply}
               >
                 <ThemedText
+                  numeric
                   className={`text-base font-bold ${
-                    isBalanced ? 'text-white' : 'text-slate-400 dark:text-slate-500'
+                    isBalanced
+                      ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                      : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
                   }`}
                 >
                   Apply Split ({rows.length} categories)
@@ -595,7 +626,7 @@ export function SplitEditorModal({
                 className="min-h-[44px] px-4 items-center justify-center active:opacity-75"
                 onPress={handleClear}
               >
-                <ThemedText className="text-xs text-slate-400 dark:text-slate-500 underline">
+                <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted underline">
                   Remove Split (Revert to Single Category)
                 </ThemedText>
               </Pressable>

@@ -8,7 +8,9 @@ import {
   type AccountType,
   type TransactionType,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface AccountSelectorProps {
   type: TransactionType;
@@ -21,20 +23,20 @@ export interface AccountSelectorProps {
 
 const ACCOUNT_TAG_STYLES: Record<AccountType, { bg: string; text: string }> = {
   BANK: {
-    bg: 'bg-brand-100/80 dark:bg-brand-950/60',
-    text: 'text-brand-700 dark:text-brand-300',
+    bg: 'bg-brand-50 dark:bg-ledger-pine-dark-soft',
+    text: 'text-brand-500 dark:text-brand-400',
   },
   E_WALLET: {
-    bg: 'bg-emerald-100/80 dark:bg-emerald-950/60',
-    text: 'text-emerald-700 dark:text-emerald-300',
+    bg: 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft',
+    text: 'text-ledger-pine dark:text-ledger-pine-dark',
   },
   CASH: {
-    bg: 'bg-amber-100/80 dark:bg-amber-950/60',
-    text: 'text-amber-700 dark:text-amber-300',
+    bg: 'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft',
+    text: 'text-ledger-ochre dark:text-ledger-ochre-dark',
   },
   CREDIT_CARD: {
-    bg: 'bg-violet-100/80 dark:bg-violet-950/60',
-    text: 'text-violet-700 dark:text-violet-300',
+    bg: 'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft',
+    text: 'text-ledger-teal dark:text-ledger-teal-dark',
   },
 };
 
@@ -59,7 +61,7 @@ function AccountChip({ account, isSelected, onPress, roleLabel }: AccountChipPro
       className={`min-h-[56px] min-w-[160px] px-3 py-2 rounded-2xl border flex-row items-center gap-2.5 active:scale-95 ${
         isSelected
           ? 'border-2'
-          : 'bg-slate-50/80 dark:bg-slate-800/60 border-slate-200/80 dark:border-slate-700/80'
+          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
       }`}
       style={
         isSelected
@@ -71,7 +73,7 @@ function AccountChip({ account, isSelected, onPress, roleLabel }: AccountChipPro
       }
     >
       <View
-        className="w-9 h-9 rounded-xl items-center justify-center shrink-0 bg-white dark:bg-slate-900 border border-slate-200/70 dark:border-slate-700/70"
+        className="w-9 h-9 rounded-xl items-center justify-center shrink-0 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark"
         style={
           isSelected
             ? {
@@ -90,7 +92,7 @@ function AccountChip({ account, isSelected, onPress, roleLabel }: AccountChipPro
             className={`text-xs flex-1 ${
               isSelected
                 ? 'font-bold'
-                : 'font-semibold text-slate-800 dark:text-slate-100'
+                : 'font-semibold text-ledger-ink dark:text-ledger-ink-dark'
             }`}
             style={isSelected ? { color: account.color } : undefined}
             numberOfLines={1}
@@ -98,13 +100,14 @@ function AccountChip({ account, isSelected, onPress, roleLabel }: AccountChipPro
             {account.name}
           </ThemedText>
           <View className={`px-1.5 py-0.5 rounded-md ${tagStyle.bg}`}>
-            <ThemedText className={`text-[9px] font-bold uppercase ${tagStyle.text}`}>
+            <ThemedText className={`text-[10px] font-bold ${tagStyle.text}`}>
               {typeLabel}
             </ThemedText>
           </View>
         </View>
         <ThemedText
-          className="text-xs font-mono font-semibold text-slate-500 dark:text-slate-400 mt-0.5"
+          numeric
+          className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
           numberOfLines={1}
         >
           {formattedBalance}
@@ -122,20 +125,23 @@ export function AccountSelector({
   onSelectAccount,
   onSelectToAccount,
 }: AccountSelectorProps) {
+  const theme = useTheme();
+
   if (accounts.length === 0) {
     return (
-      <View className="p-4 items-center justify-center gap-2.5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-dashed border-slate-300 dark:border-slate-700">
-        <ThemedText className="text-sm font-medium text-slate-500 dark:text-slate-400 text-center">
+      <View className="p-4 items-center justify-center gap-2.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark">
+        <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
           No accounts available
         </ThemedText>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Add Account"
           onPress={() => router.push('/accounts')}
-          className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+          className="min-h-[44px] px-4 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 flex-row items-center justify-center gap-1.5 active:opacity-85"
         >
-          <ThemedText className="text-xs font-bold text-white">
-            + Add Account
+          <AppIcon name="add" size={14} color={theme.onPrimary} />
+          <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+            Add Account
           </ThemedText>
         </Pressable>
       </View>
@@ -185,19 +191,19 @@ export function AccountSelector({
       <View className="w-full gap-2.5">
         {/* Transfer Summary Card */}
         <View
-          className={`p-3 rounded-2xl bg-slate-50/90 dark:bg-slate-800/60 border ${
+          className={`p-3 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border ${
             isConflict
-              ? 'border-rose-500 dark:border-rose-500'
-              : 'border-slate-200/80 dark:border-slate-700/80'
+              ? 'border-ledger-terracotta dark:border-ledger-terracotta-dark'
+              : 'border-ledger-border dark:border-ledger-border-dark'
           }`}
         >
           <View className="flex-row items-center justify-between gap-2">
             <View className="flex-1 min-w-0">
-              <ThemedText className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">
+              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-0.5">
                 From
               </ThemedText>
               <ThemedText
-                className="text-sm font-bold text-slate-900 dark:text-slate-100"
+                className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                 numberOfLines={1}
               >
                 {fromAccount ? `${fromAccount.icon} ${fromAccount.name}` : 'Select account'}
@@ -205,17 +211,15 @@ export function AccountSelector({
             </View>
 
             <View className="px-2 items-center justify-center">
-              <ThemedText className="text-base font-extrabold text-brand-500">
-                →
-              </ThemedText>
+              <AppIcon name="arrowRight" size={16} color={theme.info} />
             </View>
 
             <View className="flex-1 min-w-0 items-end">
-              <ThemedText className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-0.5">
+              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-0.5">
                 To
               </ThemedText>
               <ThemedText
-                className="text-sm font-bold text-slate-900 dark:text-slate-100"
+                className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                 numberOfLines={1}
               >
                 {toAccount ? `${toAccount.icon} ${toAccount.name}` : 'Select account'}
@@ -227,17 +231,18 @@ export function AccountSelector({
         {isConflict && (
           <View
             accessibilityRole="alert"
-            className="px-3.5 py-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/60"
+            className="px-3.5 py-2.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
           >
-            <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
-              ⚠️ Destination account must differ from source account
+            <AppIcon name="warning" size={15} color={theme.negative} />
+            <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+              Destination account must differ from source account
             </ThemedText>
           </View>
         )}
 
         {/* From Account */}
         <View>
-          <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 px-0.5">
+          <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-1.5 px-0.5">
             From Account
           </ThemedText>
           <ScrollView
@@ -266,20 +271,20 @@ export function AccountSelector({
             disabled={!canSwap}
             className={`min-h-[44px] flex-row items-center gap-1.5 px-4 py-2 rounded-full border active:scale-95 ${
               canSwap
-                ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-200 dark:border-brand-800'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 opacity-50'
+                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-200 dark:border-ledger-border-dark'
+                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark opacity-50'
             }`}
           >
-            <ThemedText
-              className={`text-sm font-bold ${
-                canSwap ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'
-              }`}
-            >
-              ⇄
-            </ThemedText>
+            <AppIcon
+              name="transfer"
+              size={15}
+              color={canSwap ? theme.primary : theme.textMuted}
+            />
             <ThemedText
               className={`text-xs font-bold ${
-                canSwap ? 'text-brand-600 dark:text-brand-400' : 'text-slate-400 dark:text-slate-500'
+                canSwap
+                  ? 'text-brand-500 dark:text-brand-400'
+                  : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
               }`}
             >
               Swap Accounts
@@ -289,7 +294,7 @@ export function AccountSelector({
 
         {/* To Account */}
         <View>
-          <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 px-0.5">
+          <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-1.5 px-0.5">
             To Account
           </ThemedText>
           <ScrollView
@@ -316,7 +321,7 @@ export function AccountSelector({
   return (
     <View className="w-full">
       <View className="px-0.5 mb-1.5">
-        <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+        <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
           Account
         </ThemedText>
       </View>

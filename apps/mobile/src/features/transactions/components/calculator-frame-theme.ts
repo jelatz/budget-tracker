@@ -27,21 +27,21 @@ export const CALCULATOR_FRAME_BORDER_CLASSES: Record<
 > = {
   EXPENSE: {
     active:
-      'border-2 border-rose-600 dark:border-rose-400 bg-rose-50/30 dark:bg-rose-950/20 shadow-sm',
+      'border-2 border-ledger-terracotta dark:border-ledger-terracotta-dark bg-ledger-subtle dark:bg-ledger-subtle-dark',
     inactive:
-      'border-2 border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-950/50',
+      'border border-ledger-border dark:border-ledger-border-dark bg-ledger-subtle dark:bg-ledger-subtle-dark',
   },
   INCOME: {
     active:
-      'border-2 border-emerald-600 dark:border-emerald-400 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-sm',
+      'border-2 border-ledger-pine dark:border-ledger-pine-dark bg-ledger-subtle dark:bg-ledger-subtle-dark',
     inactive:
-      'border-2 border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-950/50',
+      'border border-ledger-border dark:border-ledger-border-dark bg-ledger-subtle dark:bg-ledger-subtle-dark',
   },
   TRANSFER: {
     active:
-      'border-2 border-brand-600 dark:border-brand-400 bg-brand-50/30 dark:bg-brand-950/20 shadow-sm',
+      'border-2 border-brand-500 dark:border-brand-400 bg-ledger-subtle dark:bg-ledger-subtle-dark',
     inactive:
-      'border-2 border-slate-300 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-950/50',
+      'border border-ledger-border dark:border-ledger-border-dark bg-ledger-subtle dark:bg-ledger-subtle-dark',
   },
 };
 

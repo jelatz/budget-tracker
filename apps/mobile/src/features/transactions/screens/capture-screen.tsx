@@ -24,6 +24,7 @@ import {
   type TransactionType,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
 import { BottomTabInset } from '@/common/constants/theme';
@@ -359,23 +360,14 @@ export function CaptureScreen() {
     evaluation.hasOperator || evaluation.endsWithOperator;
   const saveLabel =
     evaluation.previewMinor > 0
-      ? `✓ Save ${typeLabel} • ${formatMinorUnits(evaluation.previewMinor, activeCurrency)}`
-      : `✓ Save ${typeLabel}`;
-
-  const summaryTargetLabel =
-    type === 'TRANSFER'
-      ? `→ ${activeToAccount ? `${activeToAccount.icon} ${activeToAccount.name}` : 'Select destination'}`
-      : splits.length >= 2
-        ? `🔀 Split (${splits.length})`
-        : activeCategory
-          ? `${activeCategory.icon} ${activeCategory.name}`
-          : 'Select category';
+      ? `Save ${typeLabel} · ${formatMinorUnits(evaluation.previewMinor, activeCurrency)}`
+      : `Save ${typeLabel}`;
 
   const contentMaxWidth = isWide ? 960 : 520;
   const scrollBottomPadding = Math.max(32, BottomTabInset + insets.bottom + 16);
 
   return (
-    <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
       <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
         {/* Non-blocking confirmation toast banner */}
         {lastSaved && (
@@ -383,13 +375,15 @@ export function CaptureScreen() {
             style={{ maxWidth: contentMaxWidth, width: '100%', alignSelf: 'center' }}
             className="px-4 pt-2 z-50"
           >
-            <View className="px-4 py-2.5 rounded-2xl bg-emerald-50/95 dark:bg-emerald-950/90 border border-emerald-500/40 flex-row items-center justify-between gap-2 shadow-md">
-              <View className="flex-1 min-w-0">
+            <View className="px-4 py-2.5 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-pine dark:border-ledger-pine-dark flex-row items-center justify-between gap-2">
+              <View className="flex-1 min-w-0 flex-row items-center gap-2">
+                <AppIcon name="checkCircle" size={16} color={theme.positive} />
                 <ThemedText
-                  className="text-xs font-bold text-emerald-700 dark:text-emerald-300"
+                  numeric
+                  className="flex-1 text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark"
                   numberOfLines={1}
                 >
-                  ✓ Saved {formatMinorUnits(lastSaved.amountMinor, lastSaved.currency)} ({lastSaved.label})
+                  Saved {formatMinorUnits(lastSaved.amountMinor, lastSaved.currency)} ({lastSaved.label})
                 </ThemedText>
               </View>
               <View className="flex-row items-center gap-1.5">
@@ -397,10 +391,11 @@ export function CaptureScreen() {
                   onPress={handleUndo}
                   accessibilityRole="button"
                   accessibilityLabel="Undo saved transaction"
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  className="min-h-[36px] px-2.5 rounded-xl bg-rose-500/15 items-center justify-center active:opacity-75"
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  className="min-h-[44px] px-2.5 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft flex-row items-center justify-center gap-1 active:opacity-75"
                 >
-                  <ThemedText className="text-xs font-bold text-rose-600 dark:text-rose-400">
+                  <AppIcon name="undo" size={13} color={theme.negative} />
+                  <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                     Undo
                   </ThemedText>
                 </Pressable>
@@ -409,24 +404,23 @@ export function CaptureScreen() {
                   onPress={() => router.push('/transactions')}
                   accessibilityRole="button"
                   accessibilityLabel="View history"
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  className="min-h-[36px] px-2.5 rounded-xl bg-brand-500/15 items-center justify-center active:opacity-75"
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  className="min-h-[44px] px-2.5 rounded-xl bg-brand-50 dark:bg-ledger-pine-dark-soft flex-row items-center justify-center gap-1 active:opacity-75"
                 >
-                  <ThemedText className="text-xs font-bold text-brand-600 dark:text-brand-400">
-                    History →
+                  <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                    History
                   </ThemedText>
+                  <AppIcon name="arrowRight" size={13} color={theme.primary} />
                 </Pressable>
 
                 <Pressable
                   onPress={() => setLastSaved(null)}
                   accessibilityRole="button"
                   accessibilityLabel="Dismiss confirmation toast"
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  className="min-w-[36px] min-h-[36px] rounded-xl items-center justify-center active:opacity-75"
+                  hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  className="min-w-[44px] min-h-[44px] rounded-xl items-center justify-center active:opacity-75"
                 >
-                  <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                    ✕
-                  </ThemedText>
+                  <AppIcon name="close" size={15} color={theme.textSecondary} />
                 </Pressable>
               </View>
             </View>
@@ -451,16 +445,18 @@ export function CaptureScreen() {
           <View className="flex-row items-center justify-between gap-3 py-0.5">
             <View className="flex-1 min-w-0">
               <View className="flex-row items-center gap-2">
-                <ThemedText className="text-xl sm:text-2xl">⚡</ThemedText>
+                <View className="w-8 h-8 rounded-xl bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark items-center justify-center">
+                  <AppIcon name="autopay" size={17} color={theme.primary} />
+                </View>
                 <ThemedText
                   accessibilityRole="header"
-                  className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-slate-50"
+                  className="text-xl sm:text-2xl font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark"
                 >
                   Fast Entry
                 </ThemedText>
               </View>
               <ThemedText
-                className="text-xs sm:text-sm text-slate-500 dark:text-slate-400"
+                className="text-xs sm:text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
                 numberOfLines={1}
               >
                 Quick calculator capture
@@ -471,10 +467,11 @@ export function CaptureScreen() {
               onPress={() => router.push('/transactions')}
               accessibilityRole="button"
               accessibilityLabel="View transaction history"
-              className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex-row items-center justify-center active:opacity-75"
+              className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
             >
-              <ThemedText className="text-xs font-bold text-brand-600 dark:text-brand-400">
-                History 📜
+              <AppIcon name="history" size={15} color={theme.primary} />
+              <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                History
               </ThemedText>
             </Pressable>
           </View>
@@ -483,36 +480,40 @@ export function CaptureScreen() {
           {actionError && (
             <View
               accessibilityRole="alert"
-              className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/70 flex-row items-center justify-between gap-2"
+              className="p-3.5 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2"
             >
-              <ThemedText className="flex-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
-                ⚠️ {actionError}
-              </ThemedText>
+              <View className="flex-row items-center gap-2 flex-1 min-w-0">
+                <AppIcon name="warning" size={16} color={theme.negative} />
+                <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                  {actionError}
+                </ThemedText>
+              </View>
               <Pressable
                 onPress={() => setActionError(null)}
                 accessibilityRole="button"
                 accessibilityLabel="Dismiss error message"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="min-w-[36px] min-h-[36px] items-center justify-center"
+                hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                className="min-w-[44px] min-h-[44px] items-center justify-center"
               >
-                <ThemedText className="text-xs font-bold text-rose-500">✕</ThemedText>
+                <AppIcon name="close" size={15} color={theme.negative} />
               </Pressable>
             </View>
           )}
 
           {/* Loading / Error / Main Cockpit */}
           {accountsQuery.isLoading ? (
-            <View className="py-16 items-center justify-center gap-3 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800">
-              <ActivityIndicator size="large" color={theme.text} />
-              <ThemedText className="text-sm font-medium text-slate-500 dark:text-slate-400">
+            <View className="py-16 items-center justify-center gap-3 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
+              <ActivityIndicator size="large" color={theme.primary} />
+              <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                 Preparing fast entry workspace...
               </ThemedText>
             </View>
           ) : accountsQuery.isError ? (
-            <View className="p-6 rounded-3xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 items-center gap-3">
+            <View className="p-6 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center gap-3">
+              <AppIcon name="warning" size={24} color={theme.negative} />
               <ThemedText
                 accessibilityRole="alert"
-                className="text-sm font-semibold text-rose-600 dark:text-rose-400 text-center"
+                className="text-sm font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark text-center"
               >
                 Could not load accounts or presets right now.
               </ThemedText>
@@ -520,9 +521,11 @@ export function CaptureScreen() {
                 onPress={() => accountsQuery.refetch()}
                 accessibilityRole="button"
                 accessibilityLabel="Retry loading fast entry"
-                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-rose-600 active:bg-rose-700 items-center justify-center"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark active:opacity-90 items-center justify-center"
               >
-                <ThemedText className="text-xs font-bold text-white">Retry</ThemedText>
+                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                  Retry
+                </ThemedText>
               </Pressable>
             </View>
           ) : (
@@ -545,7 +548,7 @@ export function CaptureScreen() {
               <View className={isWide ? 'flex-row items-start gap-4' : 'gap-3'}>
                 {/* Primary Column: Type, Bordered Calculator (Readout + Keypad on Wide) & Summary */}
                 <View className={isWide ? 'flex-1 min-w-0 gap-3' : 'gap-3'}>
-                  <View className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-3.5 shadow-sm gap-3">
+                  <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-3.5 gap-3">
                     <TypeToggle value={type} onChange={handleTypeChange} />
 
                     {isWide ? (
@@ -593,26 +596,56 @@ export function CaptureScreen() {
                     )}
 
                     {/* Active Context Summary Strip */}
-                    <View className="flex-row items-center justify-between gap-2 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200/70 dark:border-slate-700/70">
+                    <View className="flex-row items-center justify-between gap-2 px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
                       <ThemedText
-                        className="text-xs font-semibold text-slate-700 dark:text-slate-300 flex-1"
+                        className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark flex-1"
                         numberOfLines={1}
                       >
                         {activeAccount ? `${activeAccount.icon} ${activeAccount.name}` : 'Select account'}
                       </ThemedText>
-                      <ThemedText
-                        className="text-xs font-bold text-slate-600 dark:text-slate-200 flex-1 text-right"
-                        numberOfLines={1}
-                      >
-                        {summaryTargetLabel}
-                      </ThemedText>
+
+                      <View className="flex-1 flex-row items-center justify-end gap-1.5 min-w-0">
+                        {type === 'TRANSFER' ? (
+                          <>
+                            <AppIcon name="arrowRight" size={13} color={theme.info} />
+                            <ThemedText
+                              className="text-xs font-bold text-ledger-teal dark:text-ledger-teal-dark"
+                              numberOfLines={1}
+                            >
+                              {activeToAccount
+                                ? `${activeToAccount.icon} ${activeToAccount.name}`
+                                : 'Select destination'}
+                            </ThemedText>
+                          </>
+                        ) : splits.length >= 2 ? (
+                          <>
+                            <AppIcon name="split" size={13} color={theme.primary} />
+                            <ThemedText
+                              numeric
+                              className="text-xs font-bold text-brand-500 dark:text-brand-400"
+                              numberOfLines={1}
+                            >
+                              Split ({splits.length})
+                            </ThemedText>
+                          </>
+                        ) : (
+                          <ThemedText
+                            className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-right"
+                            numberOfLines={1}
+                          >
+                            {activeCategory
+                              ? `${activeCategory.icon} ${activeCategory.name}`
+                              : 'Select category'}
+                          </ThemedText>
+                        )}
+                      </View>
                     </View>
                   </View>
                 </View>
 
                 {/* Context Column: Account, Category, Split Warning & Metadata */}
                 <View className={isWide ? 'flex-1 min-w-0 gap-3' : 'gap-3'}>
-                  <View className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-4 shadow-sm gap-4">
+                  <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-4">
                     <AccountSelector
                       type={type}
                       accounts={accounts}
@@ -641,16 +674,20 @@ export function CaptureScreen() {
                         onPress={() => setIsSplitModalOpen(true)}
                         accessibilityRole="button"
                         accessibilityLabel="Split discrepancy warning, tap to open split editor"
-                        className="min-h-[44px] p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/60 items-center justify-center active:scale-[0.99]"
+                        className="min-h-[44px] p-3 rounded-2xl bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-2 active:scale-[0.99]"
                       >
-                        <ThemedText className="text-xs font-semibold text-amber-700 dark:text-amber-400 text-center">
-                          ⚠️ Split amounts differ by {formatMinorUnits(Math.abs(splitRemainder), activeCurrency)} • Tap to Edit Splits
+                        <AppIcon name="warning" size={15} color={theme.warning} />
+                        <ThemedText
+                          numeric
+                          className="text-xs font-semibold text-ledger-ochre dark:text-ledger-ochre-dark text-center"
+                        >
+                          Split amounts differ by {formatMinorUnits(Math.abs(splitRemainder), activeCurrency)} · Tap to Edit Splits
                         </ThemedText>
                       </Pressable>
                     )}
 
                     <View className="gap-1.5">
-                      <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-0.5">
+                      <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted px-0.5">
                         Details & Attachments
                       </ThemedText>
                       <MetadataPillBar
@@ -663,7 +700,7 @@ export function CaptureScreen() {
                   </View>
 
                   {!isWide && (
-                    <View className="rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 shadow-sm">
+                    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-2.5">
                       <CalculatorFocusFrame
                         ref={calculatorFrameRef}
                         transactionType={type}

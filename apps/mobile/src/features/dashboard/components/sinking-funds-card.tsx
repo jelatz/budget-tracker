@@ -18,7 +18,10 @@ import {
   parseDecimalToMinorUnits,
   type SinkingFund,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { Colors, TABULAR_NUMS_STYLE } from '@/common/constants/theme';
+import { useTheme } from '@/common/hooks/use-theme';
 import {
   useAccounts,
   useContributeToSinkingFund,
@@ -46,17 +49,19 @@ const FUND_ICONS = [
 ];
 
 const FUND_COLORS = [
-  '#3B82F6',
-  '#10B981',
-  '#F59E0B',
-  '#EF4444',
-  '#8B5CF6',
-  '#EC4899',
-  '#06B6D4',
-  '#64748B',
-];
+  Colors.light.primary,
+  Colors.light.positive,
+  Colors.light.info,
+  Colors.light.warning,
+  Colors.light.negative,
+  Colors.dark.positive,
+  Colors.dark.info,
+  Colors.light.textSecondary,
+] as const;
 
-const AMOUNT_PRESETS = [50000, 100000, 250000, 500000]; // in cents: $500, $1,000, $2,500, $5,000
+const DEFAULT_FUND_COLOR = FUND_COLORS[0];
+
+const AMOUNT_PRESETS = [50000, 100000, 250000, 500000];
 
 function getDatePreset(type: '3_MOS' | '6_MOS' | '1_YR' | 'EOY'): string {
   const now = new Date();
@@ -75,7 +80,7 @@ function getDatePreset(type: '3_MOS' | '6_MOS' | '1_YR' | 'EOY'): string {
 }
 
 export function SinkingFundsCard() {
-  // Queries & Mutations
+  const theme = useTheme();
   const { data: sinkingFunds = [], isLoading } = useSinkingFunds();
   const { data: accounts = [] } = useAccounts();
   const upsertMutation = useUpsertSinkingFund();
@@ -91,7 +96,7 @@ export function SinkingFundsCard() {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('🎯');
   const [customIcon, setCustomIcon] = useState('');
-  const [color, setColor] = useState('#3B82F6');
+  const [color, setColor] = useState<string>(DEFAULT_FUND_COLOR);
   const [targetAmountInput, setTargetAmountInput] = useState('1000');
   const [targetDate, setTargetDate] = useState(() => getDatePreset('6_MOS'));
   const [accountId, setAccountId] = useState('');
@@ -108,7 +113,6 @@ export function SinkingFundsCard() {
   const isSubmitting =
     upsertMutation.isPending || contributeMutation.isPending || deleteMutation.isPending;
 
-  // Account map for quick lookup
   const accountMap = useMemo(() => {
     const map = new Map<string, { name: string; icon: string; balanceMinor: number }>();
     for (const a of accounts) {
@@ -117,7 +121,6 @@ export function SinkingFundsCard() {
     return map;
   }, [accounts]);
 
-  // Sinking Fund totals
   const totals = useMemo(() => {
     let totalSaved = 0;
     let totalTarget = 0;
@@ -128,7 +131,6 @@ export function SinkingFundsCard() {
     return { totalSaved, totalTarget };
   }, [sinkingFunds]);
 
-  // Live calculation for create/edit modal
   const livePreview = useMemo(() => {
     const minor = parseDecimalToMinorUnits(targetAmountInput);
     if (minor === null || minor <= 0 || !/^\d{4}-\d{2}(-\d{2})?$/.test(targetDate.trim())) {
@@ -142,14 +144,13 @@ export function SinkingFundsCard() {
     }
   }, [targetAmountInput, targetDate, editingFund]);
 
-  // Handle Opening Create Modal
   const handleOpenCreateModal = () => {
     setEditingFund(null);
     setConfirmingDelete(false);
     setName('');
     setIcon('🎯');
     setCustomIcon('');
-    setColor('#3B82F6');
+    setColor(DEFAULT_FUND_COLOR);
     setTargetAmountInput('1000');
     setTargetDate(getDatePreset('6_MOS'));
     setAccountId(accounts[0]?.id ?? '');
@@ -158,14 +159,13 @@ export function SinkingFundsCard() {
     setEditModalVisible(true);
   };
 
-  // Handle Opening Edit Modal
   const handleOpenEditModal = (fund: SinkingFund) => {
     setEditingFund(fund);
     setConfirmingDelete(false);
     setName(fund.name);
     setIcon(fund.icon);
     setCustomIcon('');
-    setColor(fund.color || '#3B82F6');
+    setColor(fund.color || DEFAULT_FUND_COLOR);
     setTargetAmountInput(minorUnitsToDecimalInput(fund.targetAmountMinor));
     setTargetDate(fund.targetDate);
     setAccountId(fund.accountId);
@@ -183,11 +183,9 @@ export function SinkingFundsCard() {
     }
   };
 
-  // Handle Opening Stash Modal
   const handleOpenStashModal = (fund: SinkingFund) => {
     setStashingFund(fund);
     setStashSourceAccountId(fund.accountId || accounts[0]?.id || '');
-    // Suggest monthly amount or remaining amount if reasonable
     const calc = computeSinkingFundMonthlyTarget(
       fund.targetAmountMinor,
       fund.currentSavedMinor,
@@ -210,7 +208,6 @@ export function SinkingFundsCard() {
     }
   };
 
-  // Save Sinking Fund
   const handleSaveFund = async () => {
     if (!name.trim()) {
       setEditError('Please enter a fund name.');
@@ -265,10 +262,10 @@ export function SinkingFundsCard() {
     }
   };
 
-  // Delete Sinking Fund
   const handleDeleteFund = async () => {
     if (!editingFund) return;
     try {
+      setEditError(null);
       await deleteMutation.mutateAsync(editingFund.id);
       setEditModalVisible(false);
       setEditingFund(null);
@@ -279,7 +276,6 @@ export function SinkingFundsCard() {
     }
   };
 
-  // Submit Stash
   const handleStashSubmit = async () => {
     if (!stashingFund) return;
 
@@ -310,14 +306,17 @@ export function SinkingFundsCard() {
   };
 
   return (
-    <View className="rounded-3xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-4">
+    <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
       {/* 1. Header */}
-      <View className="flex-row items-center justify-between">
-        <View className="gap-0.5 flex-1 mr-2">
-          <ThemedText className="text-base font-bold text-slate-900 dark:text-white">
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="gap-0.5 flex-1 mr-2 min-w-0">
+          <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
             Sinking Funds
           </ThemedText>
-          <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
+          <ThemedText
+            className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+            numberOfLines={1}
+          >
             Savings vaults for irregular expenses
           </ThemedText>
         </View>
@@ -326,29 +325,38 @@ export function SinkingFundsCard() {
           onPress={handleOpenCreateModal}
           accessibilityRole="button"
           accessibilityLabel="Create New Sinking Fund"
-          className="bg-brand-500 active:bg-brand-600 px-3 py-1.5 rounded-full flex-row items-center gap-1 shadow-sm"
+          className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-85 px-3.5 py-2 rounded-xl flex-row items-center gap-1.5"
         >
-          <ThemedText className="text-white text-xs font-bold">+ New Fund</ThemedText>
+          <AppIcon name="add" size={15} color={theme.onPrimary} />
+          <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-xs font-bold">
+            New Fund
+          </ThemedText>
         </Pressable>
       </View>
 
       {/* 2. Summary Badge */}
       {sinkingFunds.length > 0 && (
-        <View className="flex-row items-center justify-between bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200/60 dark:border-slate-800/80">
-          <View>
-            <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
+        <View className="flex-row items-center justify-between bg-ledger-subtle dark:bg-ledger-subtle-dark p-3.5 rounded-xl border border-ledger-border dark:border-ledger-border-dark gap-3">
+          <View className="flex-1">
+            <ThemedText className="text-[11px] text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
               Total Saved Across Vaults
             </ThemedText>
-            <ThemedText className="text-sm font-bold text-slate-900 dark:text-white">
+            <ThemedText
+              numeric
+              className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark mt-0.5"
+            >
               {formatMinorUnits(totals.totalSaved)}
             </ThemedText>
           </View>
 
           <View className="items-end">
-            <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
+            <ThemedText className="text-[11px] text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
               Combined Target
             </ThemedText>
-            <ThemedText className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+            <ThemedText
+              numeric
+              className="text-sm font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
+            >
               {formatMinorUnits(totals.totalTarget)}
             </ThemedText>
           </View>
@@ -358,25 +366,32 @@ export function SinkingFundsCard() {
       {/* 3. List of Sinking Funds */}
       {isLoading ? (
         <View className="py-8 items-center justify-center">
-          <ActivityIndicator size="small" color="#0ea5e9" />
-          <ThemedText className="text-xs text-slate-400 mt-2">Loading sinking funds...</ThemedText>
+          <ActivityIndicator size="small" color={theme.primary} />
+          <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted mt-2">
+            Loading sinking funds...
+          </ThemedText>
         </View>
       ) : sinkingFunds.length === 0 ? (
-        <View className="py-6 items-center justify-center gap-2 bg-slate-50/50 dark:bg-slate-950/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
-          <ThemedText className="text-3xl">🎯</ThemedText>
-          <ThemedText className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+        <View className="py-6 px-4 items-center justify-center gap-2.5 bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-2xl border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark">
+          <View className="w-11 h-11 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
+            <AppIcon name="target" size={20} color={theme.textMuted} />
+          </View>
+          <ThemedText className="text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark">
             No sinking funds created
           </ThemedText>
-          <ThemedText className="text-xs text-center text-slate-500 dark:text-slate-400 max-w-[260px]">
+          <ThemedText className="text-xs text-center text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary max-w-[260px]">
             Set aside money for car repairs, insurance, holiday gifts, and vacations ahead of time.
           </ThemedText>
           <Pressable
             onPress={handleOpenCreateModal}
             accessibilityRole="button"
             accessibilityLabel="Create First Sinking Fund"
-            className="mt-1 px-3 py-1.5 rounded-xl bg-brand-500 active:bg-brand-600"
+            className="mt-1 min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-85 flex-row items-center gap-1.5"
           >
-            <ThemedText className="text-white text-xs font-bold">+ Create Sinking Fund</ThemedText>
+            <AppIcon name="add" size={15} color={theme.onPrimary} />
+            <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-xs font-bold">
+              Create Sinking Fund
+            </ThemedText>
           </Pressable>
         </View>
       ) : (
@@ -393,39 +408,50 @@ export function SinkingFundsCard() {
               fund.currentSavedMinor,
               fund.targetDate,
             );
+            const accentColor = fund.color || DEFAULT_FUND_COLOR;
 
             return (
               <View
                 key={fund.id}
-                className="p-3.5 rounded-2xl bg-slate-50/80 dark:bg-slate-950/60 border border-slate-200/70 dark:border-slate-800/80 gap-2.5"
+                className="p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2.5"
               >
                 {/* Row 1: Icon, Name, Account, Quick Stash & Edit */}
-                <View className="flex-row items-center justify-between">
+                <View className="flex-row items-center justify-between gap-2">
                   <Pressable
                     onPress={() => handleOpenEditModal(fund)}
                     accessibilityRole="button"
                     accessibilityLabel={`Edit ${fund.name}`}
-                    className="flex-row items-center gap-2.5 flex-1 mr-2 active:opacity-75"
+                    className="min-h-[44px] flex-row items-center gap-2.5 flex-1 min-w-0 active:opacity-75"
                   >
                     <View
-                      className="w-9 h-9 rounded-xl items-center justify-center shadow-xs"
-                      style={{ backgroundColor: `${fund.color}20` }}
+                      className="w-10 h-10 rounded-xl items-center justify-center shrink-0"
+                      style={{ backgroundColor: `${accentColor}20` }}
                     >
                       <ThemedText className="text-lg">{fund.icon}</ThemedText>
                     </View>
-                    <View className="flex-1">
+                    <View className="flex-1 min-w-0">
                       <ThemedText
-                        className="text-sm font-bold text-slate-900 dark:text-white"
+                        className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                         numberOfLines={1}
                       >
                         {fund.name}
                       </ThemedText>
-                      <ThemedText className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Vault:{' '}
-                        <ThemedText className="text-[11px] font-medium text-slate-700 dark:text-slate-300">
-                          {holdingAccount?.icon ?? '🏦'} {holdingAccount?.name ?? 'Main Account'}
+                      <View className="flex-row items-center gap-1 mt-0.5">
+                        <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                          Vault:
                         </ThemedText>
-                      </ThemedText>
+                        {!holdingAccount && (
+                          <AppIcon name="accounts" size={12} color={theme.textSecondary} />
+                        )}
+                        <ThemedText
+                          className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary flex-shrink"
+                          numberOfLines={1}
+                        >
+                          {holdingAccount
+                            ? `${holdingAccount.icon} ${holdingAccount.name}`
+                            : 'Main Account'}
+                        </ThemedText>
+                      </View>
                     </View>
                   </Pressable>
 
@@ -434,59 +460,77 @@ export function SinkingFundsCard() {
                     onPress={() => handleOpenStashModal(fund)}
                     accessibilityRole="button"
                     accessibilityLabel={`Stash funds into ${fund.name}`}
-                    className="bg-emerald-600 active:bg-emerald-700 px-3 py-1.5 rounded-xl flex-row items-center gap-1 shadow-sm"
+                    className="min-h-[44px] bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-85 px-3.5 py-2 rounded-xl flex-row items-center gap-1 shrink-0"
                   >
-                    <ThemedText className="text-white text-xs font-bold">+ Stash</ThemedText>
+                    <AppIcon name="add" size={14} color={theme.onPrimary} />
+                    <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-xs font-bold">
+                      Stash
+                    </ThemedText>
                   </Pressable>
                 </View>
 
                 {/* Row 2: Saved vs Target & Percent */}
-                <View className="flex-row items-baseline justify-between">
-                  <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
+                <View className="flex-row items-baseline justify-between gap-2">
+                  <ThemedText
+                    numeric
+                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary flex-1"
+                  >
                     Saved:{' '}
-                    <ThemedText className="font-bold text-slate-900 dark:text-white text-sm">
+                    <ThemedText
+                      numeric
+                      className="font-bold text-ledger-ink dark:text-ledger-ink-dark text-sm"
+                    >
                       {formatMinorUnits(fund.currentSavedMinor)}
                     </ThemedText>{' '}
-                    of {formatMinorUnits(fund.targetAmountMinor)}
+                    {`of ${formatMinorUnits(fund.targetAmountMinor)}`}
                   </ThemedText>
                   <ThemedText
-                    className="text-xs font-bold"
-                    style={{ color: fund.color || '#3B82F6' }}
+                    numeric
+                    className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
                   >
-                    {percent}%
+                    {`${percent}%`}
                   </ThemedText>
                 </View>
 
                 {/* Row 3: Progress Bar */}
-                <View className="h-2.5 rounded-full bg-slate-200/70 dark:bg-slate-800 overflow-hidden">
+                <View className="h-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
                   <View
                     className="h-full rounded-full"
                     style={{
                       width: `${clampedPercent}%`,
-                      backgroundColor: fund.color || '#3B82F6',
+                      backgroundColor: accentColor,
                     }}
                   />
                 </View>
 
-                {/* Row 4: Target Date Badge & Monthly Recommendation */}
+                {/* Row 4: Target Date Badge & Monthly Recommendation (max 2 badges) */}
                 <View className="flex-row items-center justify-between flex-wrap gap-1.5 pt-0.5">
-                  <View className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60">
-                    <ThemedText className="text-[10px] font-medium text-slate-600 dark:text-slate-300">
-                      🎯 Target: {fund.targetDate}
+                  <View className="px-2.5 py-1 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1">
+                    <AppIcon name="target" size={12} color={theme.textSecondary} />
+                    <ThemedText
+                      numeric
+                      className="text-[11px] font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                    >
+                      {`Target: ${fund.targetDate}`}
                     </ThemedText>
                   </View>
 
                   {calc.isTargetReached ? (
-                    <View className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80">
-                      <ThemedText className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
-                        🎉 Goal Reached!
+                    <View className="px-2.5 py-1 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft flex-row items-center gap-1">
+                      <AppIcon name="checkCircle" size={12} color={theme.positive} />
+                      <ThemedText className="text-[11px] font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                        Goal Reached
                       </ThemedText>
                     </View>
                   ) : (
-                    <View className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/80 dark:border-indigo-800/80">
-                      <ThemedText className="text-[10px] font-semibold text-indigo-700 dark:text-indigo-300">
-                        {formatMinorUnits(calc.monthlyTargetMinor)}/mo needed ({calc.remainingMonths}{' '}
-                        mo)
+                    <View className="px-2.5 py-1 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft">
+                      <ThemedText
+                        numeric
+                        className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                      >
+                        {`${formatMinorUnits(calc.monthlyTargetMinor)}/mo needed (${
+                          calc.remainingMonths
+                        } mo)`}
                       </ThemedText>
                     </View>
                   )}
@@ -506,62 +550,86 @@ export function SinkingFundsCard() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1 justify-center items-center p-4 bg-black/60"
+          className="flex-1 justify-center items-center p-4 bg-black/55"
         >
-          <Pressable className="absolute inset-0" onPress={handleCloseEditModal} />
+          <Pressable
+            className="absolute inset-0"
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss sinking fund dialog"
+            onPress={handleCloseEditModal}
+          />
 
-          <View className="w-full max-w-[440px] rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl gap-4">
+          <View
+            accessibilityViewIsModal
+            className="relative z-10 w-full max-w-[440px] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-6 gap-4"
+          >
             {/* Header */}
-            <View className="flex-row items-center justify-between">
-              <View>
-                <ThemedText className="text-lg font-bold text-slate-900 dark:text-white">
+            <View className="flex-row items-center justify-between gap-2">
+              <View className="flex-1">
+                <ThemedText
+                  accessibilityRole="header"
+                  className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                >
                   {editingFund ? 'Edit Sinking Fund' : 'New Sinking Fund'}
                 </ThemedText>
-                <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
+                <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   Targeted irregular savings vault
                 </ThemedText>
               </View>
 
               <Pressable
                 onPress={handleCloseEditModal}
+                disabled={isSubmitting}
                 accessibilityRole="button"
-                accessibilityLabel="Close Modal"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 items-center justify-center active:opacity-75"
+                accessibilityLabel="Close sinking fund modal"
+                className="w-11 h-11 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
-                <ThemedText className="text-xs text-slate-500 font-bold">✕</ThemedText>
+                <AppIcon name="close" size={18} color={theme.textSecondary} />
               </Pressable>
             </View>
 
             {editError && (
-              <View className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800">
-                <ThemedText className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              <View
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+                className="p-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
+              >
+                <AppIcon name="error" size={15} color={theme.negative} />
+                <ThemedText className="text-xs text-ledger-terracotta dark:text-ledger-terracotta-dark font-semibold flex-1">
                   {editError}
                 </ThemedText>
               </View>
             )}
 
-            <ScrollView className="max-h-[440px]" showsVerticalScrollIndicator={false}>
+            <ScrollView
+              className="max-h-[440px]"
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <View className="gap-4">
                 {/* Fund Name */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Fund Name
                   </ThemedText>
                   <TextInput
-                    className="border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-white"
+                    className="min-h-[44px] border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl px-4 py-2.5 text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark"
                     value={name}
-                    onChangeText={setName}
+                    onChangeText={(t) => {
+                      setName(t);
+                      if (editError) setEditError(null);
+                    }}
+                    accessibilityLabel="Sinking fund name"
                     placeholder="e.g. Car Insurance, Vacation, Laptop"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={theme.textMuted}
                     editable={!isSubmitting}
                   />
                 </View>
 
                 {/* Icon Selection */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Icon
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                    Vault Icon
                   </ThemedText>
                   <ScrollView
                     horizontal
@@ -577,12 +645,14 @@ export function SinkingFundsCard() {
                             setIcon(emoji);
                             setCustomIcon('');
                           }}
+                          disabled={isSubmitting}
                           accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
                           accessibilityLabel={`Select icon ${emoji}`}
-                          className={`w-9 h-9 rounded-xl items-center justify-center border ${
+                          className={`w-11 h-11 rounded-xl items-center justify-center border ${
                             isSelected
-                              ? 'bg-brand-500 border-brand-500'
-                              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                              ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                           }`}
                         >
                           <ThemedText className="text-base">{emoji}</ThemedText>
@@ -594,24 +664,27 @@ export function SinkingFundsCard() {
 
                 {/* Color Selection */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Vault Accent Color
                   </ThemedText>
-                  <View className="flex-row gap-2 flex-wrap">
+                  <View className="flex-row gap-2.5 flex-wrap py-0.5">
                     {FUND_COLORS.map((c) => {
                       const isSelected = color === c;
                       return (
                         <Pressable
                           key={c}
                           onPress={() => setColor(c)}
+                          disabled={isSubmitting}
                           accessibilityRole="button"
+                          accessibilityState={{ selected: isSelected }}
                           accessibilityLabel={`Select color ${c}`}
-                          className={`w-8 h-8 rounded-full items-center justify-center ${
-                            isSelected ? 'border-2 border-slate-900 dark:border-white scale-110' : ''
+                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                          className={`w-10 h-10 rounded-full items-center justify-center ${
+                            isSelected ? 'border-2 border-ledger-ink dark:border-ledger-ink-dark' : ''
                           }`}
                           style={{ backgroundColor: c }}
                         >
-                          {isSelected && <ThemedText className="text-white text-xs">✓</ThemedText>}
+                          {isSelected && <AppIcon name="check" size={16} color={Colors.light.surface} />}
                         </Pressable>
                       );
                     })}
@@ -620,44 +693,51 @@ export function SinkingFundsCard() {
 
                 {/* Target Amount */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Target Goal Amount ({DEFAULT_CURRENCY_SYMBOL})
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                    {`Target Goal Amount (${DEFAULT_CURRENCY_SYMBOL})`}
                   </ThemedText>
-                  <View className="flex-row items-center border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl px-4 py-3">
-                    <ThemedText className="text-2xl font-bold text-slate-400 dark:text-slate-500 mr-2">
+                  <View className="flex-row items-center border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl px-4 py-3">
+                    <ThemedText className="text-2xl font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
                       {DEFAULT_CURRENCY_SYMBOL}
                     </ThemedText>
                     <TextInput
-                      className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
+                      className="flex-1 text-2xl font-bold text-ledger-ink dark:text-ledger-ink-dark p-0"
+                      style={TABULAR_NUMS_STYLE}
                       value={targetAmountInput}
                       onChangeText={(t) => {
                         setTargetAmountInput(normalizeDecimalInput(t));
                         if (editError) setEditError(null);
                       }}
+                      accessibilityLabel="Target goal amount"
                       keyboardType="decimal-pad"
                       inputMode="decimal"
                       autoCorrect={false}
                       spellCheck={false}
                       autoComplete="off"
                       placeholder="1000"
-                      placeholderTextColor="#94A3B8"
+                      placeholderTextColor={theme.textMuted}
                       editable={!isSubmitting}
                     />
                   </View>
 
                   {/* Presets */}
-                  <View className="flex-row gap-2 mt-1">
+                  <View className="flex-row gap-2 flex-wrap mt-1">
                     {AMOUNT_PRESETS.map((presetMinor) => (
                       <Pressable
                         key={presetMinor}
-                        onPress={() =>
-                          setTargetAmountInput(minorUnitsToDecimalInput(presetMinor))
-                        }
+                        onPress={() => {
+                          setTargetAmountInput(minorUnitsToDecimalInput(presetMinor));
+                          if (editError) setEditError(null);
+                        }}
+                        disabled={isSubmitting}
                         accessibilityRole="button"
                         accessibilityLabel={`Set target to ${formatMinorUnits(presetMinor)}`}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                        className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                       >
-                        <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                        <ThemedText
+                          numeric
+                          className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                        >
                           {formatMinorUnits(presetMinor)}
                         </ThemedText>
                       </Pressable>
@@ -667,15 +747,20 @@ export function SinkingFundsCard() {
 
                 {/* Target Date */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Target Date (YYYY-MM-DD)
                   </ThemedText>
                   <TextInput
-                    className="border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl px-4 py-2.5 text-sm font-semibold text-slate-900 dark:text-white"
+                    className="min-h-[44px] border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl px-4 py-2.5 text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                    style={TABULAR_NUMS_STYLE}
                     value={targetDate}
-                    onChangeText={setTargetDate}
+                    onChangeText={(t) => {
+                      setTargetDate(t);
+                      if (editError) setEditError(null);
+                    }}
+                    accessibilityLabel="Target date in YYYY-MM-DD format"
                     placeholder="YYYY-MM-DD"
-                    placeholderTextColor="#94A3B8"
+                    placeholderTextColor={theme.textMuted}
                     editable={!isSubmitting}
                   />
 
@@ -683,41 +768,45 @@ export function SinkingFundsCard() {
                   <View className="flex-row gap-2 mt-1 flex-wrap">
                     <Pressable
                       onPress={() => setTargetDate(getDatePreset('3_MOS'))}
+                      disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel="Set date to 3 months from now"
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                     >
-                      <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         +3 Mos
                       </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => setTargetDate(getDatePreset('6_MOS'))}
+                      disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel="Set date to 6 months from now"
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                     >
-                      <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         +6 Mos
                       </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => setTargetDate(getDatePreset('1_YR'))}
+                      disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel="Set date to 1 year from now"
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                     >
-                      <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         +1 Year
                       </ThemedText>
                     </Pressable>
                     <Pressable
                       onPress={() => setTargetDate(getDatePreset('EOY'))}
+                      disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel="Set date to End of Year"
-                      className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                      className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                     >
-                      <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                         End of Year
                       </ThemedText>
                     </Pressable>
@@ -726,7 +815,7 @@ export function SinkingFundsCard() {
 
                 {/* Holding Account */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Holding Account (Vault)
                   </ThemedText>
                   <ScrollView
@@ -740,19 +829,22 @@ export function SinkingFundsCard() {
                         <Pressable
                           key={a.id}
                           onPress={() => setAccountId(a.id)}
+                          disabled={isSubmitting}
                           accessibilityRole="button"
                           accessibilityLabel={`Hold funds in ${a.name}`}
                           accessibilityState={{ selected: isSelected }}
                           className={`min-h-[44px] px-3 py-2 rounded-xl flex-row items-center gap-1.5 border ${
                             isSelected
-                              ? 'bg-brand-500 border-brand-500'
-                              : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                              ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                           }`}
                         >
                           <ThemedText className="text-sm">{a.icon}</ThemedText>
                           <ThemedText
                             className={`text-xs font-semibold ${
-                              isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                              isSelected
+                                ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
                             }`}
                           >
                             {a.name}
@@ -765,31 +857,42 @@ export function SinkingFundsCard() {
 
                 {/* Live Monthly Target Preview */}
                 {livePreview && (
-                  <View className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/80 gap-1">
-                    <ThemedText className="text-xs font-bold text-indigo-900 dark:text-indigo-200">
-                      📊 Monthly Stash Target:
+                  <View className="p-3.5 rounded-2xl bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark gap-1">
+                    <View className="flex-row items-center gap-1.5">
+                      <AppIcon name="chart" size={14} color={theme.info} />
+                      <ThemedText className="text-xs font-bold text-ledger-teal dark:text-ledger-teal-dark">
+                        Monthly Stash Target
+                      </ThemedText>
+                    </View>
+                    <ThemedText
+                      numeric
+                      className="text-sm font-extrabold text-ledger-teal dark:text-ledger-teal-dark"
+                    >
+                      {`${formatMinorUnits(livePreview.monthlyTargetMinor)} / month`}
                     </ThemedText>
-                    <ThemedText className="text-sm font-extrabold text-indigo-700 dark:text-indigo-300">
-                      {formatMinorUnits(livePreview.monthlyTargetMinor)} / month
-                    </ThemedText>
-                    <ThemedText className="text-[11px] text-indigo-600 dark:text-indigo-400">
-                      Based on {livePreview.remainingMonths} month
-                      {livePreview.remainingMonths === 1 ? '' : 's'} remaining to reach goal.
+                    <ThemedText
+                      numeric
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                    >
+                      {`Based on ${livePreview.remainingMonths} month${
+                        livePreview.remainingMonths === 1 ? '' : 's'
+                      } remaining to reach goal.`}
                     </ThemedText>
                   </View>
                 )}
 
                 {/* Notes */}
                 <View className="gap-1.5">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Notes (Optional)
                   </ThemedText>
                   <TextInput
-                    className="border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl p-3 text-sm text-slate-900 dark:text-white"
+                    className="min-h-[44px] border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl p-3 text-sm text-ledger-ink dark:text-ledger-ink-dark"
                     value={notes}
                     onChangeText={setNotes}
-                    placeholder="e.g. Due every 6 months to Geico"
-                    placeholderTextColor="#94A3B8"
+                    accessibilityLabel="Sinking fund notes"
+                    placeholder="e.g. Due every 6 months"
+                    placeholderTextColor={theme.textMuted}
                     maxLength={280}
                     editable={!isSubmitting}
                   />
@@ -798,18 +901,20 @@ export function SinkingFundsCard() {
             </ScrollView>
 
             {/* Actions */}
-            <View className="gap-2 pt-2">
+            <View className="gap-2.5 pt-2">
               <Pressable
                 onPress={handleSaveFund}
                 disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Save Sinking Fund"
-                className="bg-brand-500 active:bg-brand-600 py-3 rounded-2xl items-center justify-center shadow-md shadow-brand-500/20"
+                className={`min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-85 py-3 rounded-xl items-center justify-center ${
+                  isSubmitting ? 'opacity-60' : ''
+                }`}
               >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                {upsertMutation.isPending ? (
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                 ) : (
-                  <ThemedText className="text-white font-bold text-sm">
+                  <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark font-bold text-sm">
                     {editingFund ? 'Update Sinking Fund' : 'Create Sinking Fund'}
                   </ThemedText>
                 )}
@@ -821,28 +926,32 @@ export function SinkingFundsCard() {
                   disabled={isSubmitting}
                   accessibilityRole="button"
                   accessibilityLabel="Delete Sinking Fund"
-                  className="min-h-[44px] py-2.5 rounded-2xl items-center justify-center border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-950/30 active:opacity-75"
+                  className="min-h-[44px] py-2.5 rounded-xl items-center justify-center flex-row gap-1.5 border border-ledger-border dark:border-ledger-border-dark bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft active:opacity-75"
                 >
-                  <ThemedText className="text-rose-600 dark:text-rose-400 font-bold text-xs">
+                  <AppIcon name="delete" size={15} color={theme.negative} />
+                  <ThemedText className="text-ledger-terracotta dark:text-ledger-terracotta-dark font-bold text-xs">
                     Delete Sinking Fund
                   </ThemedText>
                 </Pressable>
               )}
 
               {editingFund && confirmingDelete && (
-                <View className="p-3 rounded-2xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/60 dark:bg-rose-950/40 gap-2">
-                  <ThemedText className="text-xs text-rose-700 dark:text-rose-300 font-semibold text-center">
-                    Delete &ldquo;{editingFund.name}&rdquo;? Accumulated savings stay in the holding account.
-                  </ThemedText>
+                <View className="p-3.5 rounded-2xl border border-ledger-border dark:border-ledger-border-dark bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft gap-3">
+                  <View className="flex-row items-start gap-2">
+                    <AppIcon name="warning" size={16} color={theme.negative} />
+                    <ThemedText className="flex-1 text-xs text-ledger-terracotta dark:text-ledger-terracotta-dark font-semibold">
+                      {`Delete "${editingFund.name}"? Accumulated savings stay in the holding account.`}
+                    </ThemedText>
+                  </View>
                   <View className="flex-row gap-2">
                     <Pressable
                       onPress={() => setConfirmingDelete(false)}
                       disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel="Cancel deleting sinking fund"
-                      className="flex-1 min-h-[44px] py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 items-center justify-center"
+                      className="flex-1 min-h-[44px] py-2.5 rounded-xl border border-ledger-border dark:border-ledger-border-dark bg-ledger-surface dark:bg-ledger-surface-dark items-center justify-center active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                         Cancel
                       </ThemedText>
                     </Pressable>
@@ -851,11 +960,17 @@ export function SinkingFundsCard() {
                       disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel="Confirm delete sinking fund"
-                      className="flex-1 min-h-[44px] py-2 rounded-xl bg-rose-600 items-center justify-center"
+                      className={`flex-1 min-h-[44px] py-2.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center ${
+                        deleteMutation.isPending ? 'opacity-60' : ''
+                      }`}
                     >
-                      <ThemedText className="text-xs font-bold text-white">
-                        Confirm Delete
-                      </ThemedText>
+                      {deleteMutation.isPending ? (
+                        <ActivityIndicator size="small" color={theme.background} />
+                      ) : (
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                          Confirm Delete
+                        </ThemedText>
+                      )}
                     </Pressable>
                   </View>
                 </View>
@@ -874,40 +989,67 @@ export function SinkingFundsCard() {
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1 justify-center items-center p-4 bg-black/60"
+          className="flex-1 justify-center items-center p-4 bg-black/55"
         >
-          <Pressable className="absolute inset-0" onPress={handleCloseStashModal} />
+          <Pressable
+            className="absolute inset-0"
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss quick stash dialog"
+            onPress={handleCloseStashModal}
+          />
 
-          <View className="w-full max-w-[420px] rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl gap-4">
+          <View
+            accessibilityViewIsModal
+            className="relative z-10 w-full max-w-[420px] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-6 gap-4"
+          >
             {/* Header */}
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
-                <ThemedText className="text-2xl">{stashingFund?.icon ?? '🎯'}</ThemedText>
-                <View>
-                  <ThemedText className="text-base font-bold text-slate-900 dark:text-white">
-                    Stash into {stashingFund?.name}
+            <View className="flex-row items-center justify-between gap-2">
+              <View className="flex-row items-center gap-2.5 flex-1 min-w-0">
+                <View className="w-10 h-10 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
+                  {stashingFund?.icon ? (
+                    <ThemedText className="text-xl">{stashingFund.icon}</ThemedText>
+                  ) : (
+                    <AppIcon name="target" size={18} color={theme.primary} />
+                  )}
+                </View>
+                <View className="flex-1 min-w-0">
+                  <ThemedText
+                    accessibilityRole="header"
+                    className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                    numberOfLines={1}
+                  >
+                    {`Stash into ${stashingFund?.name ?? 'Fund'}`}
                   </ThemedText>
-                  <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
-                    Saved: {formatMinorUnits(stashingFund?.currentSavedMinor ?? 0)} of{' '}
-                    {formatMinorUnits(stashingFund?.targetAmountMinor ?? 0)}
+                  <ThemedText
+                    numeric
+                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                  >
+                    {`Saved: ${formatMinorUnits(
+                      stashingFund?.currentSavedMinor ?? 0,
+                    )} of ${formatMinorUnits(stashingFund?.targetAmountMinor ?? 0)}`}
                   </ThemedText>
                 </View>
               </View>
 
               <Pressable
                 onPress={handleCloseStashModal}
+                disabled={isSubmitting}
                 accessibilityRole="button"
-                accessibilityLabel="Close Modal"
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 items-center justify-center active:opacity-75"
+                accessibilityLabel="Close stash modal"
+                className="w-11 h-11 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
-                <ThemedText className="text-xs text-slate-500 font-bold">✕</ThemedText>
+                <AppIcon name="close" size={18} color={theme.textSecondary} />
               </Pressable>
             </View>
 
             {stashError && (
-              <View className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800">
-                <ThemedText className="text-xs text-rose-600 dark:text-rose-400 font-medium">
+              <View
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+                className="p-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
+              >
+                <AppIcon name="error" size={15} color={theme.negative} />
+                <ThemedText className="text-xs text-ledger-terracotta dark:text-ledger-terracotta-dark font-semibold flex-1">
                   {stashError}
                 </ThemedText>
               </View>
@@ -915,7 +1057,7 @@ export function SinkingFundsCard() {
 
             {/* Source Account Selector */}
             <View className="gap-1.5">
-              <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Source Account
               </ThemedText>
               <ScrollView
@@ -929,27 +1071,33 @@ export function SinkingFundsCard() {
                     <Pressable
                       key={a.id}
                       onPress={() => setStashSourceAccountId(a.id)}
+                      disabled={isSubmitting}
                       accessibilityRole="button"
                       accessibilityLabel={`Transfer from ${a.name}`}
                       accessibilityState={{ selected: isSelected }}
-                      className={`min-h-[44px] px-3 py-2 rounded-xl flex-row items-center gap-1.5 border ${
+                      className={`min-h-[44px] px-3 py-2 rounded-xl flex-row items-center gap-2 border ${
                         isSelected
-                          ? 'bg-brand-500 border-brand-500'
-                          : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                          ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
                       }`}
                     >
                       <ThemedText className="text-sm">{a.icon}</ThemedText>
                       <View>
                         <ThemedText
                           className={`text-xs font-semibold ${
-                            isSelected ? 'text-white' : 'text-slate-700 dark:text-slate-300'
+                            isSelected
+                              ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                              : 'text-ledger-ink dark:text-ledger-ink-dark'
                           }`}
                         >
                           {a.name}
                         </ThemedText>
                         <ThemedText
-                          className={`text-[10px] ${
-                            isSelected ? 'text-white/80' : 'text-slate-400'
+                          numeric
+                          className={`text-[11px] ${
+                            isSelected
+                              ? 'text-ledger-canvas/80 dark:text-ledger-canvas-dark/80'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
                           {formatMinorUnits(a.balanceMinor, a.currency)}
@@ -963,28 +1111,30 @@ export function SinkingFundsCard() {
 
             {/* Amount Input */}
             <View className="gap-1.5">
-              <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Stash Amount ({DEFAULT_CURRENCY_SYMBOL})
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                {`Stash Amount (${DEFAULT_CURRENCY_SYMBOL})`}
               </ThemedText>
 
-              <View className="flex-row items-center border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl px-4 py-3">
-                <ThemedText className="text-2xl font-bold text-slate-400 dark:text-slate-500 mr-2">
+              <View className="flex-row items-center border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl px-4 py-3">
+                <ThemedText className="text-2xl font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
                   {DEFAULT_CURRENCY_SYMBOL}
                 </ThemedText>
                 <TextInput
-                  className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
+                  className="flex-1 text-2xl font-bold text-ledger-ink dark:text-ledger-ink-dark p-0"
+                  style={TABULAR_NUMS_STYLE}
                   value={stashAmountInput}
                   onChangeText={(t) => {
                     setStashAmountInput(normalizeDecimalInput(t));
                     if (stashError) setStashError(null);
                   }}
+                  accessibilityLabel="Stash amount"
                   keyboardType="decimal-pad"
                   inputMode="decimal"
                   autoCorrect={false}
                   spellCheck={false}
                   autoComplete="off"
                   placeholder="50"
-                  placeholderTextColor="#94A3B8"
+                  placeholderTextColor={theme.textMuted}
                   autoFocus
                   editable={!isSubmitting}
                 />
@@ -1002,13 +1152,15 @@ export function SinkingFundsCard() {
                       );
                       if (calc.monthlyTargetMinor > 0) {
                         setStashAmountInput(minorUnitsToDecimalInput(calc.monthlyTargetMinor));
+                        if (stashError) setStashError(null);
                       }
                     }}
+                    disabled={isSubmitting}
                     accessibilityRole="button"
                     accessibilityLabel="Use recommended monthly amount"
-                    className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 active:opacity-75"
+                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                   >
-                    <ThemedText className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                    <ThemedText className="text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark">
                       Recommended Monthly
                     </ThemedText>
                   </Pressable>
@@ -1016,12 +1168,19 @@ export function SinkingFundsCard() {
                 {[2500, 5000, 10000].map((minor) => (
                   <Pressable
                     key={minor}
-                    onPress={() => setStashAmountInput(minorUnitsToDecimalInput(minor))}
+                    onPress={() => {
+                      setStashAmountInput(minorUnitsToDecimalInput(minor));
+                      if (stashError) setStashError(null);
+                    }}
+                    disabled={isSubmitting}
                     accessibilityRole="button"
                     accessibilityLabel={`Stash ${formatMinorUnits(minor)}`}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 active:opacity-75"
+                    className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
                   >
-                    <ThemedText className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                    <ThemedText
+                      numeric
+                      className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                    >
                       {formatMinorUnits(minor)}
                     </ThemedText>
                   </Pressable>
@@ -1036,12 +1195,14 @@ export function SinkingFundsCard() {
                 disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Confirm Stash"
-                className="bg-emerald-600 active:bg-emerald-700 py-3 rounded-2xl items-center justify-center shadow-md shadow-emerald-600/20"
+                className={`min-h-[44px] bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-85 py-3 rounded-xl items-center justify-center ${
+                  isSubmitting ? 'opacity-60' : ''
+                }`}
               >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                {contributeMutation.isPending ? (
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                 ) : (
-                  <ThemedText className="text-white font-bold text-sm">
+                  <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark font-bold text-sm">
                     Stash Funds Now
                   </ThemedText>
                 )}

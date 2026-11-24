@@ -1,7 +1,9 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import type { TransactionType } from '@repo/contracts';
+import { AppIcon, type AppIconName } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface TypeToggleProps {
   value: TransactionType;
@@ -11,7 +13,7 @@ export interface TypeToggleProps {
 interface TypeOption {
   type: TransactionType;
   label: string;
-  symbol: string;
+  icon: AppIconName;
   activeBg: string;
 }
 
@@ -19,27 +21,29 @@ const TYPE_OPTIONS: readonly TypeOption[] = [
   {
     type: 'EXPENSE',
     label: 'Expense',
-    symbol: '↓',
-    activeBg: 'bg-rose-500 shadow-sm shadow-rose-500/30',
+    icon: 'arrowDown',
+    activeBg: 'bg-ledger-terracotta dark:bg-ledger-terracotta-dark',
   },
   {
     type: 'INCOME',
     label: 'Income',
-    symbol: '↑',
-    activeBg: 'bg-emerald-500 shadow-sm shadow-emerald-500/30',
+    icon: 'arrowUp',
+    activeBg: 'bg-ledger-pine dark:bg-ledger-pine-dark',
   },
   {
     type: 'TRANSFER',
     label: 'Transfer',
-    symbol: '⇄',
-    activeBg: 'bg-brand-500 shadow-sm shadow-brand-500/30',
+    icon: 'transfer',
+    activeBg: 'bg-ledger-teal dark:bg-ledger-teal-dark',
   },
 ] as const;
 
 export function TypeToggle({ value, onChange }: TypeToggleProps) {
+  const theme = useTheme();
+
   return (
     <View
-      className="flex-row p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200/80 dark:border-slate-700/80 w-full gap-1"
+      className="flex-row p-1 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark w-full gap-1"
       accessibilityRole="tablist"
     >
       {TYPE_OPTIONS.map((option) => {
@@ -55,18 +59,16 @@ export function TypeToggle({ value, onChange }: TypeToggleProps) {
               isSelected ? option.activeBg : 'active:opacity-75'
             }`}
           >
-            <ThemedText
-              className={`text-xs font-extrabold ${
-                isSelected ? 'text-white' : 'text-slate-500 dark:text-slate-400'
-              }`}
-            >
-              {option.symbol}
-            </ThemedText>
+            <AppIcon
+              name={option.icon}
+              size={14}
+              color={isSelected ? theme.onPrimary : theme.textSecondary}
+            />
             <ThemedText
               className={`text-xs sm:text-sm ${
                 isSelected
-                  ? 'text-white font-bold'
-                  : 'text-slate-600 dark:text-slate-300 font-semibold'
+                  ? 'text-ledger-canvas dark:text-ledger-canvas-dark font-bold'
+                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary font-semibold'
               }`}
               numberOfLines={1}
             >

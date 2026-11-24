@@ -6,11 +6,11 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ThemedText } from '@/common/components/themed-text';
 import { LoginForm } from '@/features/auth/components/login-form';
 import { useAuth } from '@/features/auth/context/auth-context';
 import { useTheme } from '@/hooks/use-theme';
@@ -21,9 +21,9 @@ export function LoginScreen() {
 
   if (isHydrating) {
     return (
-      <View className="flex-1 bg-slate-50 dark:bg-slate-950 items-center justify-center">
+      <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark items-center justify-center">
         <SafeAreaView className="flex-1 items-center justify-center">
-          <ActivityIndicator color={theme.text} size="large" />
+          <ActivityIndicator color={theme.primary} size="large" />
         </SafeAreaView>
       </View>
     );
@@ -34,7 +34,7 @@ export function LoginScreen() {
   }
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
       <SafeAreaView className="flex-1" style={{ flex: 1 }} edges={['top', 'bottom', 'left', 'right']}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -52,54 +52,44 @@ export function LoginScreen() {
             }}
             keyboardShouldPersistTaps="handled">
             <View
-              className="w-full max-w-[440px] self-center rounded-3xl bg-white dark:bg-slate-900 p-6 sm:p-8 border border-slate-200/80 dark:border-slate-800 shadow-xl shadow-slate-900/5"
+              className="w-full max-w-[440px] self-center rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark p-6 sm:p-8 border border-ledger-border dark:border-ledger-border-dark"
               style={{ width: '100%', maxWidth: 440, alignSelf: 'center' }}>
-              {/* Header & Brand Badge */}
               <View className="items-center mb-6">
-                <View className="w-16 h-16 rounded-2xl bg-brand-500 items-center justify-center shadow-lg shadow-brand-500/30 mb-3">
-                  <Text className="text-white text-3xl font-bold leading-none">
+                <View className="w-14 h-14 rounded-2xl bg-brand-500 dark:bg-brand-400 items-center justify-center mb-4">
+                  <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-2xl font-bold leading-none">
                     {DEFAULT_CURRENCY_SYMBOL}
-                  </Text>
+                  </ThemedText>
                 </View>
 
-                {/* Subtle Pill Subtitle Badge */}
-                <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/70 dark:border-slate-700/70 mb-2">
-                  <Text className="text-[10px] font-bold tracking-widest uppercase text-slate-500 dark:text-slate-400">
-                    FINTECH WORKSPACE
-                  </Text>
-                </View>
-
-                <Text
+                <ThemedText
                   accessibilityRole="header"
-                  className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100 text-center">
+                  className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark text-center">
                   Welcome back
-                </Text>
-                <Text className="text-sm text-slate-500 dark:text-slate-400 text-center mt-1">
-                  Sign in to sync across Web &amp; Mobile
-                </Text>
+                </ThemedText>
+                <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center mt-1">
+                  Sign in to your personal ledger
+                </ThemedText>
               </View>
 
-              {/* Login Form */}
               <LoginForm
                 onSuccess={() => {
                   router.replace('/dashboard');
                 }}
               />
 
-              {/* Register / Sign-up link */}
-              <View className="flex-row items-center justify-center mt-6">
-                <Text className="text-sm text-slate-500 dark:text-slate-400">
+              <View className="flex-row items-center justify-center mt-6 pt-5 border-t border-ledger-border dark:border-ledger-border-dark">
+                <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   Don&apos;t have an account?{' '}
-                </Text>
+                </ThemedText>
                 <Pressable
                   onPress={() => router.push('/register')}
                   accessibilityRole="button"
                   accessibilityLabel="Create one"
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  className="active:opacity-75">
-                  <Text className="text-sm font-semibold text-brand-500 dark:text-brand-400">
+                  hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                  className="py-1 active:opacity-75">
+                  <ThemedText className="text-sm font-semibold text-brand-500 dark:text-brand-400">
                     Create one
-                  </Text>
+                  </ThemedText>
                 </Pressable>
               </View>
             </View>

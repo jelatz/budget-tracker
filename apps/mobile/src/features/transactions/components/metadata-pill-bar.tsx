@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
 import { useTheme } from '@/common/hooks/use-theme';
@@ -40,7 +41,7 @@ function formatTimestampPill(isoString: string): string {
     const diffMins = Math.floor(diffMs / (60 * 1000));
 
     if (diffMins >= -1 && diffMins < 5) {
-      return '📅 Now';
+      return 'Now';
     }
 
     const isToday =
@@ -51,7 +52,7 @@ function formatTimestampPill(isoString: string): string {
     if (isToday) {
       const hours = date.getHours().toString().padStart(2, '0');
       const minutes = date.getMinutes().toString().padStart(2, '0');
-      return `📅 Today ${hours}:${minutes}`;
+      return `Today ${hours}:${minutes}`;
     }
 
     const yesterday = new Date(now);
@@ -62,12 +63,12 @@ function formatTimestampPill(isoString: string): string {
       date.getFullYear() === yesterday.getFullYear();
 
     if (isYesterday) {
-      return '📅 Yesterday';
+      return 'Yesterday';
     }
 
-    return `📅 ${date.toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
   } catch (error: unknown) {
-    return '📅 Date';
+    return 'Date';
   }
 }
 
@@ -226,10 +227,15 @@ export function MetadataPillBar({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Change date and time"
-          className="min-h-[44px] rounded-full px-3.5 py-2 bg-slate-50/80 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 active:opacity-75 flex-row items-center justify-center"
+          className="min-h-[44px] rounded-full px-3.5 py-2 bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75 flex-row items-center justify-center gap-1.5"
           onPress={() => openModal('TIMESTAMP')}
         >
-          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300" numberOfLines={1}>
+          <AppIcon name="calendar" size={14} color={theme.textSecondary} />
+          <ThemedText
+            numeric
+            className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+            numberOfLines={1}
+          >
             {formatTimestampPill(value.occurredAt)}
           </ThemedText>
         </Pressable>
@@ -238,22 +244,27 @@ export function MetadataPillBar({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Set merchant"
-          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center ${
+          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center gap-1.5 ${
             value.merchant
-              ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-500/50'
-              : 'bg-slate-50/80 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700'
+              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-200 dark:border-ledger-border-dark'
+              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
           }`}
           onPress={() => openModal('MERCHANT')}
         >
+          <AppIcon
+            name="merchant"
+            size={14}
+            color={value.merchant ? theme.primary : theme.textSecondary}
+          />
           <ThemedText
             className={`text-xs ${
               value.merchant
-                ? 'font-bold text-brand-500'
-                : 'font-semibold text-slate-700 dark:text-slate-300'
+                ? 'font-bold text-brand-500 dark:text-brand-400'
+                : 'font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
             }`}
             numberOfLines={1}
           >
-            {value.merchant ? `🏪 ${value.merchant}` : '🏪 Merchant'}
+            {value.merchant ? value.merchant : 'Merchant'}
           </ThemedText>
         </Pressable>
 
@@ -261,24 +272,27 @@ export function MetadataPillBar({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Add or edit tags"
-          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center ${
+          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center gap-1.5 ${
             value.tags.length > 0
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500/50'
-              : 'bg-slate-50/80 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700'
+              ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-border dark:border-ledger-border-dark'
+              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
           }`}
           onPress={() => openModal('TAGS')}
         >
+          <AppIcon
+            name="tag"
+            size={14}
+            color={value.tags.length > 0 ? theme.positive : theme.textSecondary}
+          />
           <ThemedText
             className={`text-xs ${
               value.tags.length > 0
-                ? 'font-bold text-emerald-600 dark:text-emerald-400'
-                : 'font-semibold text-slate-700 dark:text-slate-300'
+                ? 'font-bold text-ledger-pine dark:text-ledger-pine-dark'
+                : 'font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
             }`}
             numberOfLines={1}
           >
-            {value.tags.length > 0
-              ? `🏷️ #${value.tags.join(' #')}`
-              : '🏷️ #Tags'}
+            {value.tags.length > 0 ? `#${value.tags.join(' #')}` : '#Tags'}
           </ThemedText>
         </Pressable>
 
@@ -286,22 +300,27 @@ export function MetadataPillBar({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Add note"
-          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center ${
+          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center gap-1.5 ${
             value.note
-              ? 'bg-amber-50 dark:bg-amber-950/60 border-amber-500/50'
-              : 'bg-slate-50/80 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700'
+              ? 'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border-ledger-border dark:border-ledger-border-dark'
+              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
           }`}
           onPress={() => openModal('NOTE')}
         >
+          <AppIcon
+            name="note"
+            size={14}
+            color={value.note ? theme.warning : theme.textSecondary}
+          />
           <ThemedText
             className={`text-xs ${
               value.note
-                ? 'font-bold text-amber-600 dark:text-amber-400'
-                : 'font-semibold text-slate-700 dark:text-slate-300'
+                ? 'font-bold text-ledger-ochre dark:text-ledger-ochre-dark'
+                : 'font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
             }`}
             numberOfLines={1}
           >
-            {value.note ? `📝 ${value.note}` : '📝 Note'}
+            {value.note ? value.note : 'Note'}
           </ThemedText>
         </Pressable>
 
@@ -309,23 +328,31 @@ export function MetadataPillBar({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Attach receipt"
-          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center ${
+          className={`min-h-[44px] rounded-full px-3.5 py-2 border active:opacity-75 flex-row items-center justify-center gap-1.5 ${
             value.receiptUri
-              ? 'bg-purple-50 dark:bg-purple-950/60 border-purple-500/50'
-              : 'bg-slate-50/80 dark:bg-slate-800/70 border-slate-200 dark:border-slate-700'
+              ? 'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border-ledger-border dark:border-ledger-border-dark'
+              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
           }`}
           onPress={() => openModal('RECEIPT')}
         >
+          <AppIcon
+            name="receipt"
+            size={14}
+            color={value.receiptUri ? theme.info : theme.textSecondary}
+          />
           <ThemedText
             className={`text-xs ${
               value.receiptUri
-                ? 'font-bold text-purple-600 dark:text-purple-400'
-                : 'font-semibold text-slate-700 dark:text-slate-300'
+                ? 'font-bold text-ledger-teal dark:text-ledger-teal-dark'
+                : 'font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
             }`}
             numberOfLines={1}
           >
-            {value.receiptUri ? '📷 Receipt ✓' : '📷 Receipt'}
+            Receipt
           </ThemedText>
+          {Boolean(value.receiptUri) && (
+            <AppIcon name="check" size={13} color={theme.info} />
+          )}
         </Pressable>
       </ScrollView>
 
@@ -336,19 +363,25 @@ export function MetadataPillBar({
         presentationStyle="pageSheet"
         onRequestClose={closeModal}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
-          <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
+          <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
             <View className="flex-row justify-between items-center mb-4">
-              <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+              <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                 Select Time
               </ThemedText>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close time selector"
-                className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                 onPress={closeModal}
               >
-                <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">✕ Done</ThemedText>
+                <AppIcon name="close" size={14} color={theme.textSecondary} />
+                <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Done
+                </ThemedText>
               </Pressable>
             </View>
 
@@ -356,11 +389,16 @@ export function MetadataPillBar({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Select right now"
-                className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                 onPress={() => handleSelectTimestamp(new Date().toISOString())}
               >
-                <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">📅 Right Now</ThemedText>
-                <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                <View className="flex-row items-center gap-2.5">
+                  <AppIcon name="calendar" size={18} color={theme.primary} />
+                  <ThemedText className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                    Right Now
+                  </ThemedText>
+                </View>
+                <ThemedText className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                   Current time
                 </ThemedText>
               </Pressable>
@@ -368,15 +406,26 @@ export function MetadataPillBar({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Select 2 hours ago"
-                className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                 onPress={() =>
                   handleSelectTimestamp(
                     new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
                   )
                 }
               >
-                <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">⏱️ Earlier Today (-2 hrs)</ThemedText>
-                <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                <View className="flex-row items-center gap-2.5">
+                  <AppIcon name="calendar" size={18} color={theme.primary} />
+                  <ThemedText
+                    numeric
+                    className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
+                    Earlier Today (-2 hrs)
+                  </ThemedText>
+                </View>
+                <ThemedText
+                  numeric
+                  className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                >
                   2 hours ago
                 </ThemedText>
               </Pressable>
@@ -384,15 +433,23 @@ export function MetadataPillBar({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Select yesterday"
-                className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                 onPress={() =>
                   handleSelectTimestamp(
                     new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
                   )
                 }
               >
-                <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">🗓️ Yesterday</ThemedText>
-                <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                <View className="flex-row items-center gap-2.5">
+                  <AppIcon name="calendar" size={18} color={theme.primary} />
+                  <ThemedText className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                    Yesterday
+                  </ThemedText>
+                </View>
+                <ThemedText
+                  numeric
+                  className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                >
                   24 hours ago
                 </ThemedText>
               </Pressable>
@@ -400,15 +457,26 @@ export function MetadataPillBar({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Select 2 days ago"
-                className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                 onPress={() =>
                   handleSelectTimestamp(
                     new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
                   )
                 }
               >
-                <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">📆 2 Days Ago</ThemedText>
-                <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                <View className="flex-row items-center gap-2.5">
+                  <AppIcon name="calendar" size={18} color={theme.primary} />
+                  <ThemedText
+                    numeric
+                    className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
+                    2 Days Ago
+                  </ThemedText>
+                </View>
+                <ThemedText
+                  numeric
+                  className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                >
                   48 hours ago
                 </ThemedText>
               </Pressable>
@@ -424,23 +492,29 @@ export function MetadataPillBar({
         presentationStyle="pageSheet"
         onRequestClose={closeModal}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
           >
-            <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+            <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
               <View className="flex-row justify-between items-center mb-4">
-                <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                   Merchant Name
                 </ThemedText>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close merchant selector"
-                  className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                  className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                   onPress={closeModal}
                 >
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">✕ Done</ThemedText>
+                  <AppIcon name="close" size={14} color={theme.textSecondary} />
+                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Done
+                  </ThemedText>
                 </Pressable>
               </View>
 
@@ -450,43 +524,51 @@ export function MetadataPillBar({
                 keyboardShouldPersistTaps="handled"
               >
                 <TextInput
-                  className="h-12 rounded-2xl border border-slate-200 dark:border-slate-800 px-4 text-base bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 mb-4"
+                  className="h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-4 text-base bg-ledger-surface dark:bg-ledger-surface-dark text-ledger-ink dark:text-ledger-ink-dark mb-4"
                   placeholder="e.g. Trader Joe's, Target, Uber..."
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor={theme.textMuted}
                   value={draftMerchant}
                   onChangeText={setDraftMerchant}
                   autoFocus
                   clearButtonMode="while-editing"
                 />
 
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">
+                <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-2.5">
                   Recent Merchants (Tap to Pick)
                 </ThemedText>
 
                 <View className="flex-row flex-wrap gap-2">
-                  {recentMerchants.map((merchant) => (
-                    <Pressable
-                      key={merchant}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Pick merchant ${merchant}`}
-                      className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center active:scale-95 ${
-                        draftMerchant === merchant
-                          ? 'bg-brand-50 dark:bg-brand-950/60 border-brand-500'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
-                      }`}
-                      onPress={() => setDraftMerchant(merchant)}
-                    >
-                      <ThemedText
-                        className={`text-xs ${
-                          draftMerchant === merchant
-                            ? 'font-bold text-brand-500'
-                            : 'font-semibold text-slate-700 dark:text-slate-300'
+                  {recentMerchants.map((merchant) => {
+                    const isPicked = draftMerchant === merchant;
+                    return (
+                      <Pressable
+                        key={merchant}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Pick merchant ${merchant}`}
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl border flex-row items-center justify-center gap-1.5 active:scale-95 ${
+                          isPicked
+                            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                            : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                         }`}
+                        onPress={() => setDraftMerchant(merchant)}
                       >
-                        🏪 {merchant}
-                      </ThemedText>
-                    </Pressable>
-                  ))}
+                        <AppIcon
+                          name="merchant"
+                          size={14}
+                          color={isPicked ? theme.primary : theme.textSecondary}
+                        />
+                        <ThemedText
+                          className={`text-xs ${
+                            isPicked
+                              ? 'font-bold text-brand-500 dark:text-brand-400'
+                              : 'font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                          }`}
+                        >
+                          {merchant}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
                 </View>
 
                 <View className="flex-row justify-end gap-3 mt-6">
@@ -494,10 +576,10 @@ export function MetadataPillBar({
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Clear merchant"
-                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       onPress={handleClearMerchant}
                     >
-                      <ThemedText className="text-xs font-bold text-rose-500">
+                      <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                         Clear Merchant
                       </ThemedText>
                     </Pressable>
@@ -506,10 +588,10 @@ export function MetadataPillBar({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Save merchant"
-                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 shadow-md shadow-brand-500/25 items-center justify-center"
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-90 items-center justify-center"
                     onPress={() => handleSaveMerchant(draftMerchant)}
                   >
-                    <ThemedText className="text-xs font-bold text-white">
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                       Save Merchant
                     </ThemedText>
                   </Pressable>
@@ -527,23 +609,29 @@ export function MetadataPillBar({
         presentationStyle="pageSheet"
         onRequestClose={closeModal}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
           >
-            <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+            <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
               <View className="flex-row justify-between items-center mb-4">
-                <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                   Manage Tags
                 </ThemedText>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close tags manager"
-                  className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                  className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                   onPress={closeModal}
                 >
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">✕ Done</ThemedText>
+                  <AppIcon name="close" size={14} color={theme.textSecondary} />
+                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Done
+                  </ThemedText>
                 </Pressable>
               </View>
 
@@ -555,9 +643,9 @@ export function MetadataPillBar({
                 {/* New tag input */}
                 <View className="flex-row gap-2.5 items-center mb-4">
                   <TextInput
-                    className="flex-1 h-12 rounded-2xl border border-slate-200 dark:border-slate-800 px-4 text-base bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100"
+                    className="flex-1 h-12 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark px-4 text-base bg-ledger-surface dark:bg-ledger-surface-dark text-ledger-ink dark:text-ledger-ink-dark"
                     placeholder="Add custom tag (e.g. coffee-run)"
-                    placeholderTextColor={theme.textSecondary}
+                    placeholderTextColor={theme.textMuted}
                     value={newTagInput}
                     onChangeText={setNewTagInput}
                     onSubmitEditing={handleAddNewTag}
@@ -566,17 +654,19 @@ export function MetadataPillBar({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Add tag"
-                    className={`min-h-[48px] h-12 px-4 rounded-2xl items-center justify-center active:scale-95 ${
+                    className={`min-h-[48px] h-12 px-4 rounded-xl items-center justify-center active:scale-95 ${
                       newTagInput.trim()
-                        ? 'bg-emerald-500 active:bg-emerald-600 shadow-md shadow-emerald-500/25'
-                        : 'bg-slate-200 dark:bg-slate-800 opacity-60'
+                        ? 'bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-90'
+                        : 'bg-ledger-selected dark:bg-ledger-selected-dark border border-ledger-border dark:border-ledger-border-dark opacity-70'
                     }`}
                     disabled={!newTagInput.trim()}
                     onPress={handleAddNewTag}
                   >
                     <ThemedText
                       className={`text-xs font-bold ${
-                        newTagInput.trim() ? 'text-white' : 'text-slate-400 dark:text-slate-500'
+                        newTagInput.trim()
+                          ? 'text-ledger-canvas dark:text-ledger-canvas-dark'
+                          : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
                       }`}
                     >
                       Add #
@@ -584,7 +674,7 @@ export function MetadataPillBar({
                   </Pressable>
                 </View>
 
-                <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">
+                <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-2.5">
                   Toggle Tags
                 </ThemedText>
 
@@ -597,22 +687,25 @@ export function MetadataPillBar({
                         accessibilityRole="button"
                         accessibilityLabel={`Toggle tag ${tag}`}
                         accessibilityState={{ selected: isSelected }}
-                        className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center active:scale-95 ${
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl border flex-row items-center justify-center gap-1.5 active:scale-95 ${
                           isSelected
-                            ? 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-500'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+                            ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-pine dark:border-ledger-pine-dark'
+                            : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
                         }`}
                         onPress={() => handleToggleTag(tag)}
                       >
                         <ThemedText
                           className={`text-xs ${
                             isSelected
-                              ? 'font-bold text-emerald-600 dark:text-emerald-400'
-                              : 'font-semibold text-slate-700 dark:text-slate-300'
+                              ? 'font-bold text-ledger-pine dark:text-ledger-pine-dark'
+                              : 'font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
-                          #{tag} {isSelected ? '✓' : ''}
+                          #{tag}
                         </ThemedText>
+                        {isSelected && (
+                          <AppIcon name="check" size={13} color={theme.positive} />
+                        )}
                       </Pressable>
                     );
                   })}
@@ -630,23 +723,29 @@ export function MetadataPillBar({
         presentationStyle="pageSheet"
         onRequestClose={closeModal}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={{ flex: 1 }}
           >
-            <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+            <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
               <View className="flex-row justify-between items-center mb-4">
-                <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+                <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                   Transaction Note
                 </ThemedText>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Close note editor"
-                  className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                  className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                   onPress={closeModal}
                 >
-                  <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">✕ Done</ThemedText>
+                  <AppIcon name="close" size={14} color={theme.textSecondary} />
+                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Done
+                  </ThemedText>
                 </Pressable>
               </View>
 
@@ -656,9 +755,9 @@ export function MetadataPillBar({
                 keyboardShouldPersistTaps="handled"
               >
                 <TextInput
-                  className="h-32 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 text-base bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 mb-4"
+                  className="h-32 rounded-xl border border-ledger-border-strong dark:border-ledger-border-strong-dark p-4 text-base bg-ledger-surface dark:bg-ledger-surface-dark text-ledger-ink dark:text-ledger-ink-dark mb-4"
                   placeholder="Add details, reimbursement memo, or description..."
-                  placeholderTextColor={theme.textSecondary}
+                  placeholderTextColor={theme.textMuted}
                   value={draftNote}
                   onChangeText={setDraftNote}
                   multiline
@@ -673,10 +772,10 @@ export function MetadataPillBar({
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Clear note"
-                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                      className="min-h-[44px] px-4 py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       onPress={handleClearNote}
                     >
-                      <ThemedText className="text-xs font-bold text-rose-500">
+                      <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                         Clear Note
                       </ThemedText>
                     </Pressable>
@@ -685,10 +784,10 @@ export function MetadataPillBar({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Save note"
-                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-amber-500 active:bg-amber-600 shadow-md shadow-amber-500/25 items-center justify-center"
+                    className="min-h-[44px] px-5 py-2.5 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-90 items-center justify-center"
                     onPress={handleSaveNote}
                   >
-                    <ThemedText className="text-xs font-bold text-white">
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                       Save Note
                     </ThemedText>
                   </Pressable>
@@ -706,32 +805,41 @@ export function MetadataPillBar({
         presentationStyle="pageSheet"
         onRequestClose={closeModal}
       >
-        <SafeAreaView className="flex-1 bg-slate-50 dark:bg-slate-950" edges={['top', 'bottom', 'left', 'right']}>
-          <ThemedView className="flex-1 bg-slate-50 dark:bg-slate-950 px-4 pt-4">
+        <SafeAreaView
+          className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+          edges={['top', 'bottom', 'left', 'right']}
+        >
+          <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark px-4 pt-4">
             <View className="flex-row justify-between items-center mb-4">
-              <ThemedText className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+              <ThemedText className="text-2xl font-bold tracking-tight text-ledger-ink dark:text-ledger-ink-dark">
                 Receipt Attachment
               </ThemedText>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close receipt attachment"
-                className="min-h-[44px] px-4 py-2 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 items-center justify-center active:opacity-75"
+                className="min-h-[44px] px-4 py-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
                 onPress={closeModal}
               >
-                <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-300">✕ Done</ThemedText>
+                <AppIcon name="close" size={14} color={theme.textSecondary} />
+                <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Done
+                </ThemedText>
               </Pressable>
             </View>
 
             <ScrollView className="flex-1" contentContainerClassName="pb-10">
               {value.receiptUri ? (
-                <View className="rounded-2xl border border-purple-500/50 bg-white dark:bg-slate-900 p-4 items-center mb-4 gap-3">
+                <View className="rounded-2xl border border-ledger-border dark:border-ledger-border-dark bg-ledger-surface dark:bg-ledger-surface-dark p-4 items-center mb-4 gap-3">
                   {value.receiptUri.startsWith('local://') ? (
-                    <View className="items-center gap-1">
-                      <ThemedText className="text-4xl">🧾</ThemedText>
-                      <ThemedText className="text-sm font-bold text-purple-600 dark:text-purple-400">
+                    <View className="items-center gap-1.5">
+                      <AppIcon name="receipt" size={32} color={theme.info} />
+                      <ThemedText className="text-sm font-bold text-ledger-teal dark:text-ledger-teal-dark">
                         Sample Receipt Attached
                       </ThemedText>
-                      <ThemedText className="text-xs text-slate-400 dark:text-slate-500" numberOfLines={1}>
+                      <ThemedText
+                        className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                        numberOfLines={1}
+                      >
                         {value.receiptUri}
                       </ThemedText>
                     </View>
@@ -746,34 +854,43 @@ export function MetadataPillBar({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="Remove receipt"
-                    className="min-h-[44px] px-4 py-2 rounded-xl bg-rose-500 active:bg-rose-600 shadow-sm items-center justify-center"
+                    className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark active:opacity-90 flex-row items-center justify-center gap-1.5"
                     onPress={handleRemoveReceipt}
                   >
-                    <ThemedText className="text-xs font-bold text-white">
-                      ✕ Remove Receipt
+                    <AppIcon name="delete" size={14} color={theme.onPrimary} />
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                      Remove Receipt
                     </ThemedText>
                   </Pressable>
                 </View>
               ) : null}
 
               {receiptFeedback && (
-                <ThemedText
+                <View
                   accessibilityRole="alert"
-                  className="text-xs font-medium text-rose-500 mb-3"
+                  className="flex-row items-center gap-1.5 mb-3"
                 >
-                  {receiptFeedback}
-                </ThemedText>
+                  <AppIcon name="warning" size={14} color={theme.negative} />
+                  <ThemedText className="flex-1 text-xs font-medium text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                    {receiptFeedback}
+                  </ThemedText>
+                </View>
               )}
 
               <View className="gap-2.5">
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Choose photo from library"
-                  className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                  className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                   onPress={handlePickFromLibrary}
                 >
-                  <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">🖼️ Choose Photo from Library</ThemedText>
-                  <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  <View className="flex-row items-center gap-2.5 flex-1 pr-2">
+                    <AppIcon name="file" size={18} color={theme.primary} />
+                    <ThemedText className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                      Choose Photo from Library
+                    </ThemedText>
+                  </View>
+                  <ThemedText className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Select existing photo
                   </ThemedText>
                 </Pressable>
@@ -781,11 +898,16 @@ export function MetadataPillBar({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Take photo with camera"
-                  className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                  className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                   onPress={handleTakePhoto}
                 >
-                  <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">📷 Take Photo with Camera</ThemedText>
-                  <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  <View className="flex-row items-center gap-2.5 flex-1 pr-2">
+                    <AppIcon name="receipt" size={18} color={theme.primary} />
+                    <ThemedText className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                      Take Photo with Camera
+                    </ThemedText>
+                  </View>
+                  <ThemedText className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Capture receipt now
                   </ThemedText>
                 </Pressable>
@@ -793,11 +915,16 @@ export function MetadataPillBar({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Attach sample receipt"
-                  className="min-h-[56px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row justify-between items-center active:scale-[0.99]"
+                  className="min-h-[56px] p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row justify-between items-center active:scale-[0.99]"
                   onPress={handleAttachDemoReceipt}
                 >
-                  <ThemedText className="text-base font-semibold text-slate-800 dark:text-slate-100">⚡ Attach Sample Receipt (Demo)</ThemedText>
-                  <ThemedText className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                  <View className="flex-row items-center gap-2.5 flex-1 pr-2">
+                    <AppIcon name="autopay" size={18} color={theme.primary} />
+                    <ThemedText className="text-base font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                      Attach Sample Receipt (Demo)
+                    </ThemedText>
+                  </View>
+                  <ThemedText className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                     Simulator / Web 1-tap test
                   </ThemedText>
                 </Pressable>

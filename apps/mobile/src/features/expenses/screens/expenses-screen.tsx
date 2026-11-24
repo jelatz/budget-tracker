@@ -29,6 +29,7 @@ import {
   type TransactionSplit,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { BottomTabInset, WebMaxPageWidth } from '@/common/constants/theme';
 import { useRequireAuth } from '@/common/hooks/use-require-auth';
@@ -80,8 +81,6 @@ const SCHEDULED_STATUS_OPTIONS: readonly { key: ScheduledStatusFilter; label: st
   { key: 'LOANS', label: 'Loans' },
 ];
 
-const COMPACT_HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 } as const;
-
 function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
   if (columns <= 1) {
     return items.map((item) => [item]);
@@ -125,6 +124,7 @@ export function ExpensesScreen({
 
   // View Tab, Display Mode & Filter State
   const { width: windowWidth } = useWindowDimensions();
+  const isWideSummary = windowWidth >= 768;
   const [activeTab, setActiveTab] = useState<ExpensesViewTab>('RECORDED');
   const [displayMode, setDisplayMode] = useState<ExpensesDisplayMode>('CARDS');
   const [cardColumnsPref, setCardColumnsPref] = useState<2 | 3>(3);
@@ -446,14 +446,14 @@ export function ExpensesScreen({
       });
       setModalVisible(false);
       setToastMessage(
-        `✓ Updated expense (${formatMinorUnits(updated.amountMinor, updated.currency)})`,
+        `Updated expense (${formatMinorUnits(updated.amountMinor, updated.currency)})`,
       );
     } else {
       const created = await createTransactionMutation.mutateAsync(payload.input);
       setModalVisible(false);
       setActiveTab('RECORDED');
       setToastMessage(
-        `✓ Added expense (${formatMinorUnits(created.amountMinor, created.currency)})`,
+        `Added expense (${formatMinorUnits(created.amountMinor, created.currency)})`,
       );
     }
   };
@@ -467,8 +467,8 @@ export function ExpensesScreen({
     const kindLabel = saved.kind === 'INSTALLMENT' ? 'loan / installment' : 'recurring expense';
     setToastMessage(
       payload.id
-        ? `✓ Updated ${kindLabel}: ${saved.name}`
-        : `✓ Scheduled ${kindLabel}: ${saved.name} (${formatMinorUnits(saved.amountMinor, saved.currency)})`,
+        ? `Updated ${kindLabel}: ${saved.name}`
+        : `Scheduled ${kindLabel}: ${saved.name} (${formatMinorUnits(saved.amountMinor, saved.currency)})`,
     );
   };
 
@@ -476,7 +476,7 @@ export function ExpensesScreen({
     setActionError(null);
     try {
       await deleteTransactionMutation.mutateAsync(expenseId);
-      setToastMessage('✓ Expense deleted and account balance restored');
+      setToastMessage('Expense deleted and account balance restored');
     } catch (error: unknown) {
       setActionError(
         error instanceof Error ? error.message : 'Failed to delete expense.',
@@ -487,14 +487,14 @@ export function ExpensesScreen({
   const handleDeleteExpenseFromModal = async (expenseId: string) => {
     await deleteTransactionMutation.mutateAsync(expenseId);
     setModalVisible(false);
-    setToastMessage('✓ Expense deleted and account balance restored');
+    setToastMessage('Expense deleted and account balance restored');
   };
 
   const handleDeleteCommitmentFromCard = async (commitmentId: string) => {
     setActionError(null);
     try {
       await deleteCommitmentMutation.mutateAsync(commitmentId);
-      setToastMessage('✓ Scheduled expense deleted');
+      setToastMessage('Scheduled expense deleted');
     } catch (error: unknown) {
       setActionError(
         error instanceof Error ? error.message : 'Failed to delete scheduled expense.',
@@ -505,7 +505,7 @@ export function ExpensesScreen({
   const handleDeleteCommitmentFromModal = async (commitmentId: string) => {
     await deleteCommitmentMutation.mutateAsync(commitmentId);
     setModalVisible(false);
-    setToastMessage('✓ Scheduled expense deleted');
+    setToastMessage('Scheduled expense deleted');
   };
 
   const handlePayCommitment = async (commitment: RecurringCommitment) => {
@@ -515,7 +515,7 @@ export function ExpensesScreen({
         commitmentId: commitment.id,
       });
       setToastMessage(
-        `✓ Paid ${commitment.name} (${formatMinorUnits(
+        `Paid ${commitment.name} (${formatMinorUnits(
           result.transaction.amountMinor,
           result.transaction.currency,
         )}) and deducted from account`,
@@ -532,7 +532,7 @@ export function ExpensesScreen({
     try {
       await unpayCommitmentMutation.mutateAsync(commitment.id);
       setToastMessage(
-        `✓ Reversed payment for ${commitment.name} and restored account balance`,
+        `Reversed payment for ${commitment.name} and restored account balance`,
       );
     } catch (error: unknown) {
       setActionError(
@@ -576,6 +576,10 @@ export function ExpensesScreen({
     categoryFilter === 'ALL'
       ? null
       : expenseCategories.find((c) => c.id === categoryFilter)?.name ?? null;
+  const activeAccountName =
+    accountFilter === 'ALL'
+      ? null
+      : accounts.find((a) => a.id === accountFilter)?.name ?? null;
   const listTitle =
     activeTab === 'RECORDED'
       ? activeCategoryName
@@ -609,7 +613,7 @@ export function ExpensesScreen({
       : scheduledBaseList.length;
 
   return (
-    <View className="flex-1 bg-slate-50 dark:bg-slate-950">
+    <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
       <SafeAreaView className="flex-1" style={{ flex: 1 }} edges={['top', 'bottom', 'left', 'right']}>
         <ScrollView
           className="flex-1"
@@ -631,95 +635,106 @@ export function ExpensesScreen({
             <View className="flex-1 min-w-[200px] gap-0.5">
               <ThemedText
                 accessibilityRole="header"
-                className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white"
+                className="text-[28px] leading-9 font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark"
               >
                 Expenses
               </ThemedText>
-              <ThemedText className="text-sm text-slate-500 dark:text-slate-400">
-                One-time expenses, recurring dues & subscriptions, and loans
+              <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                One-time expenses, recurring dues, and installment loans
               </ThemedText>
             </View>
 
             <View className="flex-row items-center gap-2">
               <Pressable
                 onPress={() => router.push('/capture')}
-                hitSlop={COMPACT_HIT_SLOP}
                 accessibilityRole="button"
                 accessibilityLabel="Open Fast Entry calculator"
-                className="h-9 px-3.5 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex-row items-center justify-center active:opacity-75"
+                className="min-h-[44px] px-4 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
               >
-                <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                  ⚡ Fast Entry
+                <AppIcon name="autopay" size={15} color={theme.text} />
+                <ThemedText className="text-xs sm:text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+                  Fast Entry
                 </ThemedText>
               </Pressable>
 
               <Pressable
                 onPress={openAddModal}
-                hitSlop={COMPACT_HIT_SLOP}
                 accessibilityRole="button"
                 accessibilityLabel="Add expense"
-                className="h-9 px-3.5 rounded-full bg-brand-500 active:bg-brand-600 shadow-md shadow-brand-500/25 flex-row items-center justify-center"
+                className="min-h-[44px] px-4 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
               >
-                <ThemedText className="text-white text-xs sm:text-sm font-bold">
-                  + Add Expense
+                <AppIcon name="add" size={15} color={theme.onPrimary} />
+                <ThemedText className="text-xs sm:text-sm font-bold text-ledger-canvas dark:text-brand-900">
+                  Add Expense
                 </ThemedText>
               </Pressable>
             </View>
           </View>
 
           {/* Segmented View Switcher */}
-          <View className="p-1 rounded-xl bg-slate-200/70 dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row gap-1">
+          <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row gap-1">
             <Pressable
               onPress={() => setActiveTab('RECORDED')}
-              hitSlop={COMPACT_HIT_SLOP}
               accessibilityRole="tab"
               accessibilityLabel={`One-Time and Recorded expenses, ${allExpensesCount}`}
               accessibilityState={{ selected: activeTab === 'RECORDED' }}
-              className={`flex-1 h-9 px-3 rounded-lg items-center justify-center ${
+              className={`flex-1 min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
                 activeTab === 'RECORDED'
-                  ? 'bg-white dark:bg-slate-800 shadow-sm'
-                  : 'active:opacity-75'
+                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                  : 'border border-transparent active:opacity-75'
               }`}
             >
+              <AppIcon
+                name="receipt"
+                size={15}
+                color={activeTab === 'RECORDED' ? theme.text : theme.textSecondary}
+              />
               <ThemedText
+                numeric
                 className={`text-xs sm:text-sm font-bold text-center ${
                   activeTab === 'RECORDED'
-                    ? 'text-slate-900 dark:text-white'
-                    : 'text-slate-600 dark:text-slate-400'
+                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                 }`}
               >
-                🧾 One-Time & Recorded ({allExpensesCount})
+                Recorded ({allExpensesCount})
               </ThemedText>
             </Pressable>
 
             <Pressable
               onPress={() => setActiveTab('SCHEDULED')}
-              hitSlop={COMPACT_HIT_SLOP}
               accessibilityRole="tab"
               accessibilityLabel={`Recurring and Loans, ${scheduledStats.unpaidCount} due`}
               accessibilityState={{ selected: activeTab === 'SCHEDULED' }}
-              className={`flex-1 h-9 px-3 rounded-lg items-center justify-center ${
+              className={`flex-1 min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
                 activeTab === 'SCHEDULED'
-                  ? 'bg-white dark:bg-slate-800 shadow-sm'
-                  : 'active:opacity-75'
+                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                  : 'border border-transparent active:opacity-75'
               }`}
             >
+              <AppIcon
+                name="sync"
+                size={15}
+                color={activeTab === 'SCHEDULED' ? theme.text : theme.textSecondary}
+              />
               <ThemedText
+                numeric
                 className={`text-xs sm:text-sm font-bold text-center ${
                   activeTab === 'SCHEDULED'
-                    ? 'text-slate-900 dark:text-white'
-                    : 'text-slate-600 dark:text-slate-400'
+                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                 }`}
               >
-                🔄 Recurring & Loans ({scheduledStats.unpaidCount} due)
+                Recurring & Loans ({scheduledStats.unpaidCount} due)
               </ThemedText>
             </Pressable>
           </View>
 
           {/* Toast Feedback Banner */}
           {toastMessage ? (
-            <View className="px-4 py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800/70 flex-row items-center justify-between gap-2">
-              <ThemedText className="flex-1 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+            <View className="px-4 py-3 rounded-2xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5">
+              <AppIcon name="checkCircle" size={16} color={theme.positive} />
+              <ThemedText className="flex-1 text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
                 {toastMessage}
               </ThemedText>
               <Pressable
@@ -728,9 +743,7 @@ export function ExpensesScreen({
                 accessibilityLabel="Dismiss notification"
                 className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
               >
-                <ThemedText className="text-xs font-bold text-emerald-700 dark:text-emerald-300">
-                  ✕
-                </ThemedText>
+                <AppIcon name="close" size={15} color={theme.positive} />
               </Pressable>
             </View>
           ) : null}
@@ -739,10 +752,11 @@ export function ExpensesScreen({
           {actionError ? (
             <View
               accessibilityRole="alert"
-              className="px-4 py-3 rounded-2xl bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800/70 flex-row items-center justify-between gap-2"
+              className="px-4 py-3 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-between gap-2.5"
             >
-              <ThemedText className="flex-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
-                ⚠️ {actionError}
+              <AppIcon name="warning" size={16} color={theme.negative} />
+              <ThemedText className="flex-1 text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                {actionError}
               </ThemedText>
               <Pressable
                 onPress={() => setActionError(null)}
@@ -750,9 +764,7 @@ export function ExpensesScreen({
                 accessibilityLabel="Dismiss error"
                 className="min-w-[44px] min-h-[44px] items-center justify-center active:opacity-75"
               >
-                <ThemedText className="text-xs font-bold text-rose-600 dark:text-rose-400">
-                  ✕
-                </ThemedText>
+                <AppIcon name="close" size={15} color={theme.negative} />
               </Pressable>
             </View>
           ) : null}
@@ -760,16 +772,17 @@ export function ExpensesScreen({
           {/* Loading / Error / Content */}
           {isLoading ? (
             <View className="py-12 items-center justify-center gap-3">
-              <ActivityIndicator size="large" color={theme.text} />
-              <ThemedText className="text-sm text-slate-500 dark:text-slate-400">
+              <ActivityIndicator size="large" color={theme.primary} />
+              <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                 Loading your expenses...
               </ThemedText>
             </View>
           ) : isError ? (
-            <View className="p-6 rounded-3xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 items-center gap-3">
+            <View className="p-6 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center gap-3">
+              <AppIcon name="warning" size={24} color={theme.negative} />
               <ThemedText
                 accessibilityRole="alert"
-                className="text-sm font-semibold text-rose-600 dark:text-rose-400 text-center"
+                className="text-sm font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark text-center"
               >
                 Could not load your expenses right now.
               </ThemedText>
@@ -782,200 +795,254 @@ export function ExpensesScreen({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel="Retry loading expenses"
-                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-rose-600 active:bg-rose-700 items-center justify-center"
+                className="min-h-[44px] px-5 py-2.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
               >
-                <ThemedText className="text-xs font-bold text-white">Retry</ThemedText>
+                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                  Retry
+                </ThemedText>
               </Pressable>
             </View>
           ) : (
             <>
-              {/* Unified Stats for BOTH One-Time & Recorded AND Recurring & Loans */}
-              <View className="gap-3">
-                {/* Combined Monthly Outflow Banner */}
-                <View className="p-4 rounded-2xl bg-slate-900 dark:bg-slate-900 border border-slate-800 shadow-sm flex-row flex-wrap items-center justify-between gap-3">
-                  <View className="gap-1 flex-1 min-w-[220px]">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      Combined Monthly Outflow ({monthName.toUpperCase()})
-                    </ThemedText>
-                    <ThemedText className="text-2xl font-extrabold font-mono text-white">
-                      {formatMinorUnits(projectedMonthlyOutflowMinor)}
-                    </ThemedText>
-                  </View>
-                  <View className="gap-1">
-                    <ThemedText className="text-xs font-medium text-slate-300">
-                      Recorded this month: {formatMinorUnits(thisMonthSpentMinor)}
-                    </ThemedText>
-                    <ThemedText className="text-xs font-medium text-slate-400">
-                      Unpaid scheduled: {formatMinorUnits(scheduledStats.unpaidMinor)} • Paid scheduled:{' '}
-                      {scheduledStats.paidCount}/{scheduledStats.activeCount}
-                    </ThemedText>
-                  </View>
-                </View>
+              {/* Unified Warm Editorial Summary Strip */}
+              <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
+                <View className={isWideSummary ? 'flex-row' : 'flex-col'}>
+                  {/* Row 1 (or Columns 1 & 2 on Desktop) */}
+                  <View
+                    className={`flex-row flex-1 ${
+                      isWideSummary
+                        ? ''
+                        : 'border-b border-ledger-border dark:border-ledger-border-dark'
+                    }`}
+                  >
+                    <View className="flex-1 p-4 border-r border-ledger-border dark:border-ledger-border-dark gap-1">
+                      <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                        Projected Outflow ({monthName})
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        className="text-lg sm:text-xl font-extrabold text-ledger-ink dark:text-ledger-ink-dark"
+                      >
+                        {formatMinorUnits(projectedMonthlyOutflowMinor)}
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        numberOfLines={1}
+                      >
+                        {formatMinorUnits(thisMonthSpentMinor)} spent · {scheduledStats.paidCount}/
+                        {scheduledStats.activeCount} bills paid
+                      </ThemedText>
+                    </View>
 
-                {/* 4-Card Unified KPI Grid */}
-                <View className="flex-row flex-wrap gap-3">
-                  <View className="flex-1 min-w-[160px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-1">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      One-Time & Recorded ({activePeriodLabel})
-                    </ThemedText>
-                    <ThemedText className="text-xl font-extrabold font-mono text-slate-900 dark:text-white">
-                      {formatMinorUnits(summary.totalMinor)}
-                    </ThemedText>
-                    <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
-                      {summary.expenseCount}{' '}
-                      {summary.expenseCount === 1 ? 'expense' : 'expenses'} •{' '}
-                      {summary.topCategory
-                        ? `Top: ${summary.topCategory.icon} ${summary.topCategory.name}`
-                        : `Avg ${formatMinorUnits(summary.averageMinor)}`}
-                    </ThemedText>
-                  </View>
-
-                  <View className="flex-1 min-w-[160px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-1">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Monthly Budget
-                    </ThemedText>
-                    <ThemedText
-                      className={`text-xl font-extrabold font-mono ${
-                        isOverBudget
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : isNearBudget
-                            ? 'text-amber-600 dark:text-amber-400'
-                            : 'text-emerald-600 dark:text-emerald-400'
+                    <View
+                      className={`flex-1 p-4 gap-1 ${
+                        isWideSummary
+                          ? 'border-r border-ledger-border dark:border-ledger-border-dark'
+                          : ''
                       }`}
                     >
-                      {formatMinorUnits(Math.abs(budgetRemainingMinor))}{' '}
-                      {isOverBudget ? 'over' : 'left'}
-                    </ThemedText>
-                    <ThemedText className="text-xs text-slate-500 dark:text-slate-400">
-                      {budgetUtilizationPercent}% of {formatMinorUnits(monthlyBudgetMinor)} used
-                    </ThemedText>
+                      <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                        Monthly Budget
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        className={`text-lg sm:text-xl font-extrabold ${
+                          isOverBudget
+                            ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                            : isNearBudget
+                              ? 'text-ledger-ochre dark:text-ledger-ochre-dark'
+                              : 'text-ledger-pine dark:text-ledger-pine-dark'
+                        }`}
+                      >
+                        {formatMinorUnits(Math.abs(budgetRemainingMinor))}{' '}
+                        {isOverBudget ? 'over' : 'left'}
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        numberOfLines={1}
+                      >
+                        {budgetUtilizationPercent}% of {formatMinorUnits(monthlyBudgetMinor)} used
+                      </ThemedText>
+                    </View>
                   </View>
 
-                  <View className="flex-1 min-w-[160px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-1">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Monthly Scheduled
-                    </ThemedText>
-                    <ThemedText className="text-xl font-extrabold font-mono text-slate-900 dark:text-white">
-                      {formatMinorUnits(scheduledStats.monthlyScheduledMinor)}
-                    </ThemedText>
-                    <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
-                      {scheduledStats.activeCount} active • Unpaid:{' '}
-                      {formatMinorUnits(scheduledStats.unpaidMinor)} ({scheduledStats.unpaidCount})
-                    </ThemedText>
-                  </View>
+                  {/* Row 2 (or Columns 3 & 4 on Desktop) */}
+                  <View className="flex-row flex-1">
+                    <View className="flex-1 p-4 border-r border-ledger-border dark:border-ledger-border-dark gap-1">
+                      <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                        Scheduled Unpaid
+                      </ThemedText>
+                      <View className="flex-row flex-wrap items-center gap-2">
+                        <ThemedText
+                          numeric
+                          numberOfLines={1}
+                          adjustsFontSizeToFit
+                          className="text-lg sm:text-xl font-extrabold text-ledger-ink dark:text-ledger-ink-dark"
+                        >
+                          {formatMinorUnits(scheduledStats.unpaidMinor)}
+                        </ThemedText>
+                        <View className="px-2 py-0.5 rounded-full bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft">
+                          <ThemedText
+                            numeric
+                            className="text-[11px] font-semibold text-ledger-ochre dark:text-ledger-ochre-dark"
+                          >
+                            {scheduledStats.unpaidCount} due
+                          </ThemedText>
+                        </View>
+                      </View>
+                      <ThemedText
+                        numeric
+                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        numberOfLines={1}
+                      >
+                        {scheduledStats.activeCount} active ·{' '}
+                        {formatMinorUnits(scheduledStats.monthlyScheduledMinor)}/mo
+                      </ThemedText>
+                    </View>
 
-                  <View className="flex-1 min-w-[160px] p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-1">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                      Termed Balance Remaining
-                    </ThemedText>
-                    <ThemedText className="text-xl font-extrabold font-mono text-slate-900 dark:text-white">
-                      {formatMinorUnits(scheduledStats.loansRemainingMinor)}
-                    </ThemedText>
-                    <ThemedText className="text-xs text-slate-500 dark:text-slate-400" numberOfLines={1}>
-                      {scheduledStats.activeLoansCount === 0
-                        ? 'No active term schedules'
-                        : `${scheduledStats.activeLoansCount} termed • ${scheduledStats.remainingTermsTotal} remaining ${
-                            scheduledStats.remainingTermsTotal === 1 ? 'term' : 'terms'
-                          }`}
-                    </ThemedText>
+                    <View className="flex-1 p-4 gap-1">
+                      <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                        Active Loan Balance
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        className="text-lg sm:text-xl font-extrabold text-ledger-ink dark:text-ledger-ink-dark"
+                      >
+                        {formatMinorUnits(scheduledStats.loansRemainingMinor)}
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        numberOfLines={1}
+                      >
+                        {scheduledStats.activeLoansCount === 0
+                          ? `Filtered (${activePeriodLabel}): ${formatMinorUnits(summary.totalMinor)}`
+                          : `${scheduledStats.activeLoansCount} termed · ${scheduledStats.remainingTermsTotal} ${
+                              scheduledStats.remainingTermsTotal === 1 ? 'term' : 'terms'
+                            } left`}
+                      </ThemedText>
+                    </View>
                   </View>
                 </View>
               </View>
 
               {/* Primary Filter Row + Search */}
               <View className="gap-2.5">
-                <View className="flex-row flex-wrap items-center gap-1.5">
-                  {activeTab === 'RECORDED'
-                    ? PERIOD_OPTIONS.map((option) => {
-                        const isSelected = period === option.key;
-                        return (
-                          <Pressable
-                            key={option.key}
-                            onPress={() => setPeriod(option.key)}
-                            hitSlop={COMPACT_HIT_SLOP}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Filter period ${option.label}`}
-                            accessibilityState={{ selected: isSelected }}
-                            className={`h-8 px-3 rounded-full border items-center justify-center ${
-                              isSelected
-                                ? 'bg-slate-900 dark:bg-white border-slate-900 dark:border-white'
-                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 active:opacity-75'
-                            }`}
-                          >
-                            <ThemedText
-                              className={`text-xs font-bold ${
+                <View className="flex-row flex-wrap items-center gap-2">
+                  <View className="flex-1 min-w-[220px] min-h-[44px] px-3.5 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2">
+                    <AppIcon name="search" size={16} color={theme.textMuted} />
+                    <TextInput
+                      value={searchQuery}
+                      onChangeText={setSearchQuery}
+                      placeholder={
+                        activeTab === 'RECORDED'
+                          ? 'Search merchant, note, #tag, category, or account...'
+                          : 'Search schedule name, note, category, or account...'
+                      }
+                      placeholderTextColor={theme.textMuted}
+                      accessibilityLabel="Search expenses"
+                      autoCorrect={false}
+                      autoCapitalize="none"
+                      className="flex-1 min-h-[44px] text-sm text-ledger-ink dark:text-ledger-ink-dark"
+                    />
+                    {searchQuery.length > 0 && (
+                      <Pressable
+                        onPress={() => setSearchQuery('')}
+                        accessibilityRole="button"
+                        accessibilityLabel="Clear search"
+                        className="min-w-[44px] min-h-[44px] -mr-2 items-center justify-center active:opacity-75"
+                      >
+                        <AppIcon name="close" size={15} color={theme.textSecondary} />
+                      </Pressable>
+                    )}
+                  </View>
+
+                  <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row flex-wrap items-center gap-1">
+                    {activeTab === 'RECORDED'
+                      ? PERIOD_OPTIONS.map((option) => {
+                          const isSelected = period === option.key;
+                          return (
+                            <Pressable
+                              key={option.key}
+                              onPress={() => setPeriod(option.key)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Filter period ${option.label}`}
+                              accessibilityState={{ selected: isSelected }}
+                              className={`min-h-[44px] px-3 rounded-lg items-center justify-center ${
                                 isSelected
-                                  ? 'text-white dark:text-slate-900'
-                                  : 'text-slate-600 dark:text-slate-300'
+                                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                                  : 'border border-transparent active:opacity-75'
                               }`}
                             >
-                              {option.label}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })
-                    : SCHEDULED_STATUS_OPTIONS.map((option) => {
-                        const isSelected = scheduledStatus === option.key;
-                        return (
-                          <Pressable
-                            key={option.key}
-                            onPress={() => setScheduledStatus(option.key)}
-                            hitSlop={COMPACT_HIT_SLOP}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Filter schedules ${option.label}`}
-                            accessibilityState={{ selected: isSelected }}
-                            className={`h-8 px-3 rounded-full border items-center justify-center ${
-                              isSelected
-                                ? 'bg-slate-900 dark:bg-white border-slate-900 dark:border-white'
-                                : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 active:opacity-75'
-                            }`}
-                          >
-                            <ThemedText
-                              className={`text-xs font-bold ${
+                              <ThemedText
+                                className={`text-xs font-semibold ${
+                                  isSelected
+                                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                                }`}
+                              >
+                                {option.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })
+                      : SCHEDULED_STATUS_OPTIONS.map((option) => {
+                          const isSelected = scheduledStatus === option.key;
+                          return (
+                            <Pressable
+                              key={option.key}
+                              onPress={() => setScheduledStatus(option.key)}
+                              accessibilityRole="button"
+                              accessibilityLabel={`Filter schedules ${option.label}`}
+                              accessibilityState={{ selected: isSelected }}
+                              className={`min-h-[44px] px-3 rounded-lg items-center justify-center ${
                                 isSelected
-                                  ? 'text-white dark:text-slate-900'
-                                  : 'text-slate-600 dark:text-slate-300'
+                                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                                  : 'border border-transparent active:opacity-75'
                               }`}
                             >
-                              {option.label}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
+                              <ThemedText
+                                className={`text-xs font-semibold ${
+                                  isSelected
+                                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                                }`}
+                              >
+                                {option.label}
+                              </ThemedText>
+                            </Pressable>
+                          );
+                        })}
+                  </View>
                 </View>
 
-                <View className="min-h-[44px] px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex-row items-center gap-2">
-                  <ThemedText className="text-sm text-slate-400">🔍</ThemedText>
-                  <TextInput
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    placeholder={
-                      activeTab === 'RECORDED'
-                        ? 'Search merchant, note, #tag, category, or account...'
-                        : 'Search schedule name, note, category, or account...'
-                    }
-                    placeholderTextColor={theme.textSecondary}
-                    accessibilityLabel="Search expenses"
-                    autoCorrect={false}
-                    autoCapitalize="none"
-                    className="flex-1 min-h-[44px] text-base text-slate-900 dark:text-slate-100"
-                  />
-                  {searchQuery.length > 0 && (
+                {/* Active Deep-Link Account Filter Chip */}
+                {activeAccountName && (
+                  <View className="flex-row items-center gap-2">
                     <Pressable
-                      onPress={() => setSearchQuery('')}
-                      hitSlop={COMPACT_HIT_SLOP}
+                      onPress={() => setAccountFilter('ALL')}
                       accessibilityRole="button"
-                      accessibilityLabel="Clear search"
-                      className="h-8 w-8 items-center justify-center active:opacity-75"
+                      accessibilityLabel={`Remove account filter ${activeAccountName}`}
+                      className="min-h-[44px] px-3.5 rounded-full bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark flex-row items-center gap-1.5 active:opacity-75"
                     >
-                      <ThemedText className="text-xs font-bold text-slate-500 dark:text-slate-400">
-                        ✕
+                      <AppIcon name="accounts" size={14} color={theme.primary} />
+                      <ThemedText className="text-xs font-semibold text-brand-500 dark:text-brand-400">
+                        Account: {activeAccountName}
                       </ThemedText>
+                      <AppIcon name="close" size={13} color={theme.primary} />
                     </Pressable>
-                  )}
-                </View>
+                  </View>
+                )}
 
-                {/* 8 Category Filter Pills */}
+                {/* Category Filter Pills */}
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
@@ -983,24 +1050,24 @@ export function ExpensesScreen({
                 >
                   <Pressable
                     onPress={() => setCategoryFilter('ALL')}
-                    hitSlop={COMPACT_HIT_SLOP}
                     accessibilityRole="button"
                     accessibilityLabel={`Filter all categories, ${categoryPillTotalCount} items`}
                     accessibilityState={{ selected: categoryFilter === 'ALL' }}
-                    className={`h-8 px-3 rounded-full flex-row items-center justify-center gap-1 border ${
+                    className={`min-h-[44px] px-3.5 rounded-full flex-row items-center justify-center gap-1.5 border ${
                       categoryFilter === 'ALL'
-                        ? 'bg-brand-500 border-brand-600 shadow-sm'
-                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 active:opacity-75'
+                        ? 'bg-brand-500 border-brand-500 dark:bg-brand-400 dark:border-brand-400'
+                        : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                     }`}
                   >
                     {categoryFilter === 'ALL' && (
-                      <ThemedText className="text-xs font-extrabold text-white">✓</ThemedText>
+                      <AppIcon name="check" size={13} color={theme.onPrimary} />
                     )}
                     <ThemedText
-                      className={`text-xs font-bold ${
+                      numeric
+                      className={`text-xs font-semibold ${
                         categoryFilter === 'ALL'
-                          ? 'text-white'
-                          : 'text-slate-600 dark:text-slate-300'
+                          ? 'text-ledger-canvas dark:text-brand-900'
+                          : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                       }`}
                     >
                       All ({categoryPillTotalCount})
@@ -1018,24 +1085,24 @@ export function ExpensesScreen({
                       <Pressable
                         key={cat.id}
                         onPress={() => setCategoryFilter(cat.id)}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Filter ${cat.name}, ${count} items`}
                         accessibilityState={{ selected: isSelected }}
-                        className={`h-8 px-3 rounded-full flex-row items-center justify-center gap-1 border ${
+                        className={`min-h-[44px] px-3.5 rounded-full flex-row items-center justify-center gap-1.5 border ${
                           isSelected
-                            ? 'bg-brand-500 border-brand-600 shadow-sm'
-                            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 active:opacity-75'
+                            ? 'bg-brand-500 border-brand-500 dark:bg-brand-400 dark:border-brand-400'
+                            : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                         }`}
                       >
                         {isSelected && (
-                          <ThemedText className="text-xs font-extrabold text-white">
-                            ✓
-                          </ThemedText>
+                          <AppIcon name="check" size={13} color={theme.onPrimary} />
                         )}
                         <ThemedText
-                          className={`text-xs font-bold ${
-                            isSelected ? 'text-white' : 'text-slate-600 dark:text-slate-300'
+                          numeric
+                          className={`text-xs font-semibold ${
+                            isSelected
+                              ? 'text-ledger-canvas dark:text-brand-900'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
                           {cat.icon} {cat.name} ({count})
@@ -1049,34 +1116,51 @@ export function ExpensesScreen({
               {/* List / Table Section */}
               <View className="gap-3">
                 <View className="flex-row flex-wrap items-center justify-between gap-2">
-                  <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    {listTitle} (
-                    {activeTab === 'RECORDED'
-                      ? filteredExpenses.length
-                      : filteredCommitments.length}
-                    )
-                  </ThemedText>
+                  <View className="flex-row items-center gap-2">
+                    <ThemedText
+                      numeric
+                      className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                    >
+                      {listTitle} (
+                      {activeTab === 'RECORDED'
+                        ? filteredExpenses.length
+                        : filteredCommitments.length}
+                      )
+                    </ThemedText>
+                    {activeTab === 'RECORDED' && (
+                      <ThemedText
+                        numeric
+                        className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark"
+                      >
+                        · {formatMinorUnits(summary.totalMinor)} ({activePeriodLabel})
+                      </ThemedText>
+                    )}
+                  </View>
 
                   <View className="flex-row flex-wrap items-center gap-2">
                     {/* Cards / Table Switcher */}
-                    <View className="p-0.5 rounded-lg bg-slate-200/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-row items-center gap-0.5">
+                    <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1">
                       <Pressable
                         onPress={() => setDisplayMode('CARDS')}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel="Display as cards"
                         accessibilityState={{ selected: displayMode === 'CARDS' }}
-                        className={`h-7 px-2.5 rounded-md items-center justify-center ${
+                        className={`min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
                           displayMode === 'CARDS'
-                            ? 'bg-white dark:bg-slate-900 shadow-sm'
-                            : 'active:opacity-75'
+                            ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                            : 'border border-transparent active:opacity-75'
                         }`}
                       >
+                        <AppIcon
+                          name="dashboard"
+                          size={14}
+                          color={displayMode === 'CARDS' ? theme.text : theme.textSecondary}
+                        />
                         <ThemedText
-                          className={`text-xs font-bold ${
+                          className={`text-xs font-semibold ${
                             displayMode === 'CARDS'
-                              ? 'text-slate-900 dark:text-white'
-                              : 'text-slate-600 dark:text-slate-400'
+                              ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
                           Cards
@@ -1085,21 +1169,25 @@ export function ExpensesScreen({
 
                       <Pressable
                         onPress={() => setDisplayMode('TABLE')}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel="Display as table"
                         accessibilityState={{ selected: displayMode === 'TABLE' }}
-                        className={`h-7 px-2.5 rounded-md items-center justify-center ${
+                        className={`min-h-[44px] px-3 rounded-lg flex-row items-center justify-center gap-1.5 ${
                           displayMode === 'TABLE'
-                            ? 'bg-white dark:bg-slate-900 shadow-sm'
-                            : 'active:opacity-75'
+                            ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                            : 'border border-transparent active:opacity-75'
                         }`}
                       >
+                        <AppIcon
+                          name="history"
+                          size={14}
+                          color={displayMode === 'TABLE' ? theme.text : theme.textSecondary}
+                        />
                         <ThemedText
-                          className={`text-xs font-bold ${
+                          className={`text-xs font-semibold ${
                             displayMode === 'TABLE'
-                              ? 'text-slate-900 dark:text-white'
-                              : 'text-slate-600 dark:text-slate-400'
+                              ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                           }`}
                         >
                           Table
@@ -1109,28 +1197,28 @@ export function ExpensesScreen({
 
                     {/* 2-Column / 3-Column Card Grid Switcher (Desktop) */}
                     {displayMode === 'CARDS' && canChooseThreeColumns && (
-                      <View className="p-0.5 rounded-lg bg-slate-200/80 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex-row items-center gap-0.5">
+                      <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1">
                         {([2, 3] as const).map((cols) => {
                           const isSelected = cardColumnsPref === cols;
                           return (
                             <Pressable
                               key={cols}
                               onPress={() => setCardColumnsPref(cols)}
-                              hitSlop={COMPACT_HIT_SLOP}
                               accessibilityRole="button"
                               accessibilityLabel={`${cols} column cards`}
                               accessibilityState={{ selected: isSelected }}
-                              className={`h-7 px-2.5 rounded-md items-center justify-center ${
+                              className={`min-h-[44px] px-3 rounded-lg items-center justify-center ${
                                 isSelected
-                                  ? 'bg-white dark:bg-slate-900 shadow-sm'
-                                  : 'active:opacity-75'
+                                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                                  : 'border border-transparent active:opacity-75'
                               }`}
                             >
                               <ThemedText
-                                className={`text-xs font-bold ${
+                                numeric
+                                className={`text-xs font-semibold ${
                                   isSelected
-                                    ? 'text-slate-900 dark:text-white'
-                                    : 'text-slate-600 dark:text-slate-400'
+                                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
                                 }`}
                               >
                                 {cols} Col
@@ -1144,36 +1232,39 @@ export function ExpensesScreen({
                     {/* Collapsible Inline Quick Form Toggle */}
                     <Pressable
                       onPress={() => setShowInlineForm((prev) => !prev)}
-                      hitSlop={COMPACT_HIT_SLOP}
                       accessibilityRole="button"
                       accessibilityLabel="Toggle quick expense form"
                       accessibilityState={{ selected: showInlineForm }}
-                      className={`h-8 px-2.5 rounded-lg border items-center justify-center ${
+                      className={`min-h-[44px] px-3.5 rounded-xl border flex-row items-center justify-center gap-1.5 ${
                         showInlineForm
-                          ? 'bg-brand-50 dark:bg-brand-900/40 border-brand-500'
-                          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 active:opacity-75'
+                          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-surface dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
                       }`}
                     >
+                      <AppIcon
+                        name="edit"
+                        size={14}
+                        color={showInlineForm ? theme.primary : theme.textSecondary}
+                      />
                       <ThemedText
-                        className={`text-xs font-bold ${
+                        className={`text-xs font-semibold ${
                           showInlineForm
-                            ? 'text-brand-700 dark:text-brand-300'
-                            : 'text-slate-700 dark:text-slate-200'
+                            ? 'text-brand-500 dark:text-brand-400'
+                            : 'text-ledger-ink dark:text-ledger-ink-dark'
                         }`}
                       >
-                        📝 Quick Form
+                        Quick Form
                       </ThemedText>
                     </Pressable>
 
                     {hasActiveFilters && (
                       <Pressable
                         onPress={handleResetFilters}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel="Clear filters"
-                        className="h-8 px-2 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                           Clear filters
                         </ThemedText>
                       </Pressable>
@@ -1181,10 +1272,9 @@ export function ExpensesScreen({
 
                     <Pressable
                       onPress={openAddModal}
-                      hitSlop={COMPACT_HIT_SLOP}
                       accessibilityRole="button"
                       accessibilityLabel="Add new expense"
-                      className="h-8 px-2 items-center justify-center active:opacity-75"
+                      className="min-h-[44px] px-3 rounded-xl items-center justify-center active:opacity-75"
                     >
                       <ThemedText className="text-xs font-semibold text-brand-500 dark:text-brand-400">
                         {activeTab === 'SCHEDULED' ? '+ New Schedule' : '+ New Expense'}
@@ -1213,14 +1303,16 @@ export function ExpensesScreen({
 
                 {activeTab === 'RECORDED' ? (
                   filteredExpenses.length === 0 ? (
-                    <View className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 items-center gap-3">
-                      <ThemedText className="text-3xl">🧾</ThemedText>
-                      <ThemedText className="text-base font-bold text-slate-800 dark:text-slate-100 text-center">
+                    <View className="p-6 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark items-center gap-3">
+                      <View className="w-12 h-12 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark items-center justify-center">
+                        <AppIcon name="receipt" size={24} color={theme.textMuted} />
+                      </View>
+                      <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
                         {allExpensesCount === 0
                           ? 'No expenses added yet'
                           : 'No matching expenses'}
                       </ThemedText>
-                      <ThemedText className="text-xs text-slate-500 dark:text-slate-400 text-center max-w-[300px]">
+                      <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[300px]">
                         {allExpensesCount === 0
                           ? 'Tap below to log your first expense and keep your balances up to date.'
                           : 'Try adjusting your period, category, account, or search query.'}
@@ -1231,9 +1323,9 @@ export function ExpensesScreen({
                             onPress={handleResetFilters}
                             accessibilityRole="button"
                             accessibilityLabel="Reset filters"
-                            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                            className="min-h-[44px] px-4 py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                           >
-                            <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                               Reset Filters
                             </ThemedText>
                           </Pressable>
@@ -1242,10 +1334,11 @@ export function ExpensesScreen({
                           onPress={openAddModal}
                           accessibilityRole="button"
                           accessibilityLabel="Add expense"
-                          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
                         >
-                          <ThemedText className="text-xs font-bold text-white">
-                            + Add Expense
+                          <AppIcon name="add" size={15} color={theme.onPrimary} />
+                          <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
+                            Add Expense
                           </ThemedText>
                         </Pressable>
                       </View>
@@ -1291,14 +1384,16 @@ export function ExpensesScreen({
                     </View>
                   )
                 ) : filteredCommitments.length === 0 ? (
-                  <View className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 items-center gap-3">
-                    <ThemedText className="text-3xl">🔄</ThemedText>
-                    <ThemedText className="text-base font-bold text-slate-800 dark:text-slate-100 text-center">
+                  <View className="p-6 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark items-center gap-3">
+                    <View className="w-12 h-12 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark items-center justify-center">
+                      <AppIcon name="sync" size={24} color={theme.textMuted} />
+                    </View>
+                    <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
                       {commitments.length === 0
                         ? 'No recurring expenses or loans yet'
                         : 'No matching schedules'}
                     </ThemedText>
-                    <ThemedText className="text-xs text-slate-500 dark:text-slate-400 text-center max-w-[320px]">
+                    <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[320px]">
                       {commitments.length === 0
                         ? 'Add recurring dues, subscriptions, or installment loans to track due dates and deduct payments automatically.'
                         : 'Try adjusting your status, category, account, or search filter.'}
@@ -1309,9 +1404,9 @@ export function ExpensesScreen({
                           onPress={handleResetFilters}
                           accessibilityRole="button"
                           accessibilityLabel="Reset filters"
-                          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                          className="min-h-[44px] px-4 py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                         >
-                          <ThemedText className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                          <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                             Reset Filters
                           </ThemedText>
                         </Pressable>
@@ -1320,10 +1415,11 @@ export function ExpensesScreen({
                         onPress={openAddModal}
                         accessibilityRole="button"
                         accessibilityLabel="Add recurring expense or loan"
-                        className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center"
+                        className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 flex-row items-center justify-center gap-1.5"
                       >
-                        <ThemedText className="text-xs font-bold text-white">
-                          + Add Schedule / Loan
+                        <AppIcon name="add" size={15} color={theme.onPrimary} />
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
+                          Add Schedule / Loan
                         </ThemedText>
                       </Pressable>
                     </View>

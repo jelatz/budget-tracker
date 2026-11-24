@@ -1,6 +1,7 @@
-import { ActivityIndicator, Pressable, View } from 'react-native';
+import { ActivityIndicator, Pressable } from 'react-native';
 import { useTheme } from '@/common/hooks/use-theme';
 import { syncNow, useSyncStatus } from '@/features/transactions/sync-engine';
+import { AppIcon, type AppIconName } from './app-icon';
 import { ThemedText } from './themed-text';
 
 export interface SyncStatusBadgeProps {
@@ -17,39 +18,44 @@ export function SyncStatusBadge({ compact = false }: SyncStatusBadgeProps) {
   const isSynced = status.phase === 'synced' && status.pendingCount === 0;
 
   let label = 'Tap to sync';
+  let iconName: AppIconName = 'sync';
+  let iconColor: string = theme.textSecondary;
   let containerClass =
-    'bg-slate-100 dark:bg-slate-800 border-slate-200/80 dark:border-slate-700/80';
-  let dotClass = 'bg-slate-400 dark:bg-slate-500';
-  let textClass = 'text-slate-600 dark:text-slate-300';
+    'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark';
+  let textClass = 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary';
 
   if (isSyncing) {
     label = 'Syncing…';
     containerClass =
-      'bg-sky-50 dark:bg-sky-950/50 border-sky-200/80 dark:border-sky-800/70';
-    textClass = 'text-sky-700 dark:text-sky-300';
+      'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border-ledger-border dark:border-ledger-border-dark';
+    iconColor = theme.info;
+    textClass = 'text-ledger-teal dark:text-ledger-teal-dark';
   } else if (isOffline) {
     label =
       status.pendingCount > 0
-        ? `Offline • ${status.pendingCount} pending`
+        ? `Offline · ${status.pendingCount} pending`
         : compact
           ? 'Offline'
           : 'Offline (Cached)';
+    iconName = 'offline';
+    iconColor = theme.warning;
     containerClass =
-      'bg-amber-50 dark:bg-amber-950/50 border-amber-200/80 dark:border-amber-800/70';
-    dotClass = 'bg-amber-500';
-    textClass = 'text-amber-700 dark:text-amber-300';
+      'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border-ledger-border dark:border-ledger-border-dark';
+    textClass = 'text-ledger-ochre dark:text-ledger-ochre-dark';
   } else if (isError) {
-    label = compact ? 'Sync retry' : 'Sync issue • Retry';
+    label = compact ? 'Sync retry' : 'Sync issue · Retry';
+    iconName = 'warning';
+    iconColor = theme.negative;
     containerClass =
-      'bg-rose-50 dark:bg-rose-950/50 border-rose-200/80 dark:border-rose-800/70';
-    dotClass = 'bg-rose-500';
-    textClass = 'text-rose-700 dark:text-rose-300';
+      'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-border dark:border-ledger-border-dark';
+    textClass = 'text-ledger-terracotta dark:text-ledger-terracotta-dark';
   } else if (isSynced) {
     label = compact ? 'Synced' : 'Cloud Synced';
+    iconName = 'cloudDone';
+    iconColor = theme.positive;
     containerClass =
-      'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200/80 dark:border-emerald-800/70';
-    dotClass = 'bg-emerald-500';
-    textClass = 'text-emerald-700 dark:text-emerald-300';
+      'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-border dark:border-ledger-border-dark';
+    textClass = 'text-ledger-pine dark:text-ledger-pine-dark';
   } else if (status.pendingCount > 0) {
     label = `${status.pendingCount} pending`;
   }
@@ -62,14 +68,14 @@ export function SyncStatusBadge({ compact = false }: SyncStatusBadgeProps) {
       disabled={isSyncing}
       accessibilityRole="button"
       accessibilityLabel={`Cloud sync status: ${label}. Tap to sync now.`}
-      hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
-      className={`px-2.5 py-1.5 rounded-full border flex-row items-center gap-1.5 active:opacity-75 ${containerClass}`}>
+      hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+      className={`min-h-[32px] px-2.5 py-1 rounded-full border flex-row items-center gap-1.5 active:opacity-75 ${containerClass}`}>
       {isSyncing ? (
-        <ActivityIndicator size="small" color={theme.text} />
+        <ActivityIndicator size="small" color={theme.info} />
       ) : (
-        <View className={`w-2 h-2 rounded-full ${dotClass}`} />
+        <AppIcon name={iconName} size={13} color={iconColor} />
       )}
-      <ThemedText className={`text-xs font-semibold ${textClass}`} numberOfLines={1}>
+      <ThemedText className={`text-xs font-medium ${textClass}`} numberOfLines={1}>
         {label}
       </ThemedText>
     </Pressable>

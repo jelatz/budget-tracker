@@ -11,17 +11,15 @@ import {
   formatMinorUnits,
   getAccountTypeLabel,
   getCommitmentDueStatus,
-  isCommitmentPaidOff,
   type Account,
   type Category,
   type RecurringCommitment,
   type Transaction,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
-import { Colors } from '@/common/constants/theme';
-
-const COMPACT_HIT_SLOP = { top: 6, bottom: 6, left: 4, right: 4 } as const;
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface ScheduledExpensesTableProps {
   commitments: readonly RecurringCommitment[];
@@ -79,7 +77,7 @@ export function ScheduledExpensesTable({
   categories,
   accounts,
   currentPeriod,
-  currentDay,
+  currentDay: _currentDay,
   monthName,
   onPay,
   onUnpay,
@@ -87,6 +85,7 @@ export function ScheduledExpensesTable({
   onDelete,
   isBusy,
 }: ScheduledExpensesTableProps) {
+  const theme = useTheme();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const summaryTotals = useMemo(() => {
@@ -125,47 +124,47 @@ export function ScheduledExpensesTable({
   }, [commitments, currentPeriod]);
 
   return (
-    <View className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator
         contentContainerStyle={{ flexGrow: 1 }}
       >
-        <View className="flex-1 min-w-[940px]">
+        <View className="flex-1 min-w-[980px]">
           {/* Header Row */}
-          <View className="flex-row items-center gap-2 px-3 py-3 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700">
+          <View className="flex-row items-center gap-2 px-3 py-3 bg-ledger-subtle dark:bg-ledger-subtle-dark border-b border-ledger-border dark:border-ledger-border-dark">
             <View className="w-[140px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Category
               </ThemedText>
             </View>
             <View className="flex-1 min-w-[210px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Obligation Name
               </ThemedText>
             </View>
             <View className="w-[120px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Due Date
               </ThemedText>
             </View>
             <View className="w-[86px] items-center">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-center">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-center">
                 Total Terms
               </ThemedText>
             </View>
             <View className="w-[100px] items-center">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-center">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-center">
                 Remaining
               </ThemedText>
             </View>
             <View className="w-[132px] items-end">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-right">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-right">
                 Monthly Amount
               </ThemedText>
             </View>
-            <View className="w-[196px] items-end">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-right">
+            <View className="w-[228px] items-end">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-right">
                 Actions
               </ThemedText>
             </View>
@@ -189,35 +188,38 @@ export function ScheduledExpensesTable({
               ? formatCalendarDateShort(commitment.nextDueDate, currentYear)
               : null;
 
-            let duePillBg = 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700';
-            let duePillText = 'text-slate-700 dark:text-slate-200';
+            let duePillBg = 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark';
+            let duePillText = 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary';
             let dueLabelText = formatDueOrdinal(commitment.dueDay);
+            let showPaidCheck = false;
 
             if (isPaidOff) {
               duePillBg =
-                'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/70';
-              duePillText = 'text-emerald-700 dark:text-emerald-300';
+                'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-border dark:border-ledger-border-dark';
+              duePillText = 'text-ledger-pine dark:text-ledger-pine-dark';
               dueLabelText = 'Paid Off';
+              showPaidCheck = true;
             } else if (isPaid) {
               duePillBg =
-                'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800/70';
-              duePillText = 'text-emerald-700 dark:text-emerald-300';
-              dueLabelText = '✓ Paid';
+                'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-border dark:border-ledger-border-dark';
+              duePillText = 'text-ledger-pine dark:text-ledger-pine-dark';
+              dueLabelText = 'Paid';
+              showPaidCheck = true;
             } else if (nextDueShort) {
               if (dueStatus.state === 'OVERDUE') {
                 duePillBg =
-                  'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800/70';
-                duePillText = 'text-rose-700 dark:text-rose-300';
+                  'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-border dark:border-ledger-border-dark';
+                duePillText = 'text-ledger-terracotta dark:text-ledger-terracotta-dark';
                 dueLabelText = `${nextDueShort} · Late`;
               } else if (dueStatus.state === 'DUE_TODAY') {
                 duePillBg =
-                  'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/70';
-                duePillText = 'text-amber-700 dark:text-amber-300';
+                  'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border-ledger-border dark:border-ledger-border-dark';
+                duePillText = 'text-ledger-ochre dark:text-ledger-ochre-dark';
                 dueLabelText = `${nextDueShort} · Today`;
               } else if (dueStatus.state === 'FUTURE_MONTH') {
                 duePillBg =
-                  'bg-brand-50 dark:bg-brand-900/40 border-brand-200 dark:border-brand-800/70';
-                duePillText = 'text-brand-700 dark:text-brand-300';
+                  'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border-ledger-border dark:border-ledger-border-dark';
+                duePillText = 'text-ledger-teal dark:text-ledger-teal-dark';
                 dueLabelText = nextDueShort;
               } else {
                 dueLabelText = nextDueShort;
@@ -226,33 +228,43 @@ export function ScheduledExpensesTable({
               dueLabelText = customDueLabel;
             } else if (dueStatus.isOverdue) {
               duePillBg =
-                'bg-rose-50 dark:bg-rose-950/50 border-rose-200 dark:border-rose-800/70';
-              duePillText = 'text-rose-700 dark:text-rose-300';
+                'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-border dark:border-ledger-border-dark';
+              duePillText = 'text-ledger-terracotta dark:text-ledger-terracotta-dark';
               dueLabelText = `${formatDueOrdinal(commitment.dueDay)} · Late`;
             } else if (dueStatus.isDueToday) {
               duePillBg =
-                'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800/70';
-              duePillText = 'text-amber-700 dark:text-amber-300';
+                'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border-ledger-border dark:border-ledger-border-dark';
+              duePillText = 'text-ledger-ochre dark:text-ledger-ochre-dark';
               dueLabelText = `${formatDueOrdinal(commitment.dueDay)} · Today`;
             }
 
             const isConfirmingDelete = confirmDeleteId === commitment.id;
             const rowBg =
               index % 2 === 0
-                ? 'bg-white dark:bg-slate-900'
-                : 'bg-slate-50/70 dark:bg-slate-900/60';
+                ? 'bg-ledger-surface dark:bg-ledger-surface-dark'
+                : 'bg-ledger-canvas/60 dark:bg-ledger-subtle-dark/40';
+
+            const rowMetaParts = [
+              account ? `${account.name} (${getAccountTypeLabel(account.accountType)})` : null,
+              isInstallment ? 'Loan' : null,
+              commitment.isAutoPaid ? 'Auto-pay' : null,
+            ].filter((part): part is string => Boolean(part));
 
             return (
               <View
                 key={commitment.id}
-                className={`flex-row items-center gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-800/80 ${rowBg}`}
+                className={`flex-row items-center gap-2 px-3 py-2.5 border-b border-ledger-border dark:border-ledger-border-dark ${rowBg}`}
               >
                 {/* Category */}
                 <View className="w-[140px] flex-row items-center">
-                  <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex-row items-center gap-1 max-w-full">
-                    <ThemedText className="text-xs">{category?.icon ?? '📦'}</ThemedText>
+                  <View className="px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1 max-w-full">
+                    {category?.icon ? (
+                      <ThemedText className="text-xs">{category.icon}</ThemedText>
+                    ) : (
+                      <AppIcon name="tag" size={12} color={theme.textSecondary} />
+                    )}
                     <ThemedText
-                      className="text-xs font-semibold text-slate-700 dark:text-slate-200"
+                      className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
                       numberOfLines={1}
                     >
                       {category?.name ?? 'Expense'}
@@ -260,50 +272,42 @@ export function ScheduledExpensesTable({
                   </View>
                 </View>
 
-                {/* Obligation Name & Account/Tags */}
+                {/* Obligation Name & Middot Metadata */}
                 <View className="flex-1 min-w-[210px] gap-0.5">
                   <ThemedText
-                    className="text-sm font-bold text-slate-900 dark:text-white"
+                    className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                     numberOfLines={2}
                   >
                     {commitment.name}
                   </ThemedText>
-                  <View className="flex-row flex-wrap items-center gap-1.5">
-                    {account && (
-                      <ThemedText
-                        className="text-[11px] font-medium text-slate-500 dark:text-slate-400"
-                        numberOfLines={1}
-                      >
-                        {account.icon} {account.name} ({getAccountTypeLabel(account.accountType)})
-                      </ThemedText>
-                    )}
-                    {isInstallment && (
-                      <View className="px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/50 border border-amber-200/70 dark:border-amber-800/60">
-                        <ThemedText className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                          Loan
-                        </ThemedText>
-                      </View>
-                    )}
-                    {commitment.isAutoPaid && (
-                      <View className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/70 dark:border-emerald-800/60">
-                        <ThemedText className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300">
-                          Auto-pay
-                        </ThemedText>
-                      </View>
-                    )}
-                  </View>
+                  {rowMetaParts.length > 0 && (
+                    <ThemedText
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                      numberOfLines={1}
+                    >
+                      {rowMetaParts.join(' · ')}
+                    </ThemedText>
+                  )}
                 </View>
 
                 {/* Due Date / Schedule Label */}
                 <View className="w-[120px] gap-0.5 justify-center">
-                  <View className={`px-2 py-1 rounded-full border self-start max-w-full ${duePillBg}`}>
-                    <ThemedText className={`text-[11px] font-bold ${duePillText}`} numberOfLines={1}>
+                  <View
+                    className={`px-2.5 py-1 rounded-full border self-start max-w-full flex-row items-center gap-1 ${duePillBg}`}
+                  >
+                    {showPaidCheck && (
+                      <AppIcon name="check" size={11} color={theme.positive} />
+                    )}
+                    <ThemedText
+                      className={`text-[11px] font-semibold ${duePillText}`}
+                      numberOfLines={1}
+                    >
                       {dueLabelText}
                     </ThemedText>
                   </View>
                   {isPaid && nextDueShort && (
                     <ThemedText
-                      className="text-[10px] font-medium text-slate-500 dark:text-slate-400"
+                      className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
                       numberOfLines={1}
                     >
                       Next: {nextDueShort}
@@ -313,7 +317,10 @@ export function ScheduledExpensesTable({
 
                 {/* Total Terms */}
                 <View className="w-[86px] items-center justify-center">
-                  <ThemedText className="text-xs font-bold font-mono text-slate-700 dark:text-slate-200">
+                  <ThemedText
+                    numeric
+                    className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                  >
                     {progress ? progress.totalCount : '—'}
                   </ThemedText>
                 </View>
@@ -324,22 +331,23 @@ export function ScheduledExpensesTable({
                     <View
                       className={`px-2.5 py-0.5 rounded-full ${
                         progress.remainingCount === 0
-                          ? 'bg-emerald-50 dark:bg-emerald-950/50'
-                          : 'bg-brand-50 dark:bg-brand-900/40'
+                          ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft'
+                          : 'bg-brand-50 dark:bg-ledger-pine-dark-soft'
                       }`}
                     >
                       <ThemedText
-                        className={`text-xs font-bold font-mono ${
+                        numeric
+                        className={`text-xs font-bold ${
                           progress.remainingCount === 0
-                            ? 'text-emerald-700 dark:text-emerald-300'
-                            : 'text-brand-700 dark:text-brand-300'
+                            ? 'text-ledger-pine dark:text-ledger-pine-dark'
+                            : 'text-brand-500 dark:text-brand-400'
                         }`}
                       >
                         {progress.remainingCount}
                       </ThemedText>
                     </View>
                   ) : (
-                    <ThemedText className="text-xs font-mono text-slate-400 dark:text-slate-600">
+                    <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       —
                     </ThemedText>
                   )}
@@ -347,18 +355,24 @@ export function ScheduledExpensesTable({
 
                 {/* Monthly Amount */}
                 <View className="w-[132px] items-end gap-0.5">
-                  <ThemedText className="text-sm font-extrabold font-mono text-slate-900 dark:text-white">
+                  <ThemedText
+                    numeric
+                    className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
                     {formatMinorUnits(commitment.amountMinor, commitment.currency)}
                   </ThemedText>
                   {progress && !progress.isPaidOff && (
-                    <ThemedText className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                    <ThemedText
+                      numeric
+                      className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                    >
                       {formatMinorUnits(progress.remainingBalanceMinor, commitment.currency)} left
                     </ThemedText>
                   )}
                 </View>
 
                 {/* Actions */}
-                <View className="w-[196px] flex-row items-center justify-end gap-1.5">
+                <View className="w-[228px] flex-row items-center justify-end gap-1.5">
                   {isConfirmingDelete ? (
                     <>
                       <Pressable
@@ -367,26 +381,26 @@ export function ScheduledExpensesTable({
                           onDelete(commitment.id);
                         }}
                         disabled={isBusy}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Confirm delete ${commitment.name}`}
-                        className="h-8 px-2.5 rounded-lg bg-rose-600 active:bg-rose-700 items-center justify-center"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
                       >
                         {isBusy ? (
-                          <ActivityIndicator size="small" color={Colors.dark.text} />
+                          <ActivityIndicator size="small" color={theme.onPrimary} />
                         ) : (
-                          <ThemedText className="text-xs font-bold text-white">Confirm</ThemedText>
+                          <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                            Confirm
+                          </ThemedText>
                         )}
                       </Pressable>
                       <Pressable
                         onPress={() => setConfirmDeleteId(null)}
                         disabled={isBusy}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Cancel delete ${commitment.name}`}
-                        className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                           Cancel
                         </ThemedText>
                       </Pressable>
@@ -397,20 +411,21 @@ export function ScheduledExpensesTable({
                         <Pressable
                           onPress={() => (isPaid ? onUnpay(commitment) : onPay(commitment))}
                           disabled={isBusy}
-                          hitSlop={COMPACT_HIT_SLOP}
                           accessibilityRole="button"
                           accessibilityLabel={
                             isPaid ? `Undo payment for ${commitment.name}` : `Pay ${commitment.name}`
                           }
-                          className={`h-8 px-2.5 rounded-lg items-center justify-center border ${
+                          className={`min-h-[44px] px-3 rounded-xl items-center justify-center border ${
                             isPaid
-                              ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 active:opacity-75'
-                              : 'bg-brand-500 border-brand-500 active:bg-brand-600'
+                              ? 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                              : 'bg-brand-500 border-brand-500 active:bg-brand-600 dark:bg-brand-400 dark:border-brand-400'
                           }`}
                         >
                           <ThemedText
                             className={`text-xs font-bold ${
-                              isPaid ? 'text-slate-700 dark:text-slate-200' : 'text-white'
+                              isPaid
+                                ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                                : 'text-ledger-canvas dark:text-brand-900'
                             }`}
                           >
                             {isPaid ? 'Undo' : 'Pay'}
@@ -420,24 +435,22 @@ export function ScheduledExpensesTable({
                       <Pressable
                         onPress={() => onEdit(commitment)}
                         disabled={isBusy}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Edit ${commitment.name}`}
-                        className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                           Edit
                         </ThemedText>
                       </Pressable>
                       <Pressable
                         onPress={() => setConfirmDeleteId(commitment.id)}
                         disabled={isBusy}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Delete ${commitment.name}`}
-                        className="h-8 px-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/50 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                        <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                           Del
                         </ThemedText>
                       </Pressable>
@@ -448,37 +461,37 @@ export function ScheduledExpensesTable({
             );
           })}
 
-          {/* Spreadsheet-style Summary Footer Rows */}
-          <View className="flex-row items-center justify-between px-3 py-2.5 bg-emerald-50/90 dark:bg-emerald-950/40 border-b border-emerald-200/70 dark:border-emerald-900/50">
-            <ThemedText className="text-xs font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
-              TOTAL PAID ({monthName}) — {summaryTotals.paidCount}{' '}
+          {/* Summary Footer Rows */}
+          <View className="flex-row items-center justify-between px-3 py-2.5 bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-b border-ledger-border dark:border-ledger-border-dark">
+            <ThemedText numeric className="text-xs font-bold uppercase tracking-wider text-ledger-pine dark:text-ledger-pine-dark">
+              Total Paid ({monthName}) — {summaryTotals.paidCount}{' '}
               {summaryTotals.paidCount === 1 ? 'item' : 'items'}
             </ThemedText>
-            <ThemedText className="text-sm font-extrabold font-mono text-emerald-800 dark:text-emerald-300">
+            <ThemedText numeric className="text-sm font-bold text-ledger-pine dark:text-ledger-pine-dark">
               {formatMinorUnits(summaryTotals.paidMinor)}
             </ThemedText>
           </View>
 
-          <View className="flex-row items-center justify-between px-3 py-2.5 bg-rose-50/90 dark:bg-rose-950/40 border-b border-rose-200/70 dark:border-rose-900/50">
-            <ThemedText className="text-xs font-extrabold uppercase tracking-wider text-rose-800 dark:text-rose-300">
-              REMAINING DUE ({monthName}) — {summaryTotals.unpaidCount}{' '}
+          <View className="flex-row items-center justify-between px-3 py-2.5 bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-b border-ledger-border dark:border-ledger-border-dark">
+            <ThemedText numeric className="text-xs font-bold uppercase tracking-wider text-ledger-terracotta dark:text-ledger-terracotta-dark">
+              Remaining Due ({monthName}) — {summaryTotals.unpaidCount}{' '}
               {summaryTotals.unpaidCount === 1 ? 'item' : 'items'}
             </ThemedText>
-            <ThemedText className="text-sm font-extrabold font-mono text-rose-800 dark:text-rose-300">
+            <ThemedText numeric className="text-sm font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
               {formatMinorUnits(summaryTotals.unpaidMinor)}
             </ThemedText>
           </View>
 
-          <View className="flex-row items-center justify-between px-3 py-3 bg-slate-100 dark:bg-slate-800/90">
-            <ThemedText className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-              FILTERED TOTAL ({commitments.length}{' '}
+          <View className="flex-row items-center justify-between px-3 py-3 bg-ledger-subtle dark:bg-ledger-subtle-dark">
+            <ThemedText numeric className="text-xs font-bold uppercase tracking-wider text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+              Filtered Total ({commitments.length}{' '}
               {commitments.length === 1 ? 'item' : 'items'}
               {summaryTotals.totalRemainingTerms > 0
-                ? ` • ${summaryTotals.totalRemainingTerms} remaining terms`
+                ? ` · ${summaryTotals.totalRemainingTerms} remaining terms`
                 : ''}
               )
             </ThemedText>
-            <ThemedText className="text-sm font-extrabold font-mono text-slate-900 dark:text-white">
+            <ThemedText numeric className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
               {formatMinorUnits(summaryTotals.totalMonthlyMinor)}
             </ThemedText>
           </View>
@@ -496,6 +509,7 @@ export function RecordedExpensesTable({
   onDelete,
   isDeleting,
 }: RecordedExpensesTableProps) {
+  const theme = useTheme();
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const totalMinor = useMemo(
@@ -504,42 +518,42 @@ export function RecordedExpensesTable({
   );
 
   return (
-    <View className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm overflow-hidden">
+    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator
         contentContainerStyle={{ flexGrow: 1 }}
       >
-        <View className="flex-1 min-w-[780px]">
+        <View className="flex-1 min-w-[820px]">
           {/* Header Row */}
-          <View className="flex-row items-center gap-2 px-3 py-3 bg-slate-100 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700">
+          <View className="flex-row items-center gap-2 px-3 py-3 bg-ledger-subtle dark:bg-ledger-subtle-dark border-b border-ledger-border dark:border-ledger-border-dark">
             <View className="w-[116px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Date
               </ThemedText>
             </View>
             <View className="w-[148px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Category
               </ThemedText>
             </View>
             <View className="flex-1 min-w-[200px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Merchant / Note
               </ThemedText>
             </View>
             <View className="w-[140px]">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                 Account
               </ThemedText>
             </View>
             <View className="w-[128px] items-end">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-right">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-right">
                 Amount
               </ThemedText>
             </View>
-            <View className="w-[148px] items-end">
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 text-right">
+            <View className="w-[172px] items-end">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted text-right">
                 Actions
               </ThemedText>
             </View>
@@ -554,7 +568,6 @@ export function RecordedExpensesTable({
                 ? categories.find((c) => c.id === expense.categoryId)
                 : undefined;
 
-            const categoryIcon = isSplit ? '🔀' : (singleCategory?.icon ?? '🏷️');
             const categoryLabel = isSplit
               ? `Split (${expense.splits?.length ?? 0})`
               : (singleCategory?.name ?? 'Uncategorized');
@@ -565,27 +578,33 @@ export function RecordedExpensesTable({
             const isConfirmingDelete = confirmDeleteId === expense.id;
             const rowBg =
               index % 2 === 0
-                ? 'bg-white dark:bg-slate-900'
-                : 'bg-slate-50/70 dark:bg-slate-900/60';
+                ? 'bg-ledger-surface dark:bg-ledger-surface-dark'
+                : 'bg-ledger-canvas/60 dark:bg-ledger-subtle-dark/40';
 
             return (
               <View
                 key={expense.id}
-                className={`flex-row items-center gap-2 px-3 py-2.5 border-b border-slate-100 dark:border-slate-800/80 ${rowBg}`}
+                className={`flex-row items-center gap-2 px-3 py-2.5 border-b border-ledger-border dark:border-ledger-border-dark ${rowBg}`}
               >
                 {/* Date */}
                 <View className="w-[116px]">
-                  <ThemedText className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                  <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                     {formatExpenseTableDate(expense.occurredAt)}
                   </ThemedText>
                 </View>
 
                 {/* Category */}
                 <View className="w-[148px] flex-row items-center">
-                  <View className="px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex-row items-center gap-1 max-w-full">
-                    <ThemedText className="text-xs">{categoryIcon}</ThemedText>
+                  <View className="px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1 max-w-full">
+                    {isSplit ? (
+                      <AppIcon name="split" size={12} color={theme.negative} />
+                    ) : singleCategory?.icon ? (
+                      <ThemedText className="text-xs">{singleCategory.icon}</ThemedText>
+                    ) : (
+                      <AppIcon name="tag" size={12} color={theme.textSecondary} />
+                    )}
                     <ThemedText
-                      className="text-xs font-semibold text-slate-700 dark:text-slate-200"
+                      className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
                       numberOfLines={1}
                     >
                       {categoryLabel}
@@ -596,19 +615,19 @@ export function RecordedExpensesTable({
                 {/* Merchant / Note */}
                 <View className="flex-1 min-w-[200px] gap-0.5">
                   <ThemedText
-                    className="text-sm font-bold text-slate-900 dark:text-white"
+                    className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
                     numberOfLines={1}
                   >
                     {primaryTitle}
                   </ThemedText>
                   {(trimmedNote.length > 0 || expense.tags.length > 0) && (
                     <ThemedText
-                      className="text-[11px] text-slate-500 dark:text-slate-400"
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
                       numberOfLines={1}
                     >
                       {[trimmedNote, ...expense.tags.map((t) => `#${t}`)]
                         .filter((v) => v.length > 0)
-                        .join(' • ')}
+                        .join(' · ')}
                     </ThemedText>
                   )}
                 </View>
@@ -617,13 +636,13 @@ export function RecordedExpensesTable({
                 <View className="w-[140px]">
                   {account ? (
                     <ThemedText
-                      className="text-xs font-medium text-slate-600 dark:text-slate-300"
+                      className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
                       numberOfLines={1}
                     >
                       {account.icon} {account.name}
                     </ThemedText>
                   ) : (
-                    <ThemedText className="text-xs text-slate-400 dark:text-slate-600">
+                    <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
                       —
                     </ThemedText>
                   )}
@@ -631,13 +650,16 @@ export function RecordedExpensesTable({
 
                 {/* Amount */}
                 <View className="w-[128px] items-end">
-                  <ThemedText className="text-sm font-extrabold font-mono text-rose-600 dark:text-rose-400">
+                  <ThemedText
+                    numeric
+                    className="text-sm font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark"
+                  >
                     -{formatMinorUnits(expense.amountMinor, expense.currency)}
                   </ThemedText>
                 </View>
 
                 {/* Actions */}
-                <View className="w-[148px] flex-row items-center justify-end gap-1.5">
+                <View className="w-[172px] flex-row items-center justify-end gap-1.5">
                   {isConfirmingDelete ? (
                     <>
                       <Pressable
@@ -646,22 +668,22 @@ export function RecordedExpensesTable({
                           onDelete(expense.id);
                         }}
                         disabled={isDeleting}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Confirm delete ${primaryTitle}`}
-                        className="h-8 px-2.5 rounded-lg bg-rose-600 active:bg-rose-700 items-center justify-center"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
                       >
-                        <ThemedText className="text-xs font-bold text-white">Confirm</ThemedText>
+                        <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                          Confirm
+                        </ThemedText>
                       </Pressable>
                       <Pressable
                         onPress={() => setConfirmDeleteId(null)}
                         disabled={isDeleting}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Cancel delete ${primaryTitle}`}
-                        className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                           Cancel
                         </ThemedText>
                       </Pressable>
@@ -671,24 +693,22 @@ export function RecordedExpensesTable({
                       <Pressable
                         onPress={() => onEdit(expense)}
                         disabled={isDeleting}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Edit ${primaryTitle}`}
-                        className="h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                           Edit
                         </ThemedText>
                       </Pressable>
                       <Pressable
                         onPress={() => setConfirmDeleteId(expense.id)}
                         disabled={isDeleting}
-                        hitSlop={COMPACT_HIT_SLOP}
                         accessibilityRole="button"
                         accessibilityLabel={`Delete ${primaryTitle}`}
-                        className="h-8 px-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200/70 dark:border-rose-900/50 items-center justify-center active:opacity-75"
+                        className="min-h-[44px] px-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
                       >
-                        <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400">
+                        <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                           Del
                         </ThemedText>
                       </Pressable>
@@ -700,11 +720,11 @@ export function RecordedExpensesTable({
           })}
 
           {/* Totals Footer Row */}
-          <View className="flex-row items-center justify-between px-3 py-3 bg-slate-100 dark:bg-slate-800/90">
-            <ThemedText className="text-xs font-extrabold uppercase tracking-wider text-slate-700 dark:text-slate-200">
-              TOTAL ({expenses.length} {expenses.length === 1 ? 'expense' : 'expenses'})
+          <View className="flex-row items-center justify-between px-3 py-3 bg-ledger-subtle dark:bg-ledger-subtle-dark">
+            <ThemedText numeric className="text-xs font-bold uppercase tracking-wider text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+              Total ({expenses.length} {expenses.length === 1 ? 'expense' : 'expenses'})
             </ThemedText>
-            <ThemedText className="text-sm font-extrabold font-mono text-rose-600 dark:text-rose-400">
+            <ThemedText numeric className="text-sm font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
               -{formatMinorUnits(totalMinor)}
             </ThemedText>
           </View>

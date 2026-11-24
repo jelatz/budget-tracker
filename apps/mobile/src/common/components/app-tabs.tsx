@@ -11,62 +11,66 @@ export default function AppTabs() {
 
   return (
     <NativeTabs
-      backgroundColor={colors.background}
-      indicatorColor={colors.backgroundElement}
-      labelStyle={{ selected: { color: colors.text } }}>
+      backgroundColor={colors.surface}
+      indicatorColor={colors.primarySoft}
+      iconColor={{ default: colors.textMuted, selected: colors.primary }}
+      labelStyle={{
+        default: { color: colors.textSecondary },
+        selected: { color: colors.primary },
+      }}>
       <NativeTabs.Trigger name="index" hidden={isAuthenticated}>
-        <NativeTabs.Trigger.Label>Login</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Sign In</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          sf={{ default: 'person.crop.circle', selected: 'person.crop.circle.fill' }}
+          md="login"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="register" hidden={isAuthenticated}>
         <NativeTabs.Trigger.Label>Register</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'person.badge.plus', selected: 'person.badge.plus' }}
+          md="person_add"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="dashboard" hidden={!isAuthenticated}>
-        <NativeTabs.Trigger.Label>Dashboard</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Overview</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          sf={{ default: 'square.grid.2x2', selected: 'square.grid.2x2.fill' }}
+          md="space_dashboard"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="accounts" hidden={!isAuthenticated}>
         <NativeTabs.Trigger.Label>Accounts</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'building.columns', selected: 'building.columns.fill' }}
+          md="account_balance_wallet"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="expenses" hidden={!isAuthenticated}>
         <NativeTabs.Trigger.Label>Expenses</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'creditcard', selected: 'creditcard.fill' }}
+          md="payments"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="capture" hidden={!isAuthenticated}>
-        <NativeTabs.Trigger.Label>Capture</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Entry</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/explore.png')}
-          renderingMode="template"
+          sf={{ default: 'plus.circle', selected: 'plus.circle.fill' }}
+          md="add_circle"
         />
       </NativeTabs.Trigger>
 
       <NativeTabs.Trigger name="transactions" hidden={!isAuthenticated}>
         <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
-          src={require('@/assets/images/tabIcons/home.png')}
-          renderingMode="template"
+          sf={{ default: 'list.bullet.rectangle', selected: 'list.bullet.rectangle.fill' }}
+          md="receipt_long"
         />
       </NativeTabs.Trigger>
     </NativeTabs>

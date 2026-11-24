@@ -17,7 +17,10 @@ import {
   parseDecimalToMinorUnits,
   type BudgetSummary,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface BudgetProgressCardProps {
   budget: BudgetSummary;
@@ -34,6 +37,7 @@ export function BudgetProgressCard({
   onUpdateBudget,
   isUpdating = false,
 }: BudgetProgressCardProps) {
+  const theme = useTheme();
   const presets = PRESET_AMOUNTS_MINOR.map((minor) => ({
     minor,
     label: formatMinorUnits(minor, currency).replace(/\.00$/, ''),
@@ -46,21 +50,24 @@ export function BudgetProgressCard({
   const isBusy = isUpdating || isSaving;
   const clampedPercent = Math.min(100, Math.max(0, budget.utilizationPercent));
 
-  // Semantic color tokens for progress bar & badge
   const isDanger = budget.isOverBudget || budget.utilizationPercent >= 100;
   const isWarning = !isDanger && budget.utilizationPercent >= 75;
 
-  const barColorClass = isDanger ? 'bg-rose-500' : isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+  const barColorClass = isDanger
+    ? 'bg-ledger-terracotta dark:bg-ledger-terracotta-dark'
+    : isWarning
+      ? 'bg-ledger-ochre dark:bg-ledger-ochre-dark'
+      : 'bg-ledger-pine dark:bg-ledger-pine-dark';
   const badgeBgClass = isDanger
-    ? 'bg-rose-50 dark:bg-rose-950/60'
+    ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft'
     : isWarning
-      ? 'bg-amber-50 dark:bg-amber-950/60'
-      : 'bg-emerald-50 dark:bg-emerald-950/60';
+      ? 'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft'
+      : 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft';
   const badgeTextClass = isDanger
-    ? 'text-rose-600 dark:text-rose-400'
+    ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
     : isWarning
-      ? 'text-amber-600 dark:text-amber-400'
-      : 'text-emerald-600 dark:text-emerald-400';
+      ? 'text-ledger-ochre dark:text-ledger-ochre-dark'
+      : 'text-ledger-pine dark:text-ledger-pine-dark';
 
   const handleOpenModal = () => {
     setTargetInput(minorUnitsToDecimalInput(budget.budgetMinor));
@@ -102,30 +109,32 @@ export function BudgetProgressCard({
   };
 
   return (
-    <View className="rounded-3xl p-5 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
+    <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
       {/* 1. Header Row */}
-      <View className="flex-row justify-between items-center mb-3">
-        <ThemedText className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      <View className="flex-row justify-between items-center gap-2 mb-3">
+        <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted flex-1">
           Monthly Spending Target
         </ThemedText>
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Edit Target"
+          accessibilityLabel="Edit monthly spending target"
           onPress={handleOpenModal}
           disabled={isBusy}
-          className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 active:opacity-75"
+          className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1.5 active:bg-ledger-selected dark:active:bg-ledger-selected-dark"
         >
-          <ThemedText className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-            ✏️ Edit Target
+          <AppIcon name="edit" size={14} color={theme.textSecondary} />
+          <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
+            Edit Target
           </ThemedText>
         </Pressable>
       </View>
 
       {/* 2. Main Figures & Percentage Badge */}
-      <View className="flex-row justify-between items-center mb-2 gap-2">
+      <View className="flex-row justify-between items-center mb-2.5 gap-2">
         <ThemedText
-          className="flex-1 mr-2 text-sm sm:text-base font-bold text-slate-900 dark:text-white"
+          numeric
+          className="flex-1 mr-2 text-sm sm:text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.8}
@@ -133,15 +142,15 @@ export function BudgetProgressCard({
           {`Spent ${formatMinorUnits(budget.spentMinor, currency)} of ${formatMinorUnits(budget.budgetMinor, currency)}`}
         </ThemedText>
 
-        <View className={`px-2.5 py-1 rounded-lg ${badgeBgClass}`}>
-          <ThemedText className={`text-xs font-bold ${badgeTextClass}`}>
+        <View className={`px-2.5 py-1 rounded-full ${badgeBgClass}`}>
+          <ThemedText numeric className={`text-xs font-bold ${badgeTextClass}`}>
             {`${budget.utilizationPercent}%`}
           </ThemedText>
         </View>
       </View>
 
       {/* 3. Horizontal Progress Bar */}
-      <View className="h-3 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden mb-3">
+      <View className="h-2.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden mb-3">
         <View
           className={`h-full rounded-full ${barColorClass}`}
           style={{ width: `${clampedPercent}%` }}
@@ -149,18 +158,25 @@ export function BudgetProgressCard({
       </View>
 
       {/* 4. Footer Text */}
-      <View className="flex-row justify-start">
-        <ThemedText
-          className={`text-xs ${
-            budget.isOverBudget
-              ? 'font-semibold text-rose-600 dark:text-rose-400'
-              : 'font-medium text-slate-500 dark:text-slate-400'
-          }`}
-        >
-          {budget.isOverBudget
-            ? `⚠️ Over budget by ${formatMinorUnits(Math.abs(budget.remainingMinor), currency)}`
-            : `${formatMinorUnits(budget.remainingMinor, currency)} remaining this month`}
-        </ThemedText>
+      <View className="flex-row items-center gap-1.5">
+        {budget.isOverBudget ? (
+          <>
+            <AppIcon name="warning" size={14} color={theme.negative} />
+            <ThemedText
+              numeric
+              className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark flex-1"
+            >
+              {`Over budget by ${formatMinorUnits(Math.abs(budget.remainingMinor), currency)}`}
+            </ThemedText>
+          </>
+        ) : (
+          <ThemedText
+            numeric
+            className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+          >
+            {`${formatMinorUnits(budget.remainingMinor, currency)} remaining this month`}
+          </ThemedText>
+        )}
       </View>
 
       {/* 5. Edit Target Modal */}
@@ -172,71 +188,102 @@ export function BudgetProgressCard({
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          className="flex-1 justify-center items-center p-4"
+          className="flex-1 justify-center items-center p-4 bg-black/55"
         >
           <Pressable
-            className="absolute inset-0 bg-black/60"
+            className="absolute inset-0"
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss dialog"
             onPress={handleCloseModal}
           />
 
-          <View className="w-full max-w-[420px] rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-2xl">
-            <ThemedText className="text-lg font-bold text-slate-900 dark:text-white mb-1">
-              Monthly Spending Target
-            </ThemedText>
-            <ThemedText className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Set your target spending budget for the month.
-            </ThemedText>
+          <View
+            accessibilityViewIsModal
+            className="relative z-10 w-full max-w-[420px] rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-6 gap-4"
+          >
+            <View className="flex-row items-start justify-between gap-3">
+              <View className="flex-1">
+                <ThemedText
+                  accessibilityRole="header"
+                  className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                >
+                  Monthly Spending Target
+                </ThemedText>
+                <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
+                  Set your target spending budget for the month.
+                </ThemedText>
+              </View>
+
+              <Pressable
+                onPress={handleCloseModal}
+                disabled={isBusy}
+                accessibilityRole="button"
+                accessibilityLabel="Close monthly target modal"
+                className="w-11 h-11 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+              >
+                <AppIcon name="close" size={18} color={theme.textSecondary} />
+              </Pressable>
+            </View>
 
             {/* Target Amount Input */}
-            <View className="flex-row items-center border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 rounded-2xl px-4 py-3 mb-4">
-              <ThemedText className="text-2xl font-bold text-slate-400 dark:text-slate-500 mr-2">
-                {DEFAULT_CURRENCY_SYMBOL}
+            <View className="gap-1.5">
+              <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                {`Target Amount (${DEFAULT_CURRENCY_SYMBOL} ${currency})`}
               </ThemedText>
-              <TextInput
-                className="flex-1 text-2xl font-bold text-slate-900 dark:text-white p-0"
-                value={targetInput}
-                onChangeText={(text) => {
-                  setTargetInput(normalizeDecimalInput(text));
-                  if (errorMessage) setErrorMessage(null);
-                }}
-                keyboardType="decimal-pad"
-                inputMode="decimal"
-                autoCorrect={false}
-                spellCheck={false}
-                autoComplete="off"
-                placeholder="2500"
-                placeholderTextColor="#94A3B8"
-                autoFocus
-                editable={!isBusy}
-              />
+              <View className="flex-row items-center border border-ledger-border-strong dark:border-ledger-border-strong-dark bg-ledger-subtle dark:bg-ledger-subtle-dark rounded-xl px-4 py-3">
+                <ThemedText className="text-2xl font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
+                  {DEFAULT_CURRENCY_SYMBOL}
+                </ThemedText>
+                <TextInput
+                  className="flex-1 text-2xl font-bold text-ledger-ink dark:text-ledger-ink-dark p-0"
+                  style={TABULAR_NUMS_STYLE}
+                  value={targetInput}
+                  onChangeText={(text) => {
+                    setTargetInput(normalizeDecimalInput(text));
+                    if (errorMessage) setErrorMessage(null);
+                  }}
+                  accessibilityLabel={`Target amount in ${currency}`}
+                  keyboardType="decimal-pad"
+                  inputMode="decimal"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  autoComplete="off"
+                  placeholder="2500"
+                  placeholderTextColor={theme.textMuted}
+                  autoFocus
+                  editable={!isBusy}
+                />
+              </View>
             </View>
 
             {/* Quick 1-Tap Presets */}
-            <View className="mb-4">
-              <ThemedText className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">
-                Quick Presets:
+            <View className="gap-2">
+              <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                Quick Presets
               </ThemedText>
               <View className="flex-row gap-2 flex-wrap">
                 {presets.map((preset) => {
-                  const isSelected =
-                    parseDecimalToMinorUnits(targetInput) === preset.minor;
+                  const isSelected = parseDecimalToMinorUnits(targetInput) === preset.minor;
                   return (
                     <Pressable
                       key={preset.label}
                       accessibilityRole="button"
+                      accessibilityState={{ selected: isSelected }}
+                      accessibilityLabel={`Set monthly target to ${preset.label}`}
                       onPress={() => handleSelectPreset(preset.minor)}
                       disabled={isBusy}
-                      className={`py-2 px-3.5 rounded-xl border ${
+                      className={`min-h-[44px] py-2 px-3.5 rounded-xl border items-center justify-center ${
                         isSelected
-                          ? 'bg-brand-500 border-brand-500'
-                          : 'bg-slate-100 dark:bg-slate-800 border-transparent active:opacity-75'
+                          ? 'bg-brand-500 dark:bg-brand-400 border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:bg-ledger-selected dark:active:bg-ledger-selected-dark'
                       }`}
                     >
                       <ThemedText
+                        numeric
                         className={`text-xs ${
                           isSelected
-                            ? 'font-bold text-white'
-                            : 'font-semibold text-slate-700 dark:text-slate-300'
+                            ? 'font-bold text-ledger-canvas dark:text-ledger-canvas-dark'
+                            : 'font-semibold text-ledger-ink dark:text-ledger-ink-dark'
                         }`}
                       >
                         {preset.label}
@@ -249,36 +296,45 @@ export function BudgetProgressCard({
 
             {/* Error Message */}
             {errorMessage && (
-              <ThemedText className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-3">
-                {errorMessage}
-              </ThemedText>
+              <View
+                accessibilityRole="alert"
+                accessibilityLiveRegion="assertive"
+                className="p-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2"
+              >
+                <AppIcon name="error" size={15} color={theme.negative} />
+                <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark flex-1">
+                  {errorMessage}
+                </ThemedText>
+              </View>
             )}
 
             {/* Actions */}
-            <View className="flex-row justify-end gap-3 mt-1">
+            <View className="flex-row justify-end gap-2.5 pt-1">
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Cancel"
                 onPress={handleCloseModal}
                 disabled={isBusy}
-                className="py-2.5 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 active:opacity-75 items-center justify-center"
+                className="min-h-[44px] py-2.5 px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75 items-center justify-center"
               >
-                <ThemedText className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                   Cancel
                 </ThemedText>
               </Pressable>
 
               <Pressable
                 accessibilityRole="button"
+                accessibilityLabel="Save Target"
                 onPress={handleSave}
                 disabled={isBusy}
-                className={`py-2.5 px-5 rounded-xl bg-brand-500 active:bg-brand-600 items-center justify-center min-w-[110px] ${
+                className={`min-h-[44px] py-2.5 px-5 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-85 items-center justify-center min-w-[120px] ${
                   isBusy ? 'opacity-60' : ''
                 }`}
               >
                 {isBusy ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <ActivityIndicator size="small" color={theme.onPrimary} />
                 ) : (
-                  <ThemedText className="text-xs font-bold text-white">
+                  <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                     Save Target
                   </ThemedText>
                 )}
