@@ -55,6 +55,20 @@ export default function TabLayout() {
     }
   }, [colorScheme]);
 
+  useEffect(() => {
+    if (
+      typeof window === 'undefined' ||
+      !('serviceWorker' in navigator) ||
+      !window.isSecureContext
+    ) {
+      return;
+    }
+
+    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch((_error: unknown) => {
+      // Ignore registration failures in restricted browser contexts (e.g. private browsing).
+    });
+  }, []);
+
   const [queryClient] = useState(
     () =>
       new QueryClient({

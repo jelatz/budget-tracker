@@ -104,6 +104,21 @@ if (!fs.existsSync(mobileDistDir)) {
   throw new Error(`Expected Expo web export directory at ${mobileDistDir}`);
 }
 fs.cpSync(mobileDistDir, staticOutputDir, { recursive: true });
+
+const requiredPwaAssets = [
+  'manifest.webmanifest',
+  'sw.js',
+  'icons/icon-192.png',
+  'icons/icon-512.png',
+  'icons/apple-touch-icon.png',
+];
+for (const asset of requiredPwaAssets) {
+  const assetPath = path.join(staticOutputDir, asset);
+  if (!fs.existsSync(assetPath)) {
+    throw new Error(`Expected PWA static asset at ${assetPath}`);
+  }
+}
+
 writeJson(path.join(staticOutputDir, 'version.json'), {
   buildId,
   builtAt: new Date().toISOString(),
@@ -177,6 +192,8 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "connect-src 'self' https:",
+  "manifest-src 'self'",
+  "worker-src 'self'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -206,6 +223,28 @@ writeJson(path.join(vercelOutputDir, 'config.json'), {
       continue: true,
     },
     {
+      src: '^/manifest\\.webmanifest$',
+      headers: {
+        'Content-Type': 'application/manifest+json; charset=utf-8',
+        'Cache-Control': 'no-cache',
+      },
+      continue: true,
+    },
+    {
+      src: '^/sw\\.js$',
+      headers: {
+        'Content-Type': 'application/javascript; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Service-Worker-Allowed': '/',
+      },
+      continue: true,
+    },
+    {
+      src: '^/icons/.*\\.png$',
+      headers: { 'Cache-Control': 'public, max-age=86400' },
+      continue: true,
+    },
+    {
       src: '^/(?:|[^/.]+(?:\\.html)?)$',
       headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
       continue: true,
@@ -216,7 +255,7 @@ writeJson(path.join(vercelOutputDir, 'config.json'), {
       continue: true,
     },
     { handle: 'filesystem' },
-    { src: '^/(?:_expo|assets)/.*$', status: 404 },
+    { src: '^/(?:_expo|assets|icons)/.*$', status: 404 },
     { src: '^/([^/.]+)$', dest: '/$1.html', check: true },
     { src: '/(.*)', dest: '/index.html' },
   ],
