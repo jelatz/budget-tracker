@@ -383,15 +383,12 @@ export function PortabilityScreen() {
 
             {/* Cloud Sync Status Card */}
             <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3.5">
-              <View className="flex-row items-center justify-between gap-2">
-                <View className="flex-1 min-w-0 gap-0.5">
+              <View className="flex-row items-start justify-between flex-wrap gap-3">
+                <View className="flex-1 min-w-[140px] gap-0.5">
                   <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                     Cloud Sync
                   </ThemedText>
-                  <ThemedText
-                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    numberOfLines={1}
-                  >
+                  <ThemedText className="text-xs leading-4 text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                     {user?.email ? `Signed in as ${user.email}` : 'Multi-device sync'}
                   </ThemedText>
                 </View>

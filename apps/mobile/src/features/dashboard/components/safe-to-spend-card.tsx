@@ -467,8 +467,8 @@ export function SafeToSpendCard() {
       {/* 2. RECURRING OBLIGATIONS LIST */}
       <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
         {/* Header & Add Button */}
-        <View className="flex-row items-center justify-between gap-2">
-          <View className="flex-1 min-w-0">
+        <View className="flex-row items-start justify-between flex-wrap gap-3">
+          <View className="flex-1 min-w-[140px] gap-0.5">
             <View className="flex-row items-center gap-2">
               <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
                 Recurring Obligations
@@ -484,7 +484,7 @@ export function SafeToSpendCard() {
             </View>
             <ThemedText
               numeric
-              className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
+              className="text-xs leading-4 text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
             >
               {unpaidCount === 0
                 ? 'All bills settled for this month'
@@ -498,7 +498,7 @@ export function SafeToSpendCard() {
             onPress={handleOpenAddModal}
             accessibilityRole="button"
             accessibilityLabel="Add new recurring bill"
-            className="min-h-[44px] px-3.5 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-85 flex-row items-center gap-1.5"
+            className="min-h-[44px] px-3.5 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 active:opacity-85 flex-row items-center gap-1.5 shrink-0"
           >
             <AppIcon name="add" size={15} color={theme.onPrimary} />
             <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">

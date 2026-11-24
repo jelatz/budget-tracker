@@ -204,15 +204,12 @@ export function EnvelopeBudgetsCard() {
   return (
     <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
       {/* 1. Header */}
-      <View className="flex-row items-center justify-between flex-wrap gap-2">
-        <View className="gap-0.5 flex-1 min-w-[140px] mr-2">
+      <View className="flex-row items-start justify-between flex-wrap gap-3">
+        <View className="gap-0.5 flex-1 min-w-[140px]">
           <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
             Category Envelopes
           </ThemedText>
-          <ThemedText
-            className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-            numberOfLines={1}
-          >
+          <ThemedText className="text-xs leading-4 text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
             Dedicated monthly pots with rollovers
           </ThemedText>
         </View>
@@ -221,7 +218,7 @@ export function EnvelopeBudgetsCard() {
           onPress={handleOpenCreateModal}
           accessibilityRole="button"
           accessibilityLabel="Create New Envelope"
-          className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-85 px-3.5 py-2 rounded-xl flex-row items-center gap-1.5"
+          className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-85 px-3.5 py-2 rounded-xl flex-row items-center gap-1.5 shrink-0"
         >
           <AppIcon name="add" size={15} color={theme.onPrimary} />
           <ThemedText className="text-ledger-canvas dark:text-ledger-canvas-dark text-xs font-bold">
@@ -363,8 +360,7 @@ export function EnvelopeBudgetsCard() {
                       </ThemedText>
                       <ThemedText
                         numeric
-                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                        numberOfLines={1}
+                        className="text-xs leading-4 text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
                       >
                         {`Assigned: ${formatMinorUnits(env.assignedMinor)}${
                           env.rolloverEnabled && env.carriedOverMinor !== 0
