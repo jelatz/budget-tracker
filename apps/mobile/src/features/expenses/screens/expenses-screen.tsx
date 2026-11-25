@@ -12,6 +12,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   computeExpenseSummary,
   computeInstallmentProgress,
+  computeRecordedExpenseTypeCounts,
   DEFAULT_CURRENCY,
   filterExpenses,
   formatMinorUnits,
@@ -23,6 +24,7 @@ import {
   type CreateTransactionInput,
   type DashboardPeriod,
   type ExpensesRouteTab,
+  type RecordedExpenseTypeFilter,
   type RecurringCommitment,
   type RecurringCommitmentInput,
   type Transaction,
@@ -88,6 +90,12 @@ const SCHEDULED_STATUS_OPTIONS: readonly { key: ScheduledStatusFilter; label: st
   { key: 'PAID', label: 'Paid' },
 ];
 
+const RECORDED_TYPE_OPTIONS: readonly { key: RecordedExpenseTypeFilter; label: string }[] = [
+  { key: 'ALL', label: 'All' },
+  { key: 'ONE_TIME', label: 'One-Time' },
+  { key: 'SCHEDULED', label: 'Scheduled' },
+];
+
 function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
   if (columns <= 1) {
     return items.map((item) => [item]);
@@ -148,6 +156,7 @@ export function ExpensesScreen({
   const [cardColumnsPref, setCardColumnsPref] = useState<2 | 3>(3);
   const [showInlineForm, setShowInlineForm] = useState(false);
   const [period, setPeriod] = useState<DashboardPeriod>('THIS_MONTH');
+  const [recordedType, setRecordedType] = useState<RecordedExpenseTypeFilter>('ALL');
   const [scheduledStatus, setScheduledStatus] = useState<ScheduledStatusFilter>('ALL');
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
   const [accountFilter, setAccountFilter] = useState<string>('ALL');
@@ -185,6 +194,7 @@ export function ExpensesScreen({
       const exists = accounts.some((a) => a.id === initialAccountId);
       if (exists) {
         setAccountFilter(initialAccountId);
+        setRecordedType('ALL');
         setScheduledStatus('ALL');
         setCategoryFilter('ALL');
       } else {
@@ -205,7 +215,7 @@ export function ExpensesScreen({
   );
 
   // Recorded Expenses Filtering & Summary
-  const periodAndAccountExpenses = useMemo(
+  const baseRecordedExpenses = useMemo(
     () =>
       filterExpenses({
         transactions,
@@ -216,6 +226,33 @@ export function ExpensesScreen({
         searchQuery,
       }),
     [transactions, allCategories, accounts, period, accountFilter, searchQuery],
+  );
+
+  const recordedTypeCounts = useMemo(
+    () => computeRecordedExpenseTypeCounts(baseRecordedExpenses),
+    [baseRecordedExpenses],
+  );
+
+  const periodAndAccountExpenses = useMemo(
+    () =>
+      filterExpenses({
+        transactions,
+        categories: allCategories,
+        accounts,
+        period,
+        expenseType: recordedType,
+        accountId: accountFilter,
+        searchQuery,
+      }),
+    [
+      transactions,
+      allCategories,
+      accounts,
+      period,
+      recordedType,
+      accountFilter,
+      searchQuery,
+    ],
   );
 
   const periodAndAccountSummary = useMemo(
@@ -234,11 +271,21 @@ export function ExpensesScreen({
         categories: allCategories,
         accounts,
         period,
+        expenseType: recordedType,
         categoryId: categoryFilter,
         accountId: accountFilter,
         searchQuery,
       }),
-    [transactions, allCategories, accounts, period, categoryFilter, accountFilter, searchQuery],
+    [
+      transactions,
+      allCategories,
+      accounts,
+      period,
+      recordedType,
+      categoryFilter,
+      accountFilter,
+      searchQuery,
+    ],
   );
 
   const summary = useMemo(
@@ -381,6 +428,7 @@ export function ExpensesScreen({
   const hasActiveFilters =
     activeTab === 'RECORDED'
       ? period !== 'THIS_MONTH' ||
+        recordedType !== 'ALL' ||
         categoryFilter !== 'ALL' ||
         accountFilter !== 'ALL' ||
         searchQuery.trim().length > 0
@@ -391,6 +439,7 @@ export function ExpensesScreen({
 
   const handleResetFilters = () => {
     setPeriod('THIS_MONTH');
+    setRecordedType('ALL');
     setScheduledStatus('ALL');
     setCategoryFilter('ALL');
     setAccountFilter('ALL');
@@ -1015,6 +1064,41 @@ export function ExpensesScreen({
                   </View>
                 </View>
 
+                {/* Recorded Expense Type Filter (All / One-Time / Scheduled) */}
+                {activeTab === 'RECORDED' && (
+                  <View className="p-1 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row flex-wrap items-center gap-1 self-start max-w-full">
+                    {RECORDED_TYPE_OPTIONS.map((option) => {
+                      const isSelected = recordedType === option.key;
+                      const count = recordedTypeCounts[option.key];
+                      return (
+                        <Pressable
+                          key={option.key}
+                          onPress={() => setRecordedType(option.key)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Filter recorded expenses ${option.label}, ${count} items`}
+                          accessibilityState={{ selected: isSelected }}
+                          className={`min-h-[44px] px-3 rounded-lg items-center justify-center ${
+                            isSelected
+                              ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                              : 'border border-transparent active:opacity-75'
+                          }`}
+                        >
+                          <ThemedText
+                            numeric
+                            className={`text-xs font-semibold ${
+                              isSelected
+                                ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                            }`}
+                          >
+                            {option.label} ({count})
+                          </ThemedText>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                )}
+
                 {/* Active Deep-Link Account Filter Chip */}
                 {activeAccountName && (
                   <View className="flex-row items-center gap-2">
@@ -1308,7 +1392,7 @@ export function ExpensesScreen({
                       <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[300px]">
                         {allExpensesCount === 0
                           ? 'Tap below to log your first expense and keep your balances up to date.'
-                          : 'Try adjusting your period, category, account, or search query.'}
+                          : 'Try adjusting your type, period, category, account, or search query.'}
                       </ThemedText>
                       <View className="flex-row flex-wrap items-center justify-center gap-2 pt-1">
                         {allExpensesCount > 0 && hasActiveFilters && (

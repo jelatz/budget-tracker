@@ -31,6 +31,7 @@ import {
   type TransactionType,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { Colors, TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
@@ -126,6 +127,161 @@ function parseTagsInput(raw: string): string[] {
     }
   }
   return result;
+}
+
+interface HorizontalAccountCardPickerProps {
+  label: string;
+  accounts: readonly Account[];
+  selectedAccountId: string;
+  disabledAccountId?: string;
+  disabled?: boolean;
+  onSelect: (accountId: string) => void;
+}
+
+function HorizontalAccountCardPicker({
+  label,
+  accounts,
+  selectedAccountId,
+  disabledAccountId,
+  disabled = false,
+  onSelect,
+}: HorizontalAccountCardPickerProps) {
+  const theme = useTheme();
+  const scrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
+  const scrollOffsetRef = useRef(0);
+
+  const handleScrollBy = (deltaX: number) => {
+    const nextX = Math.max(0, scrollOffsetRef.current + deltaX);
+    scrollRef.current?.scrollTo({ x: nextX, animated: true });
+  };
+
+  return (
+    <View className="gap-2">
+      <View className="flex-row items-center justify-between gap-2">
+        <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+          {label}
+        </ThemedText>
+
+        {accounts.length > 2 && (
+          <View className="flex-row items-center gap-1.5">
+            <Pressable
+              onPress={() => handleScrollBy(-190)}
+              accessibilityRole="button"
+              accessibilityLabel={`Scroll ${label} left`}
+              className="min-h-[44px] min-w-[44px] rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+            >
+              <AppIcon name="chevronLeft" size={16} color={theme.textSecondary} />
+            </Pressable>
+            <Pressable
+              onPress={() => handleScrollBy(190)}
+              accessibilityRole="button"
+              accessibilityLabel={`Scroll ${label} right`}
+              className="min-h-[44px] min-w-[44px] rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+            >
+              <AppIcon name="chevronRight" size={16} color={theme.textSecondary} />
+            </Pressable>
+          </View>
+        )}
+      </View>
+
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+        showsHorizontalScrollIndicator={false}
+        decelerationRate="fast"
+        scrollEventThrottle={16}
+        onScroll={(event) => {
+          scrollOffsetRef.current = event.nativeEvent.contentOffset.x;
+        }}
+        contentContainerStyle={{ gap: 10, paddingVertical: 2, paddingRight: 4 }}
+      >
+        {accounts.map((acc) => {
+          const isDisabledAccount = acc.id === disabledAccountId;
+          const isSelected = selectedAccountId === acc.id && !isDisabledAccount;
+          const balanceFormatted = formatMinorUnits(
+            acc.balanceMinor,
+            acc.currency,
+          );
+          const isNegative = acc.balanceMinor < 0;
+
+          return (
+            <Pressable
+              key={acc.id}
+              onPress={() => onSelect(acc.id)}
+              disabled={disabled || isDisabledAccount}
+              accessibilityRole="button"
+              accessibilityLabel={`Select ${label} ${acc.name}`}
+              accessibilityState={{
+                selected: isSelected,
+                disabled: disabled || isDisabledAccount,
+              }}
+              className={`w-[176px] min-h-[108px] p-3.5 rounded-2xl justify-between ${
+                isDisabledAccount
+                  ? 'bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark opacity-45'
+                  : isSelected
+                    ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-2 border-brand-500 dark:border-brand-400'
+                    : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-80'
+              }`}
+            >
+              <View className="flex-row items-center justify-between gap-2">
+                <View className="w-8 h-8 rounded-lg bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center">
+                  <ThemedText className="text-base">{acc.icon}</ThemedText>
+                </View>
+
+                {isDisabledAccount ? (
+                  <View className="px-2 py-0.5 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText className="text-[10px] font-semibold text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                      Source
+                    </ThemedText>
+                  </View>
+                ) : isSelected ? (
+                  <AppIcon name="checkCircle" size={18} color={theme.primary} />
+                ) : null}
+              </View>
+
+              <View className="gap-0.5 mt-2">
+                <ThemedText
+                  numberOfLines={1}
+                  className={`text-sm font-bold ${
+                    isSelected
+                      ? 'text-brand-500 dark:text-brand-400'
+                      : 'text-ledger-ink dark:text-ledger-ink-dark'
+                  }`}
+                >
+                  {acc.name}
+                </ThemedText>
+                <ThemedText
+                  numberOfLines={1}
+                  className="text-[11px] font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+                >
+                  {getAccountTypeLabel(acc.accountType)}
+                </ThemedText>
+              </View>
+
+              <View className="mt-2 pt-2 border-t border-ledger-border dark:border-ledger-border-dark">
+                <ThemedText
+                  numeric
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  className={`text-sm font-extrabold ${
+                    isNegative
+                      ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                      : isSelected
+                        ? 'text-brand-500 dark:text-brand-400'
+                        : 'text-ledger-ink dark:text-ledger-ink-dark'
+                  }`}
+                >
+                  {balanceFormatted}
+                </ThemedText>
+              </View>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
 }
 
 export function TransactionFormModal({
@@ -735,107 +891,35 @@ export function TransactionFormModal({
                 </View>
 
                 {/* Primary Account Selector */}
-                <View className="gap-1.5">
-                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    {primaryAccountLabel}
-                  </ThemedText>
-                  <View className="flex-row flex-wrap gap-2">
-                    {accounts.map((acc) => {
-                      const isSelected = accountId === acc.id;
-                      const balanceFormatted = formatMinorUnits(
-                        acc.balanceMinor,
-                        acc.currency,
-                      );
-                      return (
-                        <Pressable
-                          key={acc.id}
-                          onPress={() => {
-                            setAccountId(acc.id);
-                            if (type === 'TRANSFER' && toAccountId === acc.id) {
-                              const alt = accounts.find((a) => a.id !== acc.id)?.id ?? '';
-                              setToAccountId(alt);
-                            }
-                            if (formError) setFormError(null);
-                          }}
-                          disabled={isBusy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Select ${primaryAccountLabel} ${acc.name}`}
-                          accessibilityState={{ selected: isSelected }}
-                          className={`min-h-[44px] px-3.5 py-2 rounded-xl border justify-center ${
-                            isSelected
-                              ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                          }`}
-                        >
-                          <ThemedText
-                            numeric
-                            className={`text-xs font-semibold ${
-                              isSelected
-                                ? 'text-brand-500 dark:text-brand-400'
-                                : 'text-ledger-ink dark:text-ledger-ink-dark'
-                            }`}
-                          >
-                            {acc.name} · {getAccountTypeLabel(acc.accountType)} ·{' '}
-                            {balanceFormatted}
-                          </ThemedText>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
+                <HorizontalAccountCardPicker
+                  label={primaryAccountLabel}
+                  accounts={accounts}
+                  selectedAccountId={accountId}
+                  disabled={isBusy}
+                  onSelect={(nextAccountId) => {
+                    setAccountId(nextAccountId);
+                    if (type === 'TRANSFER' && toAccountId === nextAccountId) {
+                      const alt =
+                        accounts.find((a) => a.id !== nextAccountId)?.id ?? '';
+                      setToAccountId(alt);
+                    }
+                    if (formError) setFormError(null);
+                  }}
+                />
 
                 {/* Destination Account Selector (Transfer only) */}
                 {type === 'TRANSFER' && (
-                  <View className="gap-1.5">
-                    <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      To Account
-                    </ThemedText>
-                    <View className="flex-row flex-wrap gap-2">
-                      {accounts.map((acc) => {
-                        const isSelected = toAccountId === acc.id;
-                        const isSameAsSource = acc.id === accountId;
-                        const balanceFormatted = formatMinorUnits(
-                          acc.balanceMinor,
-                          acc.currency,
-                        );
-                        return (
-                          <Pressable
-                            key={acc.id}
-                            onPress={() => {
-                              setToAccountId(acc.id);
-                              if (formError) setFormError(null);
-                            }}
-                            disabled={isBusy || isSameAsSource}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Select destination account ${acc.name}`}
-                            accessibilityState={{
-                              selected: isSelected,
-                              disabled: isSameAsSource,
-                            }}
-                            className={`min-h-[44px] px-3.5 py-2 rounded-xl border justify-center ${
-                              isSameAsSource
-                                ? 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark opacity-45'
-                                : isSelected
-                                  ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
-                                  : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                            }`}
-                          >
-                            <ThemedText
-                              numeric
-                              className={`text-xs font-semibold ${
-                                isSelected && !isSameAsSource
-                                  ? 'text-brand-500 dark:text-brand-400'
-                                  : 'text-ledger-ink dark:text-ledger-ink-dark'
-                              }`}
-                            >
-                              {acc.name} · {getAccountTypeLabel(acc.accountType)} ·{' '}
-                              {balanceFormatted}
-                            </ThemedText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
+                  <HorizontalAccountCardPicker
+                    label="To Account"
+                    accounts={accounts}
+                    selectedAccountId={toAccountId}
+                    disabledAccountId={accountId}
+                    disabled={isBusy}
+                    onSelect={(nextToAccountId) => {
+                      setToAccountId(nextToAccountId);
+                      if (formError) setFormError(null);
+                    }}
+                  />
                 )}
 
                 {/* Category & Splits Section (Incoming / Outgoing only) */}

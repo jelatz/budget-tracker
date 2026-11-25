@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
 import {
+  classifyRecordedExpense,
   formatMinorUnits,
   getAccountTypeLabel,
   type Account,
@@ -69,6 +70,7 @@ export function ExpenseCard({
   const trimmedMerchant = expense.merchant?.trim() ?? '';
   const primaryTitle = trimmedMerchant.length > 0 ? trimmedMerchant : categoryLabel;
   const formattedAmount = `-${formatMinorUnits(expense.amountMinor, expense.currency)}`;
+  const expenseOrigin = classifyRecordedExpense(expense);
 
   const metadataParts = [
     trimmedMerchant.length > 0 ? categoryLabel : null,
@@ -100,6 +102,20 @@ export function ExpenseCard({
                 >
                   {primaryTitle}
                 </ThemedText>
+
+                {expenseOrigin === 'LOAN' ? (
+                  <View className="px-2 py-0.5 rounded-full bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText className="text-[11px] font-semibold text-ledger-ochre dark:text-ledger-ochre-dark">
+                      Loan
+                    </ThemedText>
+                  </View>
+                ) : expenseOrigin === 'RECURRING' ? (
+                  <View className="px-2 py-0.5 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark">
+                      Recurring
+                    </ThemedText>
+                  </View>
+                ) : null}
 
                 {expense.receiptUri ? (
                   <View className="px-2 py-0.5 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-1">

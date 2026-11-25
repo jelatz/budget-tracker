@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type ComponentRef, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Tabs,
   TabList,
@@ -23,24 +23,48 @@ import {
   markTourCompleted,
   shouldAutoStartTour,
 } from '@/common/lib/app-tour-storage';
+import type { Rect, TourTargetId } from '@/common/lib/tour-geometry';
 import { QuickAddTransactionFab } from '@/features/transactions/components/quick-add-transaction-fab';
 import { useTheme } from '@/hooks/use-theme';
 import { AppIcon } from './app-icon';
-import { AppTourModal } from './app-tour-modal';
+import { AppTourOverlay, TOUR_STEPS } from './app-tour-overlay';
 import { SyncStatusBadge } from './sync-status-badge';
 import { ThemedText } from './themed-text';
 
 export default function AppTabs() {
   const { user, isAuthenticated, logout } = useAuth();
   const theme = useTheme();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [tourVisible, setTourVisible] = useState(false);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
+  const [tourTargetRect, setTourTargetRect] = useState<Rect | null>(null);
+
+  type TourViewRef = ComponentRef<typeof View>;
+  const rootRef = useRef<TourViewRef>(null);
+  const tourTargetRefs = useRef<Partial<Record<TourTargetId, TourViewRef | null>>>({});
+  const tourRefCallbacks = useRef<
+    Partial<Record<TourTargetId, (node: TourViewRef | null) => void>>
+  >({});
+
+  const getTourRef = useCallback((id: TourTargetId) => {
+    let cb = tourRefCallbacks.current[id];
+    if (!cb) {
+      cb = (node: TourViewRef | null) => {
+        tourTargetRefs.current[id] = node;
+      };
+      tourRefCallbacks.current[id] = cb;
+    }
+    return cb;
+  }, []);
 
   const isDesktop = width >= 768;
+  const activeTourStep = TOUR_STEPS[tourStepIndex] ?? TOUR_STEPS[0];
 
   useEffect(() => {
     if (isAuthenticated && user?.id && shouldAutoStartTour(user.id)) {
+      setTourStepIndex(0);
+      setTourTargetRect(null);
       setTourVisible(true);
     }
   }, [isAuthenticated, user?.id]);
@@ -67,17 +91,107 @@ export default function AppTabs() {
     };
   }, [isDesktop, drawerOpen]);
 
+  // Coordinate mobile drawer open/close state with the active tour target.
+  useEffect(() => {
+    if (!tourVisible || isDesktop) {
+      return;
+    }
+    if (activeTourStep.targetId === 'fab-quick-add') {
+      setDrawerOpen(false);
+    } else {
+      setDrawerOpen(true);
+    }
+  }, [tourVisible, isDesktop, activeTourStep.targetId]);
+
+  const measureActiveTourTarget = useCallback(() => {
+    if (!tourVisible) {
+      return;
+    }
+    const targetNode = tourTargetRefs.current[activeTourStep.targetId];
+    const containerNode = rootRef.current;
+    if (!targetNode || !containerNode) {
+      setTourTargetRect(null);
+      return;
+    }
+
+    targetNode.measureInWindow((tx, ty, tw, th) => {
+      containerNode.measureInWindow((cx, cy, _cw, _ch) => {
+        if (tw > 0 && th > 0) {
+          const nextRect: Rect = {
+            x: tx - cx,
+            y: ty - cy,
+            width: tw,
+            height: th,
+          };
+          setTourTargetRect((prev) =>
+            prev &&
+            Math.abs(prev.x - nextRect.x) < 0.5 &&
+            Math.abs(prev.y - nextRect.y) < 0.5 &&
+            Math.abs(prev.width - nextRect.width) < 0.5 &&
+            Math.abs(prev.height - nextRect.height) < 0.5
+              ? prev
+              : nextRect,
+          );
+        } else {
+          setTourTargetRect(null);
+        }
+      });
+    });
+  }, [tourVisible, activeTourStep.targetId]);
+
+  useEffect(() => {
+    if (!tourVisible) {
+      return;
+    }
+    let cancelled = false;
+    const rafId = requestAnimationFrame(() => {
+      if (!cancelled) {
+        measureActiveTourTarget();
+      }
+    });
+    const retryTimer = setTimeout(() => {
+      if (!cancelled) {
+        measureActiveTourTarget();
+      }
+    }, 110);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(rafId);
+      clearTimeout(retryTimer);
+    };
+  }, [
+    tourVisible,
+    tourStepIndex,
+    width,
+    height,
+    drawerOpen,
+    measureActiveTourTarget,
+  ]);
+
   const handleStartTour = () => {
     setDrawerOpen(false);
+    setTourStepIndex(0);
+    setTourTargetRect(null);
     setTourVisible(true);
   };
 
   const handleCloseTour = () => {
     setTourVisible(false);
+    setTourTargetRect(null);
+    if (!isDesktop) {
+      setDrawerOpen(false);
+    }
     if (user?.id) {
       markTourCompleted(user.id);
     }
   };
+
+  const handleNavScroll = useCallback(() => {
+    if (tourVisible) {
+      measureActiveTourTarget();
+    }
+  }, [tourVisible, measureActiveTourTarget]);
 
   const handleSignOut = async () => {
     setDrawerOpen(false);
@@ -98,7 +212,11 @@ export default function AppTabs() {
   }
 
   return (
-    <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
+    <View
+      ref={rootRef}
+      collapsable={false}
+      className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark"
+    >
       <Tabs
         key="auth-tabs"
         style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
@@ -157,46 +275,54 @@ export default function AppTabs() {
             isDesktop={isDesktop}
             isOpen={drawerOpen}
             onClose={() => setDrawerOpen(false)}
-            onStartTour={handleStartTour}>
+            onStartTour={handleStartTour}
+            onNavScroll={handleNavScroll}>
             <TabTrigger name="dashboard" href="/dashboard" asChild>
               <SidebarNavItem
                 label="Dashboard"
+                tourRef={getTourRef('nav-dashboard')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
             <TabTrigger name="accounts" href="/accounts" asChild>
               <SidebarNavItem
                 label="Accounts"
+                tourRef={getTourRef('nav-accounts')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
             <TabTrigger name="expenses" href="/expenses" asChild>
               <SidebarNavItem
                 label="Expenses"
+                tourRef={getTourRef('nav-expenses')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
             <TabTrigger name="transactions" href="/transactions" asChild>
               <SidebarNavItem
                 label="Transactions"
+                tourRef={getTourRef('nav-transactions')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
             <TabTrigger name="history" href="/history" asChild>
               <SidebarNavItem
                 label="History"
+                tourRef={getTourRef('nav-history')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
             <TabTrigger name="reconciliation" href="/reconciliation" asChild>
               <SidebarNavItem
                 label="Reconcile"
+                tourRef={getTourRef('nav-reconciliation')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
             <TabTrigger name="portability" href="/portability" asChild>
               <SidebarNavItem
                 label="Backup & Export"
+                tourRef={getTourRef('nav-portability')}
                 onNavigate={() => setDrawerOpen(false)}
               />
             </TabTrigger>
@@ -206,20 +332,32 @@ export default function AppTabs() {
         <TabSlot style={{ flex: 1, minWidth: 0, height: '100%' }} />
       </Tabs>
 
-      <QuickAddTransactionFab hidden={(!isDesktop && drawerOpen) || tourVisible} />
-      <AppTourModal visible={tourVisible} onClose={handleCloseTour} />
+      <QuickAddTransactionFab
+        hidden={!isDesktop && drawerOpen}
+        fabRef={getTourRef('fab-quick-add')}
+      />
+      <AppTourOverlay
+        visible={tourVisible}
+        isDesktop={isDesktop}
+        activeStepIndex={tourStepIndex}
+        onStepChange={setTourStepIndex}
+        onClose={handleCloseTour}
+        targetRect={tourTargetRect}
+      />
     </View>
   );
 }
 
 type SidebarNavItemProps = TabTriggerSlotProps & {
   label: string;
+  tourRef?: (node: ComponentRef<typeof View> | null) => void;
   onNavigate?: () => void;
 };
 
 export function SidebarNavItem({
   isFocused,
   label,
+  tourRef,
   onNavigate,
   onPress,
   style,
@@ -227,37 +365,39 @@ export function SidebarNavItem({
 }: SidebarNavItemProps) {
   const { ref: _ref, ...pressableProps } = rest as Omit<
     SidebarNavItemProps,
-    'isFocused' | 'label' | 'onNavigate' | 'onPress' | 'style'
+    'isFocused' | 'label' | 'tourRef' | 'onNavigate' | 'onPress' | 'style'
   >;
 
   return (
-    <Pressable
-      {...pressableProps}
-      onPress={(event) => {
-        onPress?.(event);
-        onNavigate?.();
-      }}
-      accessibilityRole="tab"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: Boolean(isFocused) }}
-      style={(state) => [
-        typeof style === 'function' ? style(state) : style,
-        { justifyContent: 'flex-start' },
-      ]}
-      className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex-row items-center ${
-        isFocused
-          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200/70 dark:border-ledger-border-dark'
-          : 'border border-transparent hover:bg-ledger-selected/70 dark:hover:bg-ledger-selected-dark active:opacity-75'
-      }`}>
-      <ThemedText
-        className={`text-sm ${
+    <View ref={tourRef} collapsable={false} className="w-full">
+      <Pressable
+        {...pressableProps}
+        onPress={(event) => {
+          onPress?.(event);
+          onNavigate?.();
+        }}
+        accessibilityRole="tab"
+        accessibilityLabel={label}
+        accessibilityState={{ selected: Boolean(isFocused) }}
+        style={(state) => [
+          typeof style === 'function' ? style(state) : style,
+          { justifyContent: 'flex-start' },
+        ]}
+        className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex-row items-center ${
           isFocused
-            ? 'font-semibold text-brand-500 dark:text-brand-400'
-            : 'font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200/70 dark:border-ledger-border-dark'
+            : 'border border-transparent hover:bg-ledger-selected/70 dark:hover:bg-ledger-selected-dark active:opacity-75'
         }`}>
-        {label}
-      </ThemedText>
-    </Pressable>
+        <ThemedText
+          className={`text-sm ${
+            isFocused
+              ? 'font-semibold text-brand-500 dark:text-brand-400'
+              : 'font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+          }`}>
+          {label}
+        </ThemedText>
+      </Pressable>
+    </View>
   );
 }
 
@@ -266,6 +406,7 @@ type SidebarTabListProps = TabListProps & {
   isOpen: boolean;
   onClose: () => void;
   onStartTour: () => void;
+  onNavScroll?: () => void;
 };
 
 export function SidebarTabList({
@@ -275,6 +416,7 @@ export function SidebarTabList({
   isOpen,
   onClose,
   onStartTour,
+  onNavScroll,
   ...restProps
 }: SidebarTabListProps) {
   const { user, logout } = useAuth();
@@ -325,6 +467,10 @@ export function SidebarTabList({
       <ScrollView
         className="flex-1"
         showsVerticalScrollIndicator={false}
+        onScroll={onNavScroll}
+        onScrollEndDrag={onNavScroll}
+        onMomentumScrollEnd={onNavScroll}
+        scrollEventThrottle={32}
         contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 16, gap: 4 }}>
         {children}
       </ScrollView>

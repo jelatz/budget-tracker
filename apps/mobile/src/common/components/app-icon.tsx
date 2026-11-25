@@ -58,7 +58,8 @@ export type AppIconName =
   | 'eye'
   | 'eyeOff'
   | 'wallet'
-  | 'creditCard';
+  | 'creditCard'
+  | 'cursor';
 
 const ICON_MAP: Record<
   AppIconName,
@@ -120,6 +121,7 @@ const ICON_MAP: Record<
   eyeOff: { ios: 'eye.slash', android: 'close', web: 'close' },
   wallet: { ios: 'wallet.pass', android: 'account_balance_wallet', web: 'account_balance_wallet' },
   creditCard: { ios: 'creditcard', android: 'credit_card', web: 'credit_card' },
+  cursor: { ios: 'cursorarrow', android: 'arrow_selector_tool', web: 'arrow_selector_tool' },
 };
 
 export interface AppIconProps {

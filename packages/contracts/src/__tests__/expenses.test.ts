@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  classifyRecordedExpense,
   computeExpenseSummary,
+  computeRecordedExpenseTypeCounts,
   createDefaultTransactions,
   DEFAULT_ACCOUNTS,
   DEFAULT_CATEGORIES,
@@ -8,6 +10,7 @@ import {
   expenseMatchesCategory,
   filterExpenses,
   formatDateInputValue,
+  isScheduledRecordedExpense,
   parseDateInputToIso,
   updateTransactionInputSchema,
   type Transaction,
@@ -327,5 +330,89 @@ describe('Expense Filtering & Summary Engine', () => {
     expect(summary.categoryCounts['cat-groceries']).toBe(1);
     expect(summary.topCategory?.amountMinor).toBe(10000);
     expect(summary.topCategory?.count).toBe(1);
+  });
+
+  it('classifies, counts, and filters recorded expenses by One-Time vs Scheduled type', () => {
+    const loanExpense: Transaction = {
+      id: 'tx-loan-payment',
+      type: 'EXPENSE',
+      amountMinor: 50000,
+      currency: DEFAULT_CURRENCY,
+      accountId: 'account-bank',
+      categoryId: 'cat-loans',
+      merchant: 'Auto Loan',
+      tags: ['Loan', 'Recurring'],
+      occurredAt: fixedNow.toISOString(),
+      createdAt: fixedNow.toISOString(),
+    };
+
+    const mixedTxs = [...starterTxs, loanExpense];
+    const coffeeTx = starterTxs.find((t) => t.id === 'tx-seed-4')!;
+    const powerTx = starterTxs.find((t) => t.id === 'tx-seed-5')!;
+
+    expect(classifyRecordedExpense(coffeeTx)).toBe('ONE_TIME');
+    expect(classifyRecordedExpense(powerTx)).toBe('RECURRING');
+    expect(classifyRecordedExpense(loanExpense)).toBe('LOAN');
+
+    expect(isScheduledRecordedExpense(coffeeTx)).toBe(false);
+    expect(isScheduledRecordedExpense(powerTx)).toBe(true);
+    expect(isScheduledRecordedExpense(loanExpense)).toBe(true);
+
+    // Starter transactions include 3 one-time expenses (tx-seed-2,3,4), 1 recurring (tx-seed-5),
+    // plus 1 INCOME and 1 TRANSFER (both ignored), and loanExpense -> 3 ONE_TIME, 2 SCHEDULED.
+    expect(computeRecordedExpenseTypeCounts(mixedTxs)).toEqual({
+      ALL: 5,
+      ONE_TIME: 3,
+      SCHEDULED: 2,
+    });
+
+    const allFiltered = filterExpenses({
+      transactions: mixedTxs,
+      categories: DEFAULT_CATEGORIES,
+      accounts: DEFAULT_ACCOUNTS,
+      period: 'THIS_MONTH',
+      expenseType: 'ALL',
+      now: fixedNow,
+    });
+    expect(allFiltered.length).toBe(5);
+
+    const oneTimeOnly = filterExpenses({
+      transactions: mixedTxs,
+      categories: DEFAULT_CATEGORIES,
+      accounts: DEFAULT_ACCOUNTS,
+      period: 'THIS_MONTH',
+      expenseType: 'ONE_TIME',
+      now: fixedNow,
+    });
+    expect(oneTimeOnly.map((t) => t.id)).toEqual([
+      'tx-seed-2',
+      'tx-seed-3',
+      'tx-seed-4',
+    ]);
+
+    const scheduledOnly = filterExpenses({
+      transactions: mixedTxs,
+      categories: DEFAULT_CATEGORIES,
+      accounts: DEFAULT_ACCOUNTS,
+      period: 'THIS_MONTH',
+      expenseType: 'SCHEDULED',
+      now: fixedNow,
+    });
+    expect(scheduledOnly.map((t) => t.id)).toEqual([
+      'tx-loan-payment',
+      'tx-seed-5',
+    ]);
+
+    // Combined with account filter
+    const scheduledCardOnly = filterExpenses({
+      transactions: mixedTxs,
+      categories: DEFAULT_CATEGORIES,
+      accounts: DEFAULT_ACCOUNTS,
+      period: 'THIS_MONTH',
+      expenseType: 'SCHEDULED',
+      accountId: 'account-card',
+      now: fixedNow,
+    });
+    expect(scheduledCardOnly).toEqual([]);
   });
 });

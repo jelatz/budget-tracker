@@ -1,5 +1,62 @@
+import { z } from 'zod';
 import { isTransactionInPeriod, type DashboardPeriod } from './dashboard';
 import type { Account, Category, Transaction } from './transactions.schema';
+
+export const recordedExpenseTypeFilterSchema = z.enum(['ALL', 'ONE_TIME', 'SCHEDULED']);
+export type RecordedExpenseTypeFilter = z.infer<typeof recordedExpenseTypeFilterSchema>;
+export type RecordedExpenseOrigin = 'ONE_TIME' | 'RECURRING' | 'LOAN';
+
+/**
+ * Classifies a posted expense transaction by origin using canonical payment tags.
+ */
+export function classifyRecordedExpense(
+  tx: Pick<Transaction, 'tags'>,
+): RecordedExpenseOrigin {
+  const normalizedTags = new Set(tx.tags.map((tag) => tag.trim().toLowerCase()));
+  if (normalizedTags.has('loan')) {
+    return 'LOAN';
+  }
+  if (normalizedTags.has('recurring')) {
+    return 'RECURRING';
+  }
+  return 'ONE_TIME';
+}
+
+/**
+ * Returns true if a posted expense originated from a scheduled recurring bill or loan payment.
+ */
+export function isScheduledRecordedExpense(
+  tx: Pick<Transaction, 'tags'>,
+): boolean {
+  return classifyRecordedExpense(tx) !== 'ONE_TIME';
+}
+
+/**
+ * Computes counts for All, One-Time, and Scheduled posted expenses.
+ */
+export function computeRecordedExpenseTypeCounts(
+  expenses: readonly Transaction[],
+): Record<RecordedExpenseTypeFilter, number> {
+  let oneTime = 0;
+  let scheduled = 0;
+
+  for (const tx of expenses) {
+    if (tx.type !== 'EXPENSE') {
+      continue;
+    }
+    if (isScheduledRecordedExpense(tx)) {
+      scheduled += 1;
+    } else {
+      oneTime += 1;
+    }
+  }
+
+  return {
+    ALL: oneTime + scheduled,
+    ONE_TIME: oneTime,
+    SCHEDULED: scheduled,
+  };
+}
 
 export interface TopExpenseCategory {
   categoryId: string;
@@ -88,7 +145,7 @@ export function expenseMatchesCategory(tx: Transaction, categoryId: string): boo
 }
 
 /**
- * Filters transactions to EXPENSE entries matching period, category (split-aware),
+ * Filters transactions to EXPENSE entries matching period, type, category (split-aware),
  * account, and case-insensitive search query, sorted by occurredAt desc then createdAt desc.
  */
 export function filterExpenses(params: {
@@ -96,6 +153,7 @@ export function filterExpenses(params: {
   categories: readonly Category[];
   accounts: readonly Account[];
   period: DashboardPeriod;
+  expenseType?: RecordedExpenseTypeFilter;
   categoryId?: string;
   accountId?: string;
   searchQuery?: string;
@@ -121,6 +179,13 @@ export function filterExpenses(params: {
       }
 
       if (!isTransactionInPeriod(tx.occurredAt, params.period, now)) {
+        return false;
+      }
+
+      if (params.expenseType === 'ONE_TIME' && isScheduledRecordedExpense(tx)) {
+        return false;
+      }
+      if (params.expenseType === 'SCHEDULED' && !isScheduledRecordedExpense(tx)) {
         return false;
       }
 

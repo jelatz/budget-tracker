@@ -6,6 +6,7 @@ import {
   View,
 } from 'react-native';
 import {
+  classifyRecordedExpense,
   computeInstallmentProgress,
   formatCalendarDateShort,
   formatMinorUnits,
@@ -584,6 +585,7 @@ export function RecordedExpensesTable({
             const trimmedMerchant = expense.merchant?.trim() ?? '';
             const primaryTitle = trimmedMerchant.length > 0 ? trimmedMerchant : categoryLabel;
             const trimmedNote = expense.note?.trim() ?? '';
+            const expenseOrigin = classifyRecordedExpense(expense);
             const isConfirmingDelete = confirmDeleteId === expense.id;
             const rowBg =
               index % 2 === 0
@@ -623,12 +625,27 @@ export function RecordedExpensesTable({
 
                 {/* Merchant / Note */}
                 <View className="flex-1 min-w-[200px] gap-0.5">
-                  <ThemedText
-                    className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                    numberOfLines={1}
-                  >
-                    {primaryTitle}
-                  </ThemedText>
+                  <View className="flex-row items-center gap-1.5">
+                    <ThemedText
+                      className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark shrink"
+                      numberOfLines={1}
+                    >
+                      {primaryTitle}
+                    </ThemedText>
+                    {expenseOrigin === 'LOAN' ? (
+                      <View className="px-2 py-0.5 rounded-full bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark shrink-0">
+                        <ThemedText className="text-[11px] font-semibold text-ledger-ochre dark:text-ledger-ochre-dark">
+                          Loan
+                        </ThemedText>
+                      </View>
+                    ) : expenseOrigin === 'RECURRING' ? (
+                      <View className="px-2 py-0.5 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark shrink-0">
+                        <ThemedText className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark">
+                          Recurring
+                        </ThemedText>
+                      </View>
+                    ) : null}
+                  </View>
                   {(trimmedNote.length > 0 || expense.tags.length > 0) && (
                     <ThemedText
                       className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
