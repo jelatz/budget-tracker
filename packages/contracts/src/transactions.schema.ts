@@ -22,6 +22,31 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   CREDIT_CARD: 'Credit Card',
 };
 
+export type AccountListFilter = 'ALL' | 'LIQUID_CASH' | AccountType;
+
+/**
+ * Returns true when an account type represents liquid cash funds (Bank, E-Wallet, or Cash).
+ */
+export function isLiquidCashAccountType(accountType: AccountType): boolean {
+  return accountType !== 'CREDIT_CARD';
+}
+
+/**
+ * Filters an account list by the selected Accounts screen filter option.
+ */
+export function filterAccountsByListFilter<T extends Pick<Account, 'accountType'>>(
+  accounts: readonly T[],
+  filter: AccountListFilter,
+): T[] {
+  if (filter === 'ALL') {
+    return accounts.slice();
+  }
+  if (filter === 'LIQUID_CASH') {
+    return accounts.filter((account) => isLiquidCashAccountType(account.accountType));
+  }
+  return accounts.filter((account) => account.accountType === filter);
+}
+
 /**
  * Returns the human-readable Account Type tag label.
  */

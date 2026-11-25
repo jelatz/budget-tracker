@@ -14,8 +14,10 @@ import {
   DEFAULT_CURRENCY,
   DEFAULT_TRANSACTIONS,
   evaluateCalculatorExpression,
+  filterAccountsByListFilter,
   formatMinorUnits,
   getAccountTypeLabel,
+  isLiquidCashAccountType,
   isTransactionInPeriod,
   mapKeyboardKeyToCalculatorKey,
   minorUnitsToDecimalInput,
@@ -534,6 +536,76 @@ describe('Category Ranking & Defaults', () => {
         accountType: 'BANK',
       }),
     ).toThrow();
+  });
+
+  it('classifies liquid cash account types and filters accounts by AccountListFilter', () => {
+    expect(isLiquidCashAccountType('BANK')).toBe(true);
+    expect(isLiquidCashAccountType('E_WALLET')).toBe(true);
+    expect(isLiquidCashAccountType('CASH')).toBe(true);
+    expect(isLiquidCashAccountType('CREDIT_CARD')).toBe(false);
+
+    const sampleAccounts: Account[] = [
+      {
+        id: 'acc-bank',
+        name: 'BPI Savings',
+        accountType: 'BANK',
+        icon: '🏦',
+        color: '#1B4332',
+        currency: 'PHP',
+        balanceMinor: 500000,
+      },
+      {
+        id: 'acc-wallet',
+        name: 'GCash',
+        accountType: 'E_WALLET',
+        icon: '📱',
+        color: '#1E6F4E',
+        currency: 'PHP',
+        balanceMinor: 120000,
+      },
+      {
+        id: 'acc-cash',
+        name: 'Cash on Hand',
+        accountType: 'CASH',
+        icon: '💵',
+        color: '#A16207',
+        currency: 'PHP',
+        balanceMinor: 35000,
+      },
+      {
+        id: 'acc-cc',
+        name: 'BPI Credit Card',
+        accountType: 'CREDIT_CARD',
+        icon: '💳',
+        color: '#2C5F6E',
+        currency: 'PHP',
+        balanceMinor: -45000,
+      },
+    ];
+
+    const allFiltered = filterAccountsByListFilter(sampleAccounts, 'ALL');
+    expect(allFiltered).toHaveLength(4);
+    expect(allFiltered).not.toBe(sampleAccounts);
+
+    expect(
+      filterAccountsByListFilter(sampleAccounts, 'LIQUID_CASH').map((a) => a.id),
+    ).toEqual(['acc-bank', 'acc-wallet', 'acc-cash']);
+
+    expect(
+      filterAccountsByListFilter(sampleAccounts, 'CREDIT_CARD').map((a) => a.id),
+    ).toEqual(['acc-cc']);
+
+    expect(
+      filterAccountsByListFilter(sampleAccounts, 'BANK').map((a) => a.id),
+    ).toEqual(['acc-bank']);
+
+    expect(
+      filterAccountsByListFilter(sampleAccounts, 'E_WALLET').map((a) => a.id),
+    ).toEqual(['acc-wallet']);
+
+    expect(
+      filterAccountsByListFilter(sampleAccounts, 'CASH').map((a) => a.id),
+    ).toEqual(['acc-cash']);
   });
 });
 

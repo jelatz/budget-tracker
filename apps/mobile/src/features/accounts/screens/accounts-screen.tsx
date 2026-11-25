@@ -16,13 +16,16 @@ import {
   ACCOUNT_TYPE_LABELS,
   DEFAULT_CURRENCY,
   DEFAULT_CURRENCY_SYMBOL,
+  filterAccountsByListFilter,
   formatAccountLinkedErrorMessage,
   formatMinorUnits,
   getAccountLinkedRecords,
+  isLiquidCashAccountType,
   minorUnitsToDecimalInput,
   normalizeDecimalInput,
   parseDecimalToMinorUnits,
   type Account,
+  type AccountListFilter,
   type AccountsRouteTab,
   type AccountType,
 } from '@repo/contracts';
@@ -49,8 +52,6 @@ import {
 } from '@/features/transactions/hooks/use-transactions';
 import { IncomeSourcesPanel } from '../components/income-sources-panel';
 import { SinkingFundsPanel } from '../components/sinking-funds-panel';
-
-type AccountFilter = 'ALL' | AccountType;
 
 interface AccountTypeConfig {
   value: AccountType;
@@ -111,8 +112,9 @@ const ACCOUNT_COLOR_OPTIONS = [
   { label: 'Warm Charcoal', value: '#5C584F' },
 ] as const;
 
-const FILTER_OPTIONS: readonly { key: AccountFilter; label: string; iconName?: AppIconName }[] = [
+const FILTER_OPTIONS: readonly { key: AccountListFilter; label: string; iconName?: AppIconName }[] = [
   { key: 'ALL', label: 'All' },
+  { key: 'LIQUID_CASH', label: 'Liquid Cash', iconName: 'wallet' },
   { key: 'BANK', label: 'Bank', iconName: 'accounts' },
   { key: 'E_WALLET', label: 'E-Wallet', iconName: 'wallet' },
   { key: 'CASH', label: 'Cash', iconName: 'wallet' },
@@ -271,7 +273,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
     }
   };
 
-  const [filter, setFilter] = useState<AccountFilter>('ALL');
+  const [filter, setFilter] = useState<AccountListFilter>('ALL');
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -284,10 +286,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   const [formError, setFormError] = useState<string | null>(null);
 
   const filteredAccounts = useMemo(
-    () =>
-      filter === 'ALL'
-        ? accounts
-        : accounts.filter((a) => a.accountType === filter),
+    () => filterAccountsByListFilter(accounts, filter),
     [accounts, filter],
   );
 
@@ -298,7 +297,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   );
 
   const cashAndBankAccounts = useMemo(
-    () => accounts.filter((a) => a.accountType !== 'CREDIT_CARD'),
+    () => accounts.filter((a) => isLiquidCashAccountType(a.accountType)),
     [accounts],
   );
   const creditCardAccounts = useMemo(
@@ -443,13 +442,29 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   }
 
   const isBusy = upsertAccountMutation.isPending || deleteAccountMutation.isPending;
-  const activeCreateType: AccountType = filter === 'ALL' ? 'BANK' : filter;
+  const activeCreateType: AccountType =
+    filter === 'ALL' || filter === 'LIQUID_CASH' ? 'BANK' : filter;
   const listTitle =
     filter === 'ALL'
       ? 'Active Accounts'
-      : `${ACCOUNT_TYPE_LABELS[filter]} Accounts`;
+      : filter === 'LIQUID_CASH'
+        ? 'Liquid Cash Accounts'
+        : `${ACCOUNT_TYPE_LABELS[filter]} Accounts`;
   const emptyIconName: AppIconName =
-    filter === 'ALL' ? 'accounts' : getTypeConfig(filter).iconName;
+    filter === 'ALL'
+      ? 'accounts'
+      : filter === 'LIQUID_CASH'
+        ? 'wallet'
+        : getTypeConfig(filter).iconName;
+  const emptyMessage =
+    filter === 'ALL'
+      ? 'No accounts added yet'
+      : filter === 'LIQUID_CASH'
+        ? 'No liquid cash accounts yet'
+        : `No ${ACCOUNT_TYPE_LABELS[filter].toLowerCase()} accounts yet`;
+  const emptyButtonText = `Add ${
+    filter === 'ALL' || filter === 'LIQUID_CASH' ? 'Account' : ACCOUNT_TYPE_LABELS[filter]
+  }`;
 
   return (
     <View className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
@@ -629,76 +644,145 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
             <>
               {/* Unified Warm Paper Summary Strip */}
               <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark flex-row overflow-hidden">
-                <View className="flex-1 p-3.5 sm:p-4 border-r border-ledger-border dark:border-ledger-border-dark gap-1">
-                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    Net Balance
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    className={`text-base sm:text-xl font-extrabold ${
-                      totalBalanceMinor < 0
-                        ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
-                        : 'text-ledger-ink dark:text-ledger-ink-dark'
+                <Pressable
+                  onPress={() => setFilter('ALL')}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Show all accounts, Net Balance ${formatMinorUnits(totalBalanceMinor)}, ${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`}
+                  accessibilityState={{ selected: filter === 'ALL' }}
+                  className={`flex-1 min-h-[44px] justify-between border-r border-ledger-border dark:border-ledger-border-dark ${
+                    filter === 'ALL'
+                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft'
+                      : 'active:bg-ledger-subtle dark:active:bg-ledger-subtle-dark'
+                  }`}
+                >
+                  <View className="p-3.5 sm:p-4 gap-1">
+                    <ThemedText
+                      className={`text-[11px] font-semibold uppercase tracking-wider ${
+                        filter === 'ALL'
+                          ? 'text-brand-500 dark:text-brand-400'
+                          : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
+                      }`}
+                    >
+                      Net Balance
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      className={`text-base sm:text-xl font-extrabold ${
+                        totalBalanceMinor < 0
+                          ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                          : 'text-ledger-ink dark:text-ledger-ink-dark'
+                      }`}
+                    >
+                      {formatMinorUnits(totalBalanceMinor)}
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                      numberOfLines={1}
+                    >
+                      {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+                    </ThemedText>
+                  </View>
+                  <View
+                    className={`h-0.5 w-full ${
+                      filter === 'ALL' ? 'bg-brand-500 dark:bg-brand-400' : 'bg-transparent'
                     }`}
-                  >
-                    {formatMinorUnits(totalBalanceMinor)}
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    numberOfLines={1}
-                  >
-                    {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
-                  </ThemedText>
-                </View>
+                  />
+                </Pressable>
 
-                <View className="flex-1 p-3.5 sm:p-4 border-r border-ledger-border dark:border-ledger-border-dark gap-1">
-                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    Liquid Cash
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    className="text-base sm:text-xl font-extrabold text-ledger-pine dark:text-ledger-pine-dark"
-                  >
-                    {formatMinorUnits(cashAndBankTotalMinor)}
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    numberOfLines={1}
-                  >
-                    {cashAndBankAccounts.length} {cashAndBankAccounts.length === 1 ? 'account' : 'accounts'}
-                  </ThemedText>
-                </View>
-
-                <View className="flex-1 p-3.5 sm:p-4 gap-1">
-                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    Credit Cards
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    className={`text-base sm:text-xl font-extrabold ${
-                      creditCardTotalMinor < 0
-                        ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
-                        : 'text-ledger-ink dark:text-ledger-ink-dark'
+                <Pressable
+                  onPress={() => setFilter((prev) => (prev === 'LIQUID_CASH' ? 'ALL' : 'LIQUID_CASH'))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter Liquid Cash accounts, ${formatMinorUnits(cashAndBankTotalMinor)}, ${cashAndBankAccounts.length} ${cashAndBankAccounts.length === 1 ? 'account' : 'accounts'}`}
+                  accessibilityState={{ selected: filter === 'LIQUID_CASH' }}
+                  className={`flex-1 min-h-[44px] justify-between border-r border-ledger-border dark:border-ledger-border-dark ${
+                    filter === 'LIQUID_CASH'
+                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft'
+                      : 'active:bg-ledger-subtle dark:active:bg-ledger-subtle-dark'
+                  }`}
+                >
+                  <View className="p-3.5 sm:p-4 gap-1">
+                    <ThemedText
+                      className={`text-[11px] font-semibold uppercase tracking-wider ${
+                        filter === 'LIQUID_CASH'
+                          ? 'text-brand-500 dark:text-brand-400'
+                          : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
+                      }`}
+                    >
+                      Liquid Cash
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      className="text-base sm:text-xl font-extrabold text-ledger-pine dark:text-ledger-pine-dark"
+                    >
+                      {formatMinorUnits(cashAndBankTotalMinor)}
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                      numberOfLines={1}
+                    >
+                      {cashAndBankAccounts.length} {cashAndBankAccounts.length === 1 ? 'account' : 'accounts'}
+                    </ThemedText>
+                  </View>
+                  <View
+                    className={`h-0.5 w-full ${
+                      filter === 'LIQUID_CASH' ? 'bg-brand-500 dark:bg-brand-400' : 'bg-transparent'
                     }`}
-                  >
-                    {formatMinorUnits(creditCardTotalMinor)}
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    numberOfLines={1}
-                  >
-                    {creditCardAccounts.length} {creditCardAccounts.length === 1 ? 'card' : 'cards'}
-                  </ThemedText>
-                </View>
+                  />
+                </Pressable>
+
+                <Pressable
+                  onPress={() => setFilter((prev) => (prev === 'CREDIT_CARD' ? 'ALL' : 'CREDIT_CARD'))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Filter Credit Card accounts, ${formatMinorUnits(creditCardTotalMinor)}, ${creditCardAccounts.length} ${creditCardAccounts.length === 1 ? 'card' : 'cards'}`}
+                  accessibilityState={{ selected: filter === 'CREDIT_CARD' }}
+                  className={`flex-1 min-h-[44px] justify-between ${
+                    filter === 'CREDIT_CARD'
+                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft'
+                      : 'active:bg-ledger-subtle dark:active:bg-ledger-subtle-dark'
+                  }`}
+                >
+                  <View className="p-3.5 sm:p-4 gap-1">
+                    <ThemedText
+                      className={`text-[11px] font-semibold uppercase tracking-wider ${
+                        filter === 'CREDIT_CARD'
+                          ? 'text-brand-500 dark:text-brand-400'
+                          : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
+                      }`}
+                    >
+                      Credit Cards
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      className={`text-base sm:text-xl font-extrabold ${
+                        creditCardTotalMinor < 0
+                          ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                          : 'text-ledger-ink dark:text-ledger-ink-dark'
+                      }`}
+                    >
+                      {formatMinorUnits(creditCardTotalMinor)}
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                      numberOfLines={1}
+                    >
+                      {creditCardAccounts.length} {creditCardAccounts.length === 1 ? 'card' : 'cards'}
+                    </ThemedText>
+                  </View>
+                  <View
+                    className={`h-0.5 w-full ${
+                      filter === 'CREDIT_CARD' ? 'bg-brand-500 dark:bg-brand-400' : 'bg-transparent'
+                    }`}
+                  />
+                </Pressable>
               </View>
 
               {/* Single-Row Scrollable Account Type Filter Pills */}
@@ -709,10 +793,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
               >
                 {FILTER_OPTIONS.map((option) => {
                   const isSelected = filter === option.key;
-                  const count =
-                    option.key === 'ALL'
-                      ? accounts.length
-                      : accounts.filter((a) => a.accountType === option.key).length;
+                  const count = filterAccountsByListFilter(accounts, option.key).length;
 
                   return (
                     <Pressable
@@ -775,9 +856,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                       <AppIcon name={emptyIconName} size={24} color={theme.textMuted} />
                     </View>
                     <ThemedText className="text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark text-center">
-                      {filter === 'ALL'
-                        ? 'No accounts added yet'
-                        : `No ${ACCOUNT_TYPE_LABELS[filter].toLowerCase()} accounts yet`}
+                      {emptyMessage}
                     </ThemedText>
                     <Pressable
                       onPress={() => openAddModal(activeCreateType)}
@@ -787,7 +866,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                     >
                       <AppIcon name="add" size={15} color={theme.onPrimary} />
                       <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
-                        Add {filter === 'ALL' ? 'Account' : ACCOUNT_TYPE_LABELS[filter]}
+                        {emptyButtonText}
                       </ThemedText>
                     </Pressable>
                   </View>
