@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { ApiClientError } from '@/common/lib/api-client';
+import { markTourPendingForNewUser } from '@/common/lib/app-tour-storage';
 import {
   markLegacyWebBackupMigrated,
   readUnmigratedLegacyWebBackup,
@@ -243,6 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (getActiveSyncUserId() !== session.user.id) {
         throw new Error('Session expired during initial sync.');
       }
+      markTourPendingForNewUser(session.user.id);
       setUser(session.user);
       setIsHydrating(false);
       queryClient.invalidateQueries();

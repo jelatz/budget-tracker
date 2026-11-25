@@ -73,7 +73,7 @@ export interface ExpensesScreenProps {
 
 type ExpensesViewTab = ExpensesRouteTab;
 type ExpensesDisplayMode = 'CARDS' | 'TABLE';
-type ScheduledStatusFilter = 'ALL' | 'UNPAID' | 'PAID' | 'LOANS';
+type ScheduledStatusFilter = 'ALL' | 'UNPAID' | 'UPCOMING' | 'PAID';
 
 const PERIOD_OPTIONS: readonly { key: DashboardPeriod; label: string }[] = [
   { key: 'THIS_MONTH', label: 'This Month' },
@@ -84,8 +84,8 @@ const PERIOD_OPTIONS: readonly { key: DashboardPeriod; label: string }[] = [
 const SCHEDULED_STATUS_OPTIONS: readonly { key: ScheduledStatusFilter; label: string }[] = [
   { key: 'ALL', label: 'All' },
   { key: 'UNPAID', label: 'Unpaid' },
+  { key: 'UPCOMING', label: 'Upcoming' },
   { key: 'PAID', label: 'Paid' },
-  { key: 'LOANS', label: 'Loans' },
 ];
 
 function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
@@ -285,16 +285,17 @@ export function ExpensesScreen({
       const normalizedQuery = searchQuery.trim().toLowerCase();
       return commitments
         .filter((c) => {
-          const isPaidOff = isCommitmentPaidOff(c);
-          const isPaid = c.lastPaidPeriod === currentPeriod;
+          const dueStatus = getCommitmentDueStatus(c);
+          const isPaidOff = dueStatus.isPaidOff;
+          const isPaid = dueStatus.isPaid;
 
-          if (scheduledStatus === 'UNPAID' && (isPaid || isPaidOff || !c.isActive)) {
+          if (scheduledStatus === 'UNPAID' && (!c.isActive || !dueStatus.isDueThisMonth)) {
+            return false;
+          }
+          if (scheduledStatus === 'UPCOMING' && (!c.isActive || dueStatus.state !== 'FUTURE_MONTH')) {
             return false;
           }
           if (scheduledStatus === 'PAID' && !isPaid && !isPaidOff) {
-            return false;
-          }
-          if (scheduledStatus === 'LOANS' && c.kind !== 'INSTALLMENT' && c.categoryId !== 'cat-loans') {
             return false;
           }
           if (accountFilter !== 'ALL' && c.accountId !== accountFilter) {

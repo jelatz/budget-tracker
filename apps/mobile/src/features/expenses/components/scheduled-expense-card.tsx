@@ -68,6 +68,7 @@ export function ScheduledExpenseCard({
   const currentYear = new Date().getFullYear();
   const isPaidOff = dueStatus.isPaidOff;
   const isPaid = dueStatus.isPaid;
+  const isFutureMonth = dueStatus.state === 'FUTURE_MONTH';
   const customDueLabel = commitment.dueLabel?.trim();
   const nextDueShort = commitment.nextDueDate
     ? formatCalendarDateShort(commitment.nextDueDate, currentYear)
@@ -258,27 +259,39 @@ export function ScheduledExpenseCard({
                 accessibilityLabel={
                   isPaid
                     ? `Undo paid status for ${commitment.name}`
-                    : `Pay and deduct ${commitment.name}`
+                    : isFutureMonth
+                      ? `Pay ${commitment.name} early`
+                      : `Pay and deduct ${commitment.name}`
                 }
                 className={`min-h-[44px] px-3.5 rounded-xl flex-row items-center justify-center gap-1.5 mr-auto ${
                   isPaid
                     ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                    : 'bg-brand-500 active:bg-brand-600 dark:bg-brand-400'
+                    : isFutureMonth
+                      ? 'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                      : 'bg-brand-500 active:bg-brand-600 dark:bg-brand-400'
                 } ${isBusy ? 'opacity-60' : ''}`}
               >
                 <AppIcon
                   name={isPaid ? 'undo' : 'checkCircle'}
                   size={15}
-                  color={isPaid ? theme.positive : theme.onPrimary}
+                  color={
+                    isPaid
+                      ? theme.positive
+                      : isFutureMonth
+                        ? theme.info
+                        : theme.onPrimary
+                  }
                 />
                 <ThemedText
                   className={`text-xs font-bold ${
                     isPaid
                       ? 'text-ledger-pine dark:text-ledger-pine-dark'
-                      : 'text-ledger-canvas dark:text-brand-900'
+                      : isFutureMonth
+                        ? 'text-ledger-teal dark:text-ledger-teal-dark'
+                        : 'text-ledger-canvas dark:text-brand-900'
                   }`}
                 >
-                  {isPaid ? 'Undo Paid' : 'Pay & Deduct'}
+                  {isPaid ? 'Undo Paid' : isFutureMonth ? 'Pay Early' : 'Pay & Deduct'}
                 </ThemedText>
               </Pressable>
             )}

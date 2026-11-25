@@ -19,18 +19,31 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/context/auth-context';
+import {
+  markTourCompleted,
+  shouldAutoStartTour,
+} from '@/common/lib/app-tour-storage';
 import { QuickAddTransactionFab } from '@/features/transactions/components/quick-add-transaction-fab';
 import { useTheme } from '@/hooks/use-theme';
+import { AppIcon } from './app-icon';
+import { AppTourModal } from './app-tour-modal';
 import { SyncStatusBadge } from './sync-status-badge';
 import { ThemedText } from './themed-text';
 
 export default function AppTabs() {
-  const { isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const theme = useTheme();
   const { width } = useWindowDimensions();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [tourVisible, setTourVisible] = useState(false);
 
   const isDesktop = width >= 768;
+
+  useEffect(() => {
+    if (isAuthenticated && user?.id && shouldAutoStartTour(user.id)) {
+      setTourVisible(true);
+    }
+  }, [isAuthenticated, user?.id]);
 
   useEffect(() => {
     if (
@@ -53,6 +66,18 @@ export default function AppTabs() {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isDesktop, drawerOpen]);
+
+  const handleStartTour = () => {
+    setDrawerOpen(false);
+    setTourVisible(true);
+  };
+
+  const handleCloseTour = () => {
+    setTourVisible(false);
+    if (user?.id) {
+      markTourCompleted(user.id);
+    }
+  };
 
   const handleSignOut = async () => {
     setDrawerOpen(false);
@@ -131,7 +156,8 @@ export default function AppTabs() {
           <SidebarTabList
             isDesktop={isDesktop}
             isOpen={drawerOpen}
-            onClose={() => setDrawerOpen(false)}>
+            onClose={() => setDrawerOpen(false)}
+            onStartTour={handleStartTour}>
             <TabTrigger name="dashboard" href="/dashboard" asChild>
               <SidebarNavItem
                 label="Dashboard"
@@ -180,7 +206,8 @@ export default function AppTabs() {
         <TabSlot style={{ flex: 1, minWidth: 0, height: '100%' }} />
       </Tabs>
 
-      <QuickAddTransactionFab hidden={!isDesktop && drawerOpen} />
+      <QuickAddTransactionFab hidden={(!isDesktop && drawerOpen) || tourVisible} />
+      <AppTourModal visible={tourVisible} onClose={handleCloseTour} />
     </View>
   );
 }
@@ -238,6 +265,7 @@ type SidebarTabListProps = TabListProps & {
   isDesktop: boolean;
   isOpen: boolean;
   onClose: () => void;
+  onStartTour: () => void;
 };
 
 export function SidebarTabList({
@@ -246,9 +274,11 @@ export function SidebarTabList({
   isDesktop,
   isOpen,
   onClose,
+  onStartTour,
   ...restProps
 }: SidebarTabListProps) {
   const { user, logout } = useAuth();
+  const theme = useTheme();
   const avatarInitial = (user?.name?.[0] ?? user?.email?.[0] ?? 'U').toUpperCase();
 
   const handleSignOut = async () => {
@@ -304,6 +334,19 @@ export function SidebarTabList({
         <View className="items-start">
           <SyncStatusBadge />
         </View>
+
+        <Pressable
+          onPress={onStartTour}
+          accessibilityRole="button"
+          accessibilityLabel="Start Quick Tour"
+          className="w-full min-h-[44px] px-3 py-2 rounded-xl bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark flex-row items-center gap-2 active:opacity-75">
+          <AppIcon name="sparkle" size={16} color={theme.primary} />
+          <ThemedText className="flex-1 text-xs font-semibold text-brand-500 dark:text-brand-400">
+            Quick Tour
+          </ThemedText>
+          <AppIcon name="chevronRight" size={14} color={theme.primary} />
+        </Pressable>
+
         <View className="px-3 py-2.5 rounded-xl bg-ledger-surface dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center gap-2.5">
           <View className="w-8 h-8 rounded-full bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark items-center justify-center shrink-0">
             <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">

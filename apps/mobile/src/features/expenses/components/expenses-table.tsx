@@ -183,6 +183,7 @@ export function ScheduledExpensesTable({
             const currentYear = new Date().getFullYear();
             const isPaidOff = dueStatus.isPaidOff;
             const isPaid = dueStatus.isPaid;
+            const isFutureMonth = dueStatus.state === 'FUTURE_MONTH';
             const customDueLabel = commitment.dueLabel?.trim();
             const nextDueShort = commitment.nextDueDate
               ? formatCalendarDateShort(commitment.nextDueDate, currentYear)
@@ -413,22 +414,30 @@ export function ScheduledExpensesTable({
                           disabled={isBusy}
                           accessibilityRole="button"
                           accessibilityLabel={
-                            isPaid ? `Undo payment for ${commitment.name}` : `Pay ${commitment.name}`
+                            isPaid
+                              ? `Undo payment for ${commitment.name}`
+                              : isFutureMonth
+                                ? `Pay ${commitment.name} early`
+                                : `Pay ${commitment.name}`
                           }
                           className={`min-h-[44px] px-3 rounded-xl items-center justify-center border ${
                             isPaid
                               ? 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
-                              : 'bg-brand-500 border-brand-500 active:bg-brand-600 dark:bg-brand-400 dark:border-brand-400'
+                              : isFutureMonth
+                                ? 'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                                : 'bg-brand-500 border-brand-500 active:bg-brand-600 dark:bg-brand-400 dark:border-brand-400'
                           }`}
                         >
                           <ThemedText
                             className={`text-xs font-bold ${
                               isPaid
                                 ? 'text-ledger-ink dark:text-ledger-ink-dark'
-                                : 'text-ledger-canvas dark:text-brand-900'
+                                : isFutureMonth
+                                  ? 'text-ledger-teal dark:text-ledger-teal-dark'
+                                  : 'text-ledger-canvas dark:text-brand-900'
                             }`}
                           >
-                            {isPaid ? 'Undo' : 'Pay'}
+                            {isPaid ? 'Undo' : isFutureMonth ? 'Pay Early' : 'Pay'}
                           </ThemedText>
                         </Pressable>
                       )}
