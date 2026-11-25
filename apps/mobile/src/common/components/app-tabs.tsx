@@ -455,10 +455,8 @@ export function SidebarTabList({
             onPress={onClose}
             accessibilityRole="button"
             accessibilityLabel="Close navigation menu"
-            className="min-h-[44px] px-3 rounded-xl bg-ledger-surface dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75">
-            <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-              Close
-            </ThemedText>
+            className="w-11 h-11 rounded-xl bg-ledger-surface dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75">
+            <AppIcon name="close" size={18} color={theme.textSecondary} />
           </Pressable>
         )}
       </View>
