@@ -102,6 +102,7 @@ describe('Vercel adapter helpers', () => {
       delete process.env.DB_POOL_MAX;
       process.env.VERCEL = '1';
       process.env.DATABASE_URL = 'postgresql://localhost:5432/test';
+      process.env.DATA_ENCRYPTION_KEY = '0123456789abcdef'.repeat(4);
       resetEnvCache();
 
       expect(getEnv().DB_POOL_MAX).toBe(2);
@@ -111,6 +112,7 @@ describe('Vercel adapter helpers', () => {
       process.env.VERCEL = '1';
       process.env.DB_POOL_MAX = '4';
       process.env.DATABASE_URL = 'postgresql://localhost:5432/test';
+      process.env.DATA_ENCRYPTION_KEY = '0123456789abcdef'.repeat(4);
       resetEnvCache();
 
       expect(getEnv().DB_POOL_MAX).toBe(4);
@@ -124,6 +126,17 @@ describe('Vercel adapter helpers', () => {
       expect(isLocalDevOrigin('https://evil.example.com')).toBe(false);
       expect(isLocalDevOrigin('http://localhost.evil.com:8082')).toBe(false);
       expect(isLocalDevOrigin('https://localhost:8082')).toBe(false);
+    });
+
+    it('rejects missing or invalid DATA_ENCRYPTION_KEY', () => {
+      delete process.env.DATA_ENCRYPTION_KEY;
+      process.env.DATABASE_URL = 'postgresql://localhost:5432/test';
+      resetEnvCache();
+      expect(() => getEnv()).toThrow(/DATA_ENCRYPTION_KEY/);
+
+      process.env.DATA_ENCRYPTION_KEY = 'too-short-secret';
+      resetEnvCache();
+      expect(() => getEnv()).toThrow(/DATA_ENCRYPTION_KEY/);
     });
   });
 });

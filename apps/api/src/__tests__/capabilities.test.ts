@@ -31,6 +31,10 @@ import {
   createPgTransactionsRepository,
   type TransactionsRepository,
 } from '../capabilities/transactions/repository';
+import {
+  createMoneyCipher,
+  isEncryptedMoneyValue,
+} from '../core/crypto/field-encryption';
 import type { AppDatabase } from '../core/db/client';
 import {
   accounts as accountsTable,
@@ -610,7 +614,11 @@ describe('Railway Hono API capabilities & production guardrails', () => {
 
   it('createPgTransactionsRepository handles split transaction updates/deletes (F-07) and resets balances on clearAll (F-06)', async () => {
     const now = new Date('2026-11-24T00:00:00.000Z');
+    const cipher = createMoneyCipher({
+      primaryKey: Buffer.from('0123456789abcdef'.repeat(4), 'hex'),
+    });
     const updatedTables: unknown[] = [];
+    const updatedPayloads: Array<{ table: unknown; payload: Record<string, unknown> }> = [];
     const deletedTables: unknown[] = [];
 
     const mockSelectQueue: unknown[][] = [
@@ -620,7 +628,12 @@ describe('Railway Hono API capabilities & production guardrails', () => {
           userId: 'user-1',
           id: 'tx-split-1',
           type: 'EXPENSE',
-          amountMinor: 1000,
+          amountMinor: cipher.encrypt(1000, {
+            userId: 'user-1',
+            table: 'transactions',
+            rowId: 'tx-split-1',
+            column: 'amount_minor',
+          }),
           currency: DEFAULT_CURRENCY,
           accountId: 'account-bank',
           toAccountId: null,
@@ -640,7 +653,12 @@ describe('Railway Hono API capabilities & production guardrails', () => {
           transactionId: 'tx-split-1',
           id: 'sp-1',
           categoryId: 'cat-daily-living',
-          amountMinor: 600,
+          amountMinor: cipher.encrypt(600, {
+            userId: 'user-1',
+            table: 'transaction_splits',
+            rowId: 'tx-split-1:sp-1',
+            column: 'amount_minor',
+          }),
           note: null,
           sortOrder: 0,
         },
@@ -649,7 +667,12 @@ describe('Railway Hono API capabilities & production guardrails', () => {
           transactionId: 'tx-split-1',
           id: 'sp-2',
           categoryId: 'cat-transportation',
-          amountMinor: 400,
+          amountMinor: cipher.encrypt(400, {
+            userId: 'user-1',
+            table: 'transaction_splits',
+            rowId: 'tx-split-1:sp-2',
+            column: 'amount_minor',
+          }),
           note: null,
           sortOrder: 1,
         },
@@ -663,7 +686,12 @@ describe('Railway Hono API capabilities & production guardrails', () => {
           icon: '🏦',
           color: '#208AEF',
           currency: DEFAULT_CURRENCY,
-          balanceMinor: 4000,
+          balanceMinor: cipher.encrypt(4000, {
+            userId: 'user-1',
+            table: 'accounts',
+            rowId: 'account-bank',
+            column: 'balance_minor',
+          }),
           sortOrder: 0,
         },
       ],
@@ -687,9 +715,12 @@ describe('Railway Hono API capabilities & production guardrails', () => {
       update: (table: unknown) => {
         updatedTables.push(table);
         return {
-          set: () => ({
-            where: async () => undefined,
-          }),
+          set: (payload: Record<string, unknown>) => {
+            updatedPayloads.push({ table, payload });
+            return {
+              where: async () => undefined,
+            };
+          },
         };
       },
       delete: (table: unknown) => {
@@ -708,7 +739,7 @@ describe('Railway Hono API capabilities & production guardrails', () => {
       transaction: async <T>(fn: (tx: typeof mockTx) => Promise<T>) => fn(mockTx),
     } as unknown as AppDatabase;
 
-    const pgRepo = createPgTransactionsRepository(mockDb);
+    const pgRepo = createPgTransactionsRepository(mockDb, cipher);
 
     // Split tx delete loads transactionSplits and succeeds without ZodError (F-07)
     const deleted = await pgRepo.deleteTransactionById('user-1', 'tx-split-1');
@@ -716,10 +747,29 @@ describe('Railway Hono API capabilities & production guardrails', () => {
     expect(deleted?.revision).toBe(4);
     expect(deletedTables).toContain(transactionsTable);
 
+    const deleteAccountUpdate = updatedPayloads.find(
+      (entry) => entry.table === accountsTable,
+    );
+    expect(
+      isEncryptedMoneyValue(String(deleteAccountUpdate?.payload.balanceMinor)),
+    ).toBe(true);
+    expect(
+      cipher.decrypt(String(deleteAccountUpdate?.payload.balanceMinor), {
+        userId: 'user-1',
+        table: 'accounts',
+        rowId: 'account-bank',
+        column: 'balance_minor',
+      }),
+    ).toBe(5000);
+
     // clearAllTransactions resets accounts & categories and deletes reconciliations (F-06)
     updatedTables.length = 0;
+    updatedPayloads.length = 0;
     deletedTables.length = 0;
-    mockSelectQueue.push([{ stateRevision: 4 }]);
+    mockSelectQueue.push(
+      [{ stateRevision: 4 }],
+      [{ id: 'account-bank' }, { id: 'account-cash' }],
+    );
     const cleared = await pgRepo.clearAllTransactions('user-1');
     expect(cleared.clearedCount).toBe(1);
     expect(cleared.revision).toBe(5);
@@ -727,5 +777,29 @@ describe('Railway Hono API capabilities & production guardrails', () => {
     expect(updatedTables).toContain(categoriesTable);
     expect(deletedTables).toContain(reconciliationsTable);
     expect(splitsTable).toBeDefined();
+
+    const clearAccountUpdates = updatedPayloads.filter(
+      (entry) => entry.table === accountsTable,
+    );
+    expect(clearAccountUpdates).toHaveLength(2);
+    expect(
+      clearAccountUpdates[0]?.payload.balanceMinor,
+    ).not.toBe(clearAccountUpdates[1]?.payload.balanceMinor);
+    expect(
+      cipher.decrypt(String(clearAccountUpdates[0]?.payload.balanceMinor), {
+        userId: 'user-1',
+        table: 'accounts',
+        rowId: 'account-bank',
+        column: 'balance_minor',
+      }),
+    ).toBe(0);
+    expect(
+      cipher.decrypt(String(clearAccountUpdates[1]?.payload.balanceMinor), {
+        userId: 'user-1',
+        table: 'accounts',
+        rowId: 'account-cash',
+        column: 'balance_minor',
+      }),
+    ).toBe(0);
   });
 });

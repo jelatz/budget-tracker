@@ -6,6 +6,10 @@ import {
   type SyncMutation,
 } from '@repo/contracts';
 import { and, asc, eq, inArray } from 'drizzle-orm';
+import {
+  getMoneyCipher,
+  type MoneyCipher,
+} from '../../core/crypto/field-encryption';
 import type { AppDatabase } from '../../core/db/client';
 import {
   accounts,
@@ -81,6 +85,7 @@ function chunkArray<T>(items: readonly T[], chunkSize: number): T[][] {
 export async function loadUserSyncStateInTx(
   db: DbOrTx,
   userId: string,
+  cipher: MoneyCipher = getMoneyCipher(),
 ): Promise<SyncDataState> {
   const [
     settingsRows,
@@ -162,7 +167,12 @@ export async function loadUserSyncStateInTx(
     existing.push({
       id: split.id,
       categoryId: split.categoryId,
-      amountMinor: split.amountMinor,
+      amountMinor: cipher.decrypt(split.amountMinor, {
+        userId,
+        table: 'transaction_splits',
+        rowId: `${split.transactionId}:${split.id}`,
+        column: 'amount_minor',
+      }),
       ...(split.note ? { note: split.note } : {}),
     });
     splitsByTxId.set(split.transactionId, existing);
@@ -176,7 +186,12 @@ export async function loadUserSyncStateInTx(
       icon: a.icon,
       color: a.color,
       currency: a.currency,
-      balanceMinor: a.balanceMinor,
+      balanceMinor: cipher.decrypt(a.balanceMinor, {
+        userId,
+        table: 'accounts',
+        rowId: a.id,
+        column: 'balance_minor',
+      }),
     })),
     categories: categoryRows.map((c) => ({
       id: c.id,
@@ -193,7 +208,12 @@ export async function loadUserSyncStateInTx(
       return {
         id: t.id,
         type: t.type,
-        amountMinor: t.amountMinor,
+        amountMinor: cipher.decrypt(t.amountMinor, {
+          userId,
+          table: 'transactions',
+          rowId: t.id,
+          column: 'amount_minor',
+        }),
         currency: t.currency,
         accountId: t.accountId,
         ...(t.toAccountId ? { toAccountId: t.toAccountId } : {}),
@@ -215,13 +235,23 @@ export async function loadUserSyncStateInTx(
         : {}),
       recentMerchants: settings.recentMerchants,
       knownTags: settings.knownTags,
-      monthlyBudgetMinor: settings.monthlyBudgetMinor,
+      monthlyBudgetMinor: cipher.decrypt(settings.monthlyBudgetMinor, {
+        userId,
+        table: 'user_settings',
+        rowId: userId,
+        column: 'monthly_budget_minor',
+      }),
     },
     categoryBudgets: budgetRows.map((b) => ({
       id: b.id,
       categoryId: b.categoryId,
       periodMonth: b.periodMonth,
-      assignedMinor: b.assignedMinor,
+      assignedMinor: cipher.decrypt(b.assignedMinor, {
+        userId,
+        table: 'category_budgets',
+        rowId: b.id,
+        column: 'assigned_minor',
+      }),
       rolloverEnabled: b.rolloverEnabled,
       ...(b.notes ? { notes: b.notes } : {}),
     })),
@@ -229,7 +259,12 @@ export async function loadUserSyncStateInTx(
       id: rc.id,
       name: rc.name,
       kind: rc.kind,
-      amountMinor: rc.amountMinor,
+      amountMinor: cipher.decrypt(rc.amountMinor, {
+        userId,
+        table: 'recurring_commitments',
+        rowId: rc.id,
+        column: 'amount_minor',
+      }),
       currency: rc.currency,
       accountId: rc.accountId,
       categoryId: rc.categoryId,
@@ -257,11 +292,26 @@ export async function loadUserSyncStateInTx(
       name: sf.name,
       icon: sf.icon,
       color: sf.color,
-      targetAmountMinor: sf.targetAmountMinor,
-      currentSavedMinor: sf.currentSavedMinor,
+      targetAmountMinor: cipher.decrypt(sf.targetAmountMinor, {
+        userId,
+        table: 'sinking_funds',
+        rowId: sf.id,
+        column: 'target_amount_minor',
+      }),
+      currentSavedMinor: cipher.decrypt(sf.currentSavedMinor, {
+        userId,
+        table: 'sinking_funds',
+        rowId: sf.id,
+        column: 'current_saved_minor',
+      }),
       targetDate: sf.targetDate,
       accountId: sf.accountId,
-      monthlyContributionMinor: sf.monthlyContributionMinor,
+      monthlyContributionMinor: cipher.decrypt(sf.monthlyContributionMinor, {
+        userId,
+        table: 'sinking_funds',
+        rowId: sf.id,
+        column: 'monthly_contribution_minor',
+      }),
       isCompleted: sf.isCompleted,
       ...(sf.notes ? { notes: sf.notes } : {}),
     })),
@@ -270,7 +320,12 @@ export async function loadUserSyncStateInTx(
       label: qp.label,
       icon: qp.icon,
       type: qp.type,
-      amountMinor: qp.amountMinor,
+      amountMinor: cipher.decrypt(qp.amountMinor, {
+        userId,
+        table: 'quick_presets',
+        rowId: qp.id,
+        column: 'amount_minor',
+      }),
       accountId: qp.accountId,
       ...(qp.toAccountId ? { toAccountId: qp.toAccountId } : {}),
       ...(qp.categoryId ? { categoryId: qp.categoryId } : {}),
@@ -281,9 +336,24 @@ export async function loadUserSyncStateInTx(
     reconciliations: reconciliationRows.map((rec) => ({
       id: rec.id,
       accountId: rec.accountId,
-      appBalanceMinor: rec.appBalanceMinor,
-      actualBalanceMinor: rec.actualBalanceMinor,
-      discrepancyMinor: rec.discrepancyMinor,
+      appBalanceMinor: cipher.decrypt(rec.appBalanceMinor, {
+        userId,
+        table: 'balance_reconciliations',
+        rowId: rec.id,
+        column: 'app_balance_minor',
+      }),
+      actualBalanceMinor: cipher.decrypt(rec.actualBalanceMinor, {
+        userId,
+        table: 'balance_reconciliations',
+        rowId: rec.id,
+        column: 'actual_balance_minor',
+      }),
+      discrepancyMinor: cipher.decrypt(rec.discrepancyMinor, {
+        userId,
+        table: 'balance_reconciliations',
+        rowId: rec.id,
+        column: 'discrepancy_minor',
+      }),
       reconciledAt: rec.reconciledAt.toISOString(),
       ...(rec.adjustmentTransactionId
         ? { adjustmentTransactionId: rec.adjustmentTransactionId }
@@ -292,9 +362,21 @@ export async function loadUserSyncStateInTx(
     incomeSources: incomeSourceRows.map((src) => ({
       id: src.id,
       name: src.name,
-      expectedMonthlyMinor: src.expectedMonthlyMinor,
+      expectedMonthlyMinor: cipher.decrypt(src.expectedMonthlyMinor, {
+        userId,
+        table: 'income_sources',
+        rowId: src.id,
+        column: 'expected_monthly_minor',
+      }),
       ...(src.typicalPayoutMinor !== null
-        ? { typicalPayoutMinor: src.typicalPayoutMinor }
+        ? {
+            typicalPayoutMinor: cipher.decrypt(src.typicalPayoutMinor, {
+              userId,
+              table: 'income_sources',
+              rowId: src.id,
+              column: 'typical_payout_minor',
+            }),
+          }
         : {}),
       currency: src.currency,
       accountId: src.accountId,
@@ -312,7 +394,17 @@ export async function saveUserSyncStateInTx(
   tx: DbOrTx,
   userId: string,
   state: SyncDataState,
+  cipher: MoneyCipher = getMoneyCipher(),
 ): Promise<void> {
+  const encryptedMonthlyBudgetMinor = cipher.encrypt(
+    state.smartDefaults.monthlyBudgetMinor,
+    {
+      userId,
+      table: 'user_settings',
+      rowId: userId,
+      column: 'monthly_budget_minor',
+    },
+  );
   await tx
     .insert(userSettings)
     .values({
@@ -322,7 +414,7 @@ export async function saveUserSyncStateInTx(
         state.smartDefaults.lastTransferToAccountId ?? null,
       recentMerchants: state.smartDefaults.recentMerchants,
       knownTags: state.smartDefaults.knownTags,
-      monthlyBudgetMinor: state.smartDefaults.monthlyBudgetMinor,
+      monthlyBudgetMinor: encryptedMonthlyBudgetMinor,
     })
     .onConflictDoUpdate({
       target: userSettings.userId,
@@ -332,7 +424,7 @@ export async function saveUserSyncStateInTx(
           state.smartDefaults.lastTransferToAccountId ?? null,
         recentMerchants: state.smartDefaults.recentMerchants,
         knownTags: state.smartDefaults.knownTags,
-        monthlyBudgetMinor: state.smartDefaults.monthlyBudgetMinor,
+        monthlyBudgetMinor: encryptedMonthlyBudgetMinor,
       },
     });
 
@@ -363,7 +455,12 @@ export async function saveUserSyncStateInTx(
         icon: a.icon,
         color: a.color,
         currency: a.currency,
-        balanceMinor: a.balanceMinor,
+        balanceMinor: cipher.encrypt(a.balanceMinor, {
+          userId,
+          table: 'accounts',
+          rowId: a.id,
+          column: 'balance_minor',
+        }),
         sortOrder: index,
       })),
       200,
@@ -396,7 +493,12 @@ export async function saveUserSyncStateInTx(
       userId,
       id: t.id,
       type: t.type,
-      amountMinor: t.amountMinor,
+      amountMinor: cipher.encrypt(t.amountMinor, {
+        userId,
+        table: 'transactions',
+        rowId: t.id,
+        column: 'amount_minor',
+      }),
       currency: t.currency,
       accountId: t.accountId,
       toAccountId: t.toAccountId ?? null,
@@ -420,7 +522,12 @@ export async function saveUserSyncStateInTx(
         transactionId: t.id,
         id: split.id,
         categoryId: split.categoryId,
-        amountMinor: split.amountMinor,
+        amountMinor: cipher.encrypt(split.amountMinor, {
+          userId,
+          table: 'transaction_splits',
+          rowId: `${t.id}:${split.id}`,
+          column: 'amount_minor',
+        }),
         note: split.note ?? null,
         sortOrder: splitIndex,
       })),
@@ -437,7 +544,12 @@ export async function saveUserSyncStateInTx(
         id: b.id,
         categoryId: b.categoryId,
         periodMonth: b.periodMonth,
-        assignedMinor: b.assignedMinor,
+        assignedMinor: cipher.encrypt(b.assignedMinor, {
+          userId,
+          table: 'category_budgets',
+          rowId: b.id,
+          column: 'assigned_minor',
+        }),
         rolloverEnabled: b.rolloverEnabled,
         notes: b.notes ?? null,
         sortOrder: index,
@@ -455,7 +567,12 @@ export async function saveUserSyncStateInTx(
         id: rc.id,
         name: rc.name,
         kind: rc.kind,
-        amountMinor: rc.amountMinor,
+        amountMinor: cipher.encrypt(rc.amountMinor, {
+          userId,
+          table: 'recurring_commitments',
+          rowId: rc.id,
+          column: 'amount_minor',
+        }),
         currency: rc.currency,
         accountId: rc.accountId,
         categoryId: rc.categoryId,
@@ -487,11 +604,26 @@ export async function saveUserSyncStateInTx(
         name: sf.name,
         icon: sf.icon,
         color: sf.color,
-        targetAmountMinor: sf.targetAmountMinor,
-        currentSavedMinor: sf.currentSavedMinor,
+        targetAmountMinor: cipher.encrypt(sf.targetAmountMinor, {
+          userId,
+          table: 'sinking_funds',
+          rowId: sf.id,
+          column: 'target_amount_minor',
+        }),
+        currentSavedMinor: cipher.encrypt(sf.currentSavedMinor, {
+          userId,
+          table: 'sinking_funds',
+          rowId: sf.id,
+          column: 'current_saved_minor',
+        }),
         targetDate: sf.targetDate,
         accountId: sf.accountId,
-        monthlyContributionMinor: sf.monthlyContributionMinor,
+        monthlyContributionMinor: cipher.encrypt(sf.monthlyContributionMinor, {
+          userId,
+          table: 'sinking_funds',
+          rowId: sf.id,
+          column: 'monthly_contribution_minor',
+        }),
         isCompleted: sf.isCompleted,
         notes: sf.notes ?? null,
         sortOrder: index,
@@ -510,7 +642,12 @@ export async function saveUserSyncStateInTx(
         label: qp.label,
         icon: qp.icon,
         type: qp.type,
-        amountMinor: qp.amountMinor,
+        amountMinor: cipher.encrypt(qp.amountMinor, {
+          userId,
+          table: 'quick_presets',
+          rowId: qp.id,
+          column: 'amount_minor',
+        }),
         accountId: qp.accountId,
         toAccountId: qp.toAccountId ?? null,
         categoryId: qp.categoryId ?? null,
@@ -531,9 +668,24 @@ export async function saveUserSyncStateInTx(
         userId,
         id: rec.id,
         accountId: rec.accountId,
-        appBalanceMinor: rec.appBalanceMinor,
-        actualBalanceMinor: rec.actualBalanceMinor,
-        discrepancyMinor: rec.discrepancyMinor,
+        appBalanceMinor: cipher.encrypt(rec.appBalanceMinor, {
+          userId,
+          table: 'balance_reconciliations',
+          rowId: rec.id,
+          column: 'app_balance_minor',
+        }),
+        actualBalanceMinor: cipher.encrypt(rec.actualBalanceMinor, {
+          userId,
+          table: 'balance_reconciliations',
+          rowId: rec.id,
+          column: 'actual_balance_minor',
+        }),
+        discrepancyMinor: cipher.encrypt(rec.discrepancyMinor, {
+          userId,
+          table: 'balance_reconciliations',
+          rowId: rec.id,
+          column: 'discrepancy_minor',
+        }),
         reconciledAt: new Date(rec.reconciledAt),
         adjustmentTransactionId: rec.adjustmentTransactionId ?? null,
         sortOrder: index,
@@ -550,8 +702,21 @@ export async function saveUserSyncStateInTx(
         userId,
         id: src.id,
         name: src.name,
-        expectedMonthlyMinor: src.expectedMonthlyMinor,
-        typicalPayoutMinor: src.typicalPayoutMinor ?? null,
+        expectedMonthlyMinor: cipher.encrypt(src.expectedMonthlyMinor, {
+          userId,
+          table: 'income_sources',
+          rowId: src.id,
+          column: 'expected_monthly_minor',
+        }),
+        typicalPayoutMinor:
+          typeof src.typicalPayoutMinor === 'number'
+            ? cipher.encrypt(src.typicalPayoutMinor, {
+                userId,
+                table: 'income_sources',
+                rowId: src.id,
+                column: 'typical_payout_minor',
+              })
+            : null,
         currency: src.currency,
         accountId: src.accountId,
         categoryId: src.categoryId,
@@ -569,7 +734,10 @@ export async function saveUserSyncStateInTx(
   }
 }
 
-export function createPgSyncRepository(db: AppDatabase): SyncRepository {
+export function createPgSyncRepository(
+  db: AppDatabase,
+  cipher: MoneyCipher = getMoneyCipher(),
+): SyncRepository {
   return {
     async getUserRevision(userId) {
       const rows = await db
@@ -590,7 +758,7 @@ export function createPgSyncRepository(db: AppDatabase): SyncRepository {
           if (!userRow) {
             return null;
           }
-          const state = await loadUserSyncStateInTx(tx, userId);
+          const state = await loadUserSyncStateInTx(tx, userId, cipher);
           return {
             revision: userRow.stateRevision,
             state,
@@ -616,7 +784,7 @@ export function createPgSyncRepository(db: AppDatabase): SyncRepository {
           throw new AppError('UNAUTHORIZED', 'Account not found.');
         }
 
-        const currentState = await loadUserSyncStateInTx(tx, userId);
+        const currentState = await loadUserSyncStateInTx(tx, userId, cipher);
         if (mutations.length === 0) {
           return {
             revision: userRow.stateRevision,
@@ -669,7 +837,7 @@ export function createPgSyncRepository(db: AppDatabase): SyncRepository {
         const nextState = applySyncMutations(currentState, newMutations);
         const nextRevision = userRow.stateRevision + 1;
 
-        await saveUserSyncStateInTx(tx, userId, nextState);
+        await saveUserSyncStateInTx(tx, userId, nextState, cipher);
 
         for (const chunk of chunkArray(
           newMutations.map((m) => ({

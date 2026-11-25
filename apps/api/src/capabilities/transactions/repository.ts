@@ -6,6 +6,10 @@ import {
   type TransactionSplit,
 } from '@repo/contracts';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import {
+  getMoneyCipher,
+  type MoneyCipher,
+} from '../../core/crypto/field-encryption';
 import type { AppDatabase } from '../../core/db/client';
 import {
   accounts,
@@ -74,14 +78,37 @@ function computeAccountDeltas(
   return deltas;
 }
 
+function mapSplitRow(
+  row: typeof transactionSplits.$inferSelect,
+  cipher: MoneyCipher,
+): TransactionSplit {
+  return {
+    id: row.id,
+    categoryId: row.categoryId,
+    amountMinor: cipher.decrypt(row.amountMinor, {
+      userId: row.userId,
+      table: 'transaction_splits',
+      rowId: `${row.transactionId}:${row.id}`,
+      column: 'amount_minor',
+    }),
+    ...(row.note ? { note: row.note } : {}),
+  };
+}
+
 function mapTransactionRow(
   row: typeof transactions.$inferSelect,
   splits: TransactionSplit[],
+  cipher: MoneyCipher,
 ): Transaction {
   return transactionSchema.parse({
     id: row.id,
     type: row.type,
-    amountMinor: Number(row.amountMinor),
+    amountMinor: cipher.decrypt(row.amountMinor, {
+      userId: row.userId,
+      table: 'transactions',
+      rowId: row.id,
+      column: 'amount_minor',
+    }),
     currency: row.currency,
     accountId: row.accountId,
     ...(row.toAccountId ? { toAccountId: row.toAccountId } : {}),
@@ -99,6 +126,7 @@ function mapTransactionRow(
 
 export function createPgTransactionsRepository(
   db: AppDatabase,
+  cipher: MoneyCipher = getMoneyCipher(),
 ): TransactionsRepository {
   return {
     async listTransactions(userId, query) {
@@ -151,19 +179,14 @@ export function createPgTransactionsRepository(
 
         for (const s of splitRows) {
           const list = splitsByTxId.get(s.transactionId) ?? [];
-          list.push({
-            id: s.id,
-            categoryId: s.categoryId,
-            amountMinor: Number(s.amountMinor),
-            ...(s.note ? { note: s.note } : {}),
-          });
+          list.push(mapSplitRow(s, cipher));
           splitsByTxId.set(s.transactionId, list);
         }
       }
 
       return {
         transactions: txRows.map((row) =>
-          mapTransactionRow(row, splitsByTxId.get(row.id) ?? []),
+          mapTransactionRow(row, splitsByTxId.get(row.id) ?? [], cipher),
         ),
         total: Number(countRows[0]?.count ?? 0),
         revision: Number(userRow.stateRevision),
@@ -208,15 +231,12 @@ export function createPgTransactionsRepository(
         return null;
       }
 
-      const splits: TransactionSplit[] = splitRows.map((s) => ({
-        id: s.id,
-        categoryId: s.categoryId,
-        amountMinor: Number(s.amountMinor),
-        ...(s.note ? { note: s.note } : {}),
-      }));
+      const splits: TransactionSplit[] = splitRows.map((s) =>
+        mapSplitRow(s, cipher),
+      );
 
       return {
-        transaction: mapTransactionRow(row, splits),
+        transaction: mapTransactionRow(row, splits, cipher),
         revision: Number(userRow.stateRevision),
       };
     },
@@ -264,7 +284,12 @@ export function createPgTransactionsRepository(
           userId,
           id: txData.id,
           type: txData.type,
-          amountMinor: txData.amountMinor,
+          amountMinor: cipher.encrypt(txData.amountMinor, {
+            userId,
+            table: 'transactions',
+            rowId: txData.id,
+            column: 'amount_minor',
+          }),
           currency: txData.currency,
           accountId: txData.accountId,
           toAccountId: txData.toAccountId ?? null,
@@ -286,7 +311,12 @@ export function createPgTransactionsRepository(
               transactionId: txData.id,
               id: split.id,
               categoryId: split.categoryId,
-              amountMinor: split.amountMinor,
+              amountMinor: cipher.encrypt(split.amountMinor, {
+                userId,
+                table: 'transaction_splits',
+                rowId: `${txData.id}:${split.id}`,
+                column: 'amount_minor',
+              }),
               note: split.note ?? null,
               sortOrder: index,
             })),
@@ -297,9 +327,23 @@ export function createPgTransactionsRepository(
         for (const [accountId, delta] of deltas.entries()) {
           const acc = accountMap.get(accountId);
           if (acc && delta !== 0) {
+            const currentBalance = cipher.decrypt(acc.balanceMinor, {
+              userId,
+              table: 'accounts',
+              rowId: accountId,
+              column: 'balance_minor',
+            });
+            const nextBalance = clampMinor(currentBalance + delta);
             await tx
               .update(accounts)
-              .set({ balanceMinor: clampMinor(Number(acc.balanceMinor) + delta) })
+              .set({
+                balanceMinor: cipher.encrypt(nextBalance, {
+                  userId,
+                  table: 'accounts',
+                  rowId: accountId,
+                  column: 'balance_minor',
+                }),
+              })
               .where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)));
           }
         }
@@ -352,14 +396,11 @@ export function createPgTransactionsRepository(
           )
           .orderBy(asc(transactionSplits.sortOrder));
 
-        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) => ({
-          id: s.id,
-          categoryId: s.categoryId,
-          amountMinor: Number(s.amountMinor),
-          ...(s.note ? { note: s.note } : {}),
-        }));
+        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) =>
+          mapSplitRow(s, cipher),
+        );
 
-        const existingTx = mapTransactionRow(existingRow, existingSplits);
+        const existingTx = mapTransactionRow(existingRow, existingSplits, cipher);
         const updatedTx = transactionSchema.parse({
           ...nextData,
           id: existingRow.id,
@@ -411,7 +452,12 @@ export function createPgTransactionsRepository(
           .update(transactions)
           .set({
             type: updatedTx.type,
-            amountMinor: updatedTx.amountMinor,
+            amountMinor: cipher.encrypt(updatedTx.amountMinor, {
+              userId,
+              table: 'transactions',
+              rowId: transactionId,
+              column: 'amount_minor',
+            }),
             currency: updatedTx.currency,
             accountId: updatedTx.accountId,
             toAccountId: updatedTx.toAccountId ?? null,
@@ -446,7 +492,12 @@ export function createPgTransactionsRepository(
               transactionId,
               id: split.id,
               categoryId: split.categoryId,
-              amountMinor: split.amountMinor,
+              amountMinor: cipher.encrypt(split.amountMinor, {
+                userId,
+                table: 'transaction_splits',
+                rowId: `${transactionId}:${split.id}`,
+                column: 'amount_minor',
+              }),
               note: split.note ?? null,
               sortOrder: index,
             })),
@@ -456,9 +507,23 @@ export function createPgTransactionsRepository(
         for (const [accId, delta] of combinedDeltas.entries()) {
           const acc = accountMap.get(accId);
           if (acc && delta !== 0) {
+            const currentBalance = cipher.decrypt(acc.balanceMinor, {
+              userId,
+              table: 'accounts',
+              rowId: accId,
+              column: 'balance_minor',
+            });
+            const nextBalance = clampMinor(currentBalance + delta);
             await tx
               .update(accounts)
-              .set({ balanceMinor: clampMinor(Number(acc.balanceMinor) + delta) })
+              .set({
+                balanceMinor: cipher.encrypt(nextBalance, {
+                  userId,
+                  table: 'accounts',
+                  rowId: accId,
+                  column: 'balance_minor',
+                }),
+              })
               .where(and(eq(accounts.userId, userId), eq(accounts.id, accId)));
           }
         }
@@ -511,14 +576,11 @@ export function createPgTransactionsRepository(
           )
           .orderBy(asc(transactionSplits.sortOrder));
 
-        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) => ({
-          id: s.id,
-          categoryId: s.categoryId,
-          amountMinor: Number(s.amountMinor),
-          ...(s.note ? { note: s.note } : {}),
-        }));
+        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) =>
+          mapSplitRow(s, cipher),
+        );
 
-        const existingTx = mapTransactionRow(existingRow, existingSplits);
+        const existingTx = mapTransactionRow(existingRow, existingSplits, cipher);
         const reverseDeltas = computeAccountDeltas(existingTx, -1);
         const affectedAccountIds = Array.from(reverseDeltas.keys());
 
@@ -535,9 +597,23 @@ export function createPgTransactionsRepository(
           for (const acc of matchedAccounts) {
             const delta = reverseDeltas.get(acc.id) ?? 0;
             if (delta !== 0) {
+              const currentBalance = cipher.decrypt(acc.balanceMinor, {
+                userId,
+                table: 'accounts',
+                rowId: acc.id,
+                column: 'balance_minor',
+              });
+              const nextBalance = clampMinor(currentBalance + delta);
               await tx
                 .update(accounts)
-                .set({ balanceMinor: clampMinor(Number(acc.balanceMinor) + delta) })
+                .set({
+                  balanceMinor: cipher.encrypt(nextBalance, {
+                    userId,
+                    table: 'accounts',
+                    rowId: acc.id,
+                    column: 'balance_minor',
+                  }),
+                })
                 .where(and(eq(accounts.userId, userId), eq(accounts.id, acc.id)));
             }
           }
@@ -579,10 +655,24 @@ export function createPgTransactionsRepository(
           .where(eq(transactions.userId, userId))
           .returning({ id: transactions.id });
 
-        await tx
-          .update(accounts)
-          .set({ balanceMinor: 0 })
+        const userAccounts = await tx
+          .select({ id: accounts.id })
+          .from(accounts)
           .where(eq(accounts.userId, userId));
+
+        for (const acc of userAccounts) {
+          await tx
+            .update(accounts)
+            .set({
+              balanceMinor: cipher.encrypt(0, {
+                userId,
+                table: 'accounts',
+                rowId: acc.id,
+                column: 'balance_minor',
+              }),
+            })
+            .where(and(eq(accounts.userId, userId), eq(accounts.id, acc.id)));
+        }
 
         await tx
           .update(categories)

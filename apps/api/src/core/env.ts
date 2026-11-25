@@ -1,4 +1,8 @@
 import { z } from 'zod';
+import {
+  parseEncryptionKeyMaterial,
+  resetMoneyCipherCache,
+} from './crypto/field-encryption';
 
 const DEFAULT_DEV_CORS_ORIGINS = [
   'http://localhost:8081',
@@ -14,6 +18,26 @@ const booleanStringSchema = z
   .default('false')
   .transform((val) => val === 'true');
 
+function encryptionKeySchema(varName: string) {
+  return z
+    .string()
+    .trim()
+    .min(1, `${varName} is required`)
+    .superRefine((val, ctx) => {
+      try {
+        parseEncryptionKeyMaterial(val, varName);
+      } catch (error: unknown) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            error instanceof Error
+              ? error.message
+              : `${varName} must be a valid 32-byte hex or base64 key.`,
+        });
+      }
+    });
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().trim().min(1).default('0.0.0.0'),
@@ -21,6 +45,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   DATABASE_URL_UNPOOLED: z.string().min(1).optional(),
   DB_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
+  DATA_ENCRYPTION_KEY: encryptionKeySchema('DATA_ENCRYPTION_KEY'),
+  DATA_ENCRYPTION_KEY_PREVIOUS: encryptionKeySchema(
+    'DATA_ENCRYPTION_KEY_PREVIOUS',
+  ).optional(),
   MIN_SUPPORTED_VERSION: z.string().trim().min(1).default('1.0.0'),
   CORS_ORIGINS: z.string().default(''),
   ALLOW_UNAUTHENTICATED_DEMO: booleanStringSchema,
@@ -35,6 +63,7 @@ export function getEnv(): ApiEnv {
     return cachedEnv;
   }
   const defaultPoolMax = process.env.VERCEL === '1' ? '2' : '5';
+  const previousKeyRaw = process.env.DATA_ENCRYPTION_KEY_PREVIOUS?.trim();
   const parsed = envSchema.safeParse({
     NODE_ENV: process.env.NODE_ENV ?? 'development',
     HOST: process.env.HOST ?? '0.0.0.0',
@@ -42,6 +71,8 @@ export function getEnv(): ApiEnv {
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
     DB_POOL_MAX: process.env.DB_POOL_MAX ?? defaultPoolMax,
+    DATA_ENCRYPTION_KEY: process.env.DATA_ENCRYPTION_KEY,
+    DATA_ENCRYPTION_KEY_PREVIOUS: previousKeyRaw || undefined,
     MIN_SUPPORTED_VERSION: process.env.MIN_SUPPORTED_VERSION ?? '1.0.0',
     CORS_ORIGINS: process.env.CORS_ORIGINS ?? '',
     ALLOW_UNAUTHENTICATED_DEMO: process.env.ALLOW_UNAUTHENTICATED_DEMO ?? 'false',
@@ -58,6 +89,7 @@ export function getEnv(): ApiEnv {
 
 export function resetEnvCache(): void {
   cachedEnv = null;
+  resetMoneyCipherCache();
 }
 
 export function getMinSupportedVersion(): string {

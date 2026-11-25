@@ -11,6 +11,10 @@ import {
   type Transaction,
 } from '@repo/contracts';
 import { and, desc, eq } from 'drizzle-orm';
+import {
+  getMoneyCipher,
+  type MoneyCipher,
+} from '../../core/crypto/field-encryption';
 import type { AppDatabase } from '../../core/db/client';
 import {
   accounts,
@@ -52,13 +56,29 @@ export interface ReconcileRepository {
 
 function mapReconciliationRow(
   row: typeof balanceReconciliations.$inferSelect,
+  cipher: MoneyCipher,
 ): BalanceReconciliation {
   return balanceReconciliationSchema.parse({
     id: row.id,
     accountId: row.accountId,
-    appBalanceMinor: Number(row.appBalanceMinor),
-    actualBalanceMinor: Number(row.actualBalanceMinor),
-    discrepancyMinor: Number(row.discrepancyMinor),
+    appBalanceMinor: cipher.decrypt(row.appBalanceMinor, {
+      userId: row.userId,
+      table: 'balance_reconciliations',
+      rowId: row.id,
+      column: 'app_balance_minor',
+    }),
+    actualBalanceMinor: cipher.decrypt(row.actualBalanceMinor, {
+      userId: row.userId,
+      table: 'balance_reconciliations',
+      rowId: row.id,
+      column: 'actual_balance_minor',
+    }),
+    discrepancyMinor: cipher.decrypt(row.discrepancyMinor, {
+      userId: row.userId,
+      table: 'balance_reconciliations',
+      rowId: row.id,
+      column: 'discrepancy_minor',
+    }),
     reconciledAt: row.reconciledAt.toISOString(),
     ...(row.adjustmentTransactionId
       ? { adjustmentTransactionId: row.adjustmentTransactionId }
@@ -66,7 +86,10 @@ function mapReconciliationRow(
   });
 }
 
-function mapAccountRow(row: typeof accounts.$inferSelect): Account {
+function mapAccountRow(
+  row: typeof accounts.$inferSelect,
+  cipher: MoneyCipher,
+): Account {
   return accountSchema.parse({
     id: row.id,
     name: row.name,
@@ -74,12 +97,18 @@ function mapAccountRow(row: typeof accounts.$inferSelect): Account {
     icon: row.icon,
     color: row.color,
     currency: row.currency,
-    balanceMinor: Number(row.balanceMinor),
+    balanceMinor: cipher.decrypt(row.balanceMinor, {
+      userId: row.userId,
+      table: 'accounts',
+      rowId: row.id,
+      column: 'balance_minor',
+    }),
   });
 }
 
 export function createPgReconcileRepository(
   db: AppDatabase,
+  cipher: MoneyCipher = getMoneyCipher(),
 ): ReconcileRepository {
   return {
     async listReconciliations(userId) {
@@ -102,7 +131,7 @@ export function createPgReconcileRepository(
       }
 
       return {
-        reconciliations: rows.map(mapReconciliationRow),
+        reconciliations: rows.map((row) => mapReconciliationRow(row, cipher)),
         revision: Number(userRow.stateRevision),
       };
     },
@@ -136,7 +165,7 @@ export function createPgReconcileRepository(
       }
 
       return {
-        reconciliation: mapReconciliationRow(row),
+        reconciliation: mapReconciliationRow(row, cipher),
         revision: Number(userRow.stateRevision),
       };
     },
@@ -172,7 +201,12 @@ export function createPgReconcileRepository(
           );
         }
 
-        const appBalanceMinor = Number(accountRow.balanceMinor);
+        const appBalanceMinor = cipher.decrypt(accountRow.balanceMinor, {
+          userId: params.userId,
+          table: 'accounts',
+          rowId: params.accountId,
+          column: 'balance_minor',
+        });
         const delta = computeReconciliationDelta(
           appBalanceMinor,
           params.actualBalanceMinor,
@@ -208,7 +242,12 @@ export function createPgReconcileRepository(
             userId: params.userId,
             id: adjustmentTransaction.id,
             type: adjustmentTransaction.type,
-            amountMinor: adjustmentTransaction.amountMinor,
+            amountMinor: cipher.encrypt(adjustmentTransaction.amountMinor, {
+              userId: params.userId,
+              table: 'transactions',
+              rowId: adjustmentTransaction.id,
+              column: 'amount_minor',
+            }),
             currency: adjustmentTransaction.currency,
             accountId: adjustmentTransaction.accountId,
             toAccountId: null,
@@ -225,7 +264,14 @@ export function createPgReconcileRepository(
 
         const [updatedAccountRow] = await tx
           .update(accounts)
-          .set({ balanceMinor: params.actualBalanceMinor })
+          .set({
+            balanceMinor: cipher.encrypt(params.actualBalanceMinor, {
+              userId: params.userId,
+              table: 'accounts',
+              rowId: params.accountId,
+              column: 'balance_minor',
+            }),
+          })
           .where(
             and(
               eq(accounts.userId, params.userId),
@@ -248,9 +294,24 @@ export function createPgReconcileRepository(
           userId: params.userId,
           id: reconciliation.id,
           accountId: reconciliation.accountId,
-          appBalanceMinor: reconciliation.appBalanceMinor,
-          actualBalanceMinor: reconciliation.actualBalanceMinor,
-          discrepancyMinor: reconciliation.discrepancyMinor,
+          appBalanceMinor: cipher.encrypt(reconciliation.appBalanceMinor, {
+            userId: params.userId,
+            table: 'balance_reconciliations',
+            rowId: reconciliation.id,
+            column: 'app_balance_minor',
+          }),
+          actualBalanceMinor: cipher.encrypt(reconciliation.actualBalanceMinor, {
+            userId: params.userId,
+            table: 'balance_reconciliations',
+            rowId: reconciliation.id,
+            column: 'actual_balance_minor',
+          }),
+          discrepancyMinor: cipher.encrypt(reconciliation.discrepancyMinor, {
+            userId: params.userId,
+            table: 'balance_reconciliations',
+            rowId: reconciliation.id,
+            column: 'discrepancy_minor',
+          }),
           reconciledAt: new Date(reconciliation.reconciledAt),
           adjustmentTransactionId: reconciliation.adjustmentTransactionId ?? null,
           sortOrder: 0,
@@ -264,7 +325,7 @@ export function createPgReconcileRepository(
 
         return {
           reconciliation,
-          account: mapAccountRow(updatedAccountRow),
+          account: mapAccountRow(updatedAccountRow, cipher),
           ...(adjustmentTransaction ? { adjustmentTransaction } : {}),
           revision: nextRevision,
         };

@@ -5,6 +5,10 @@ import {
   type UpdateAccountRequest,
 } from '@repo/contracts';
 import { and, asc, eq } from 'drizzle-orm';
+import {
+  getMoneyCipher,
+  type MoneyCipher,
+} from '../../core/crypto/field-encryption';
 import type { AppDatabase } from '../../core/db/client';
 import { accounts, users, userSettings } from '../../core/db/schema';
 import { AppError } from '../../core/errors';
@@ -30,7 +34,10 @@ export interface AccountsRepository {
   ): Promise<{ deletedAccountId: string; revision: number }>;
 }
 
-function mapAccountRow(row: typeof accounts.$inferSelect): Account {
+function mapAccountRow(
+  row: typeof accounts.$inferSelect,
+  cipher: MoneyCipher,
+): Account {
   return accountSchema.parse({
     id: row.id,
     name: row.name,
@@ -38,11 +45,19 @@ function mapAccountRow(row: typeof accounts.$inferSelect): Account {
     icon: row.icon,
     color: row.color,
     currency: row.currency,
-    balanceMinor: Number(row.balanceMinor),
+    balanceMinor: cipher.decrypt(row.balanceMinor, {
+      userId: row.userId,
+      table: 'accounts',
+      rowId: row.id,
+      column: 'balance_minor',
+    }),
   });
 }
 
-export function createPgAccountsRepository(db: AppDatabase): AccountsRepository {
+export function createPgAccountsRepository(
+  db: AppDatabase,
+  cipher: MoneyCipher = getMoneyCipher(),
+): AccountsRepository {
   return {
     async listAccounts(userId) {
       const [userRows, accountRows] = await Promise.all([
@@ -64,7 +79,7 @@ export function createPgAccountsRepository(db: AppDatabase): AccountsRepository 
       }
 
       return {
-        accounts: accountRows.map(mapAccountRow),
+        accounts: accountRows.map((row) => mapAccountRow(row, cipher)),
         revision: Number(userRow.stateRevision),
       };
     },
@@ -93,7 +108,7 @@ export function createPgAccountsRepository(db: AppDatabase): AccountsRepository 
       }
 
       return {
-        account: mapAccountRow(row),
+        account: mapAccountRow(row, cipher),
         revision: Number(userRow.stateRevision),
       };
     },
@@ -133,7 +148,12 @@ export function createPgAccountsRepository(db: AppDatabase): AccountsRepository 
           icon: account.icon,
           color: account.color,
           currency: account.currency,
-          balanceMinor: account.balanceMinor,
+          balanceMinor: cipher.encrypt(account.balanceMinor, {
+            userId,
+            table: 'accounts',
+            rowId: account.id,
+            column: 'balance_minor',
+          }),
           sortOrder: nextSortOrder,
         });
 
@@ -187,7 +207,7 @@ export function createPgAccountsRepository(db: AppDatabase): AccountsRepository 
           .where(eq(users.id, userId));
 
         return {
-          account: mapAccountRow(updated),
+          account: mapAccountRow(updated, cipher),
           revision: nextRevision,
         };
       });

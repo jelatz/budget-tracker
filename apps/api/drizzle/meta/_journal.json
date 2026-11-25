@@ -15,6 +15,13 @@
       "when": 1795537522622,
       "tag": "0001_handy_king_cobra",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795605308367,
+      "tag": "0002_encrypt_monetary_figures",
+      "breakpoints": true
     }
   ]
 }
