@@ -759,4 +759,25 @@ describe('Dashboard Aggregation Engine (computeDashboardMetrics)', () => {
     expect(overBudget.budget.utilizationPercent).toBe(122);
     expect(overBudget.budget.isOverBudget).toBe(true);
   });
+
+  it('excludes CREDIT_CARD balances from dashboard netWorthMinor', () => {
+    const accountsWithCreditBalance: Account[] = [
+      { ...DEFAULT_ACCOUNTS[0]!, balanceMinor: 245000 }, // BANK
+      { ...DEFAULT_ACCOUNTS[1]!, balanceMinor: 500000 }, // CREDIT_CARD (excluded)
+      { ...DEFAULT_ACCOUNTS[2]!, balanceMinor: 18000 }, // CASH
+      { ...DEFAULT_ACCOUNTS[3]!, balanceMinor: 850000 }, // BANK (Savings)
+    ];
+
+    const metrics = computeDashboardMetrics({
+      transactions: starterTransactions,
+      accounts: accountsWithCreditBalance,
+      categories: DEFAULT_CATEGORIES,
+      period: 'THIS_MONTH',
+      monthlyBudgetMinor: 250000,
+      now: fixedNow,
+    });
+
+    // Net worth = 245000 + 18000 + 850000 = 1113000 (500000 credit card excluded)
+    expect(metrics.netWorthMinor).toBe(1113000);
+  });
 });

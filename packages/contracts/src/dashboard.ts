@@ -107,8 +107,10 @@ export function computeDashboardMetrics(params: {
 }): DashboardMetrics {
   const now = params.now ?? new Date();
 
-  // 1. Net worth: sum of all account balances
-  const netWorthMinor = params.accounts.reduce((acc, a) => acc + a.balanceMinor, 0);
+  // 1. Net worth: sum of non-credit-card account balances (excludes available credit limits)
+  const netWorthMinor = params.accounts
+    .filter((a) => a.accountType !== 'CREDIT_CARD')
+    .reduce((acc, a) => acc + a.balanceMinor, 0);
 
   // 2. Filter transactions for the active dashboard period
   const periodTransactions = params.transactions.filter((tx) =>
