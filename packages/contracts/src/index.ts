@@ -8,6 +8,7 @@ export * from './transactions.schema';
 export * from './expenses';
 export * from './dashboard';
 export * from './category-budget.schema';
+export * from './income-plan.schema';
 export * from './reconciliation.schema';
 export * from './recurring.schema';
 export * from './presets.schema';

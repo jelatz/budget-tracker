@@ -41,7 +41,7 @@ import {
 } from '../core/db/schema';
 import { AppError } from '../core/errors';
 
-function createCapabilityTestHarness() {
+function createCapabilityTestHarness(options?: { allowLocalhostCors?: boolean }) {
   const user: AuthUser = {
     id: 'user-1',
     email: 'tester@example.com',
@@ -283,6 +283,9 @@ function createCapabilityTestHarness() {
     reconcileRepo,
     checkDb: async () => dbHealthy,
     allowedOrigins: ['https://budget-tracker.pages.dev', 'http://localhost:8081'],
+    ...(options?.allowLocalhostCors !== undefined
+      ? { allowLocalhostCors: options.allowLocalhostCors }
+      : {}),
   });
 
   const authHeaders = {
@@ -338,6 +341,27 @@ describe('Railway Hono API capabilities & production guardrails', () => {
       headers: { Origin: 'https://evil.example.com' },
     });
     expect(blockedRes.headers.get('access-control-allow-origin')).toBeNull();
+  });
+
+  it('allows loopback dev origins when allowLocalhostCors is true and blocks them when false', async () => {
+    const devHarness = createCapabilityTestHarness({ allowLocalhostCors: true });
+    const allowedDevRes = await devHarness.app.request('/health', {
+      headers: { Origin: 'http://localhost:8082' },
+    });
+    expect(allowedDevRes.headers.get('access-control-allow-origin')).toBe(
+      'http://localhost:8082',
+    );
+
+    const blockedEvilRes = await devHarness.app.request('/health', {
+      headers: { Origin: 'https://evil.example.com' },
+    });
+    expect(blockedEvilRes.headers.get('access-control-allow-origin')).toBeNull();
+
+    const prodHarness = createCapabilityTestHarness({ allowLocalhostCors: false });
+    const blockedDevRes = await prodHarness.app.request('/health', {
+      headers: { Origin: 'http://localhost:8082' },
+    });
+    expect(blockedDevRes.headers.get('access-control-allow-origin')).toBeNull();
   });
 
   it('supports accounts CRUD and enforces confirmation tokens on account deletion', async () => {

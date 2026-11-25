@@ -40,6 +40,7 @@ export function createVercelApp(): AppType {
   const allowedOrigins = parseAllowedCorsOrigins(env.CORS_ORIGINS, env.NODE_ENV);
   return createApp({
     allowedOrigins,
+    allowLocalhostCors: env.NODE_ENV !== 'production',
     getMinSupportedVersion: () => env.MIN_SUPPORTED_VERSION,
     allowDemoEndpoint: () => env.ALLOW_UNAUTHENTICATED_DEMO,
   });

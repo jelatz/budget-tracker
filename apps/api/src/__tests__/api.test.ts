@@ -734,4 +734,120 @@ describe('Auth & Sync API', () => {
     expect(persistedAccount?.balanceMinor).toBe(84525);
     expect(pullAfter.state?.transactions).toHaveLength(0);
   });
+
+  it('syncs incomeSources, payday transactions with incomeSourceId, and categoryBudget.copyMonth end-to-end', async () => {
+    const repos = createMemoryRepos();
+    const app = createApp(repos);
+
+    const regRes = await app.request('/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Dual Job User',
+        email: 'dualjobs@example.com',
+        password: 'password123',
+      }),
+    });
+    expect(regRes.status).toBe(201);
+    const session = authSessionResponseSchema.parse(await regRes.json());
+
+    const pullInitial = syncPullResponseSchema.parse(
+      await (
+        await app.request('/v1/sync', {
+          headers: { Authorization: `Bearer ${session.token}` },
+        })
+      ).json(),
+    );
+    expect(pullInitial.state?.incomeSources).toEqual([]);
+
+    const pushRes = await app.request('/v1/sync', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.token}`,
+      },
+      body: JSON.stringify({
+        lastKnownRevision: pullInitial.revision,
+        mutations: [
+          {
+            opId: 'op-job1-upsert',
+            clientTimestamp: '2026-11-24T10:00:00.000Z',
+            type: 'incomeSource.upsert',
+            source: {
+              id: 'job-1',
+              name: 'Job 1 — Engineering',
+              expectedMonthlyMinor: 6000000,
+              typicalPayoutMinor: 3000000,
+              currency: DEFAULT_CURRENCY,
+              accountId: 'account-bank',
+              categoryId: 'cat-salary',
+              paySchedule: 'SEMI_MONTHLY',
+              payDaysLabel: '15th & 30th',
+              color: '#1B4332',
+              isActive: true,
+            },
+          },
+          {
+            opId: 'op-job1-payday',
+            clientTimestamp: '2026-11-24T10:01:00.000Z',
+            type: 'incomeSource.logPayday',
+            sourceId: 'job-1',
+            transactionId: 'tx-job1-pay-1',
+            amountMinor: 3000000,
+            occurredAt: '2026-11-15T09:00:00.000Z',
+            note: '15th payroll',
+          },
+          {
+            opId: 'op-oct-env',
+            clientTimestamp: '2026-11-24T10:02:00.000Z',
+            type: 'categoryBudget.upsert',
+            budget: {
+              id: 'env-oct-food',
+              categoryId: 'cat-daily-living',
+              periodMonth: '2026-10',
+              assignedMinor: 1200000,
+              rolloverEnabled: true,
+            },
+          },
+          {
+            opId: 'op-copy-nov',
+            clientTimestamp: '2026-11-24T10:03:00.000Z',
+            type: 'categoryBudget.copyMonth',
+            fromPeriodMonth: '2026-10',
+            toPeriodMonth: '2026-11',
+            idPrefix: 'budget-nov',
+          },
+        ],
+      }),
+    });
+    expect(pushRes.status).toBe(200);
+    const pushBody = syncPushResponseSchema.parse(await pushRes.json());
+
+    expect(pushBody.state.incomeSources).toHaveLength(1);
+    expect(pushBody.state.incomeSources[0]?.name).toBe('Job 1 — Engineering');
+    const paydayTx = pushBody.state.transactions.find((t) => t.id === 'tx-job1-pay-1');
+    expect(paydayTx?.incomeSourceId).toBe('job-1');
+    expect(paydayTx?.amountMinor).toBe(3000000);
+    expect(
+      pushBody.state.accounts.find((a) => a.id === 'account-bank')?.balanceMinor,
+    ).toBe(3000000);
+    expect(
+      pushBody.state.categoryBudgets.some(
+        (b) => b.periodMonth === '2026-11' && b.categoryId === 'cat-daily-living',
+      ),
+    ).toBe(true);
+
+    const pullAfter = syncPullResponseSchema.parse(
+      await (
+        await app.request('/v1/sync', {
+          headers: { Authorization: `Bearer ${session.token}` },
+        })
+      ).json(),
+    );
+    expect(pullAfter.state?.incomeSources).toHaveLength(1);
+    expect(
+      pullAfter.state?.transactions.find((t) => t.id === 'tx-job1-pay-1')
+        ?.incomeSourceId,
+    ).toBe('job-1');
+  });
 });

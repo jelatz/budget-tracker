@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { destructiveConfirmationSchema } from './confirmation';
 import { amountMinorSchema, positiveAmountMinorSchema } from './money';
 import { categoryBudgetSchema, periodMonthSchema } from './category-budget.schema';
+import { incomeSourceSchema } from './income-plan.schema';
 import { backupEnvelopeSchema } from './portability.schema';
 import { quickPresetSchema } from './presets.schema';
 import { balanceReconciliationSchema } from './reconciliation.schema';
@@ -25,6 +26,7 @@ export const syncDataStateSchema = z.object({
   sinkingFunds: z.array(sinkingFundSchema),
   quickPresets: z.array(quickPresetSchema),
   reconciliations: z.array(balanceReconciliationSchema),
+  incomeSources: z.array(incomeSourceSchema).default([]),
 });
 export type SyncDataState = z.infer<typeof syncDataStateSchema>;
 
@@ -94,6 +96,33 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
     ...baseMutationFields,
     type: z.literal('categoryBudget.delete'),
     id: z.string().min(1),
+  }),
+  z.object({
+    ...baseMutationFields,
+    type: z.literal('categoryBudget.copyMonth'),
+    fromPeriodMonth: periodMonthSchema,
+    toPeriodMonth: periodMonthSchema,
+    idPrefix: z.string().min(1).max(60),
+  }),
+  z.object({
+    ...baseMutationFields,
+    type: z.literal('incomeSource.upsert'),
+    source: incomeSourceSchema,
+  }),
+  z.object({
+    ...baseMutationFields,
+    type: z.literal('incomeSource.delete'),
+    id: z.string().min(1),
+  }),
+  z.object({
+    ...baseMutationFields,
+    type: z.literal('incomeSource.logPayday'),
+    sourceId: z.string().min(1),
+    transactionId: z.string().min(1),
+    amountMinor: positiveAmountMinorSchema,
+    accountId: z.string().min(1).optional(),
+    occurredAt: z.string().datetime(),
+    note: z.string().trim().max(280).optional(),
   }),
   z.object({
     ...baseMutationFields,

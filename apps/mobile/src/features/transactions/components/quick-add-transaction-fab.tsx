@@ -1,0 +1,76 @@
+import React, { useState } from 'react';
+import { Platform, Pressable, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { AppIcon } from '@/common/components/app-icon';
+import { useFeedback } from '@/common/components/feedback-provider';
+import { useTheme } from '@/common/hooks/use-theme';
+import {
+  useAccounts,
+  useAllCategories,
+} from '../hooks/use-transactions';
+import { TransactionFormModal } from './transaction-form-modal';
+
+export interface QuickAddTransactionFabProps {
+  hidden?: boolean;
+}
+
+export function QuickAddTransactionFab({
+  hidden = false,
+}: QuickAddTransactionFabProps) {
+  const [modalVisible, setModalVisible] = useState(false);
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const { showSuccess } = useFeedback();
+  const accountsQuery = useAccounts();
+  const { categories } = useAllCategories();
+
+  const isDesktop = width >= 768;
+  const accounts = accountsQuery.data ?? [];
+
+  return (
+    <>
+      {!hidden && (
+        <Pressable
+          onPress={() => setModalVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Add new transaction"
+          accessibilityHint="Opens the new transaction form"
+          style={[
+            {
+              position: 'absolute',
+              right: isDesktop ? 28 : Math.max(20, insets.right + 16),
+              bottom: isDesktop ? 28 : Math.max(20, insets.bottom + 16),
+              zIndex: 25,
+            },
+            Platform.OS === 'web'
+              ? {
+                  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.22)',
+                }
+              : {
+                  shadowColor: theme.text,
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.22,
+                  shadowRadius: 10,
+                  elevation: 6,
+                },
+          ]}
+          className="w-14 h-14 rounded-full bg-brand-500 active:bg-brand-600 dark:bg-brand-400 items-center justify-center active:opacity-90"
+        >
+          <AppIcon name="add" size={24} color={theme.onPrimary} />
+        </Pressable>
+      )}
+
+      <TransactionFormModal
+        visible={modalVisible}
+        editingTransaction={null}
+        accounts={accounts}
+        categories={categories}
+        onClose={() => setModalVisible(false)}
+        onSaved={showSuccess}
+        onDeleted={showSuccess}
+      />
+    </>
+  );
+}

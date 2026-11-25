@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,11 +41,13 @@ import { getUserErrorMessage } from '@/common/lib/error-message';
 import {
   useAccounts,
   useDeleteAccount,
+  useIncomeSources,
   useRecurringCommitments,
   useSinkingFunds,
   useTransactions,
   useUpsertAccount,
 } from '@/features/transactions/hooks/use-transactions';
+import { IncomeSourcesPanel } from '../components/income-sources-panel';
 import { SinkingFundsPanel } from '../components/sinking-funds-panel';
 
 type AccountFilter = 'ALL' | AccountType;
@@ -120,6 +123,17 @@ function getTypeConfig(accountType: AccountType): AccountTypeConfig {
   return ACCOUNT_TYPE_CONFIG_MAP.get(accountType) ?? ACCOUNT_TYPE_OPTIONS[0];
 }
 
+function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
+  if (columns <= 1) {
+    return items.map((item) => [item]);
+  }
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += columns) {
+    rows.push(items.slice(i, i + columns));
+  }
+  return rows;
+}
+
 interface AccountCardProps {
   account: Account;
   onEdit: (account: Account) => void;
@@ -133,9 +147,9 @@ function AccountCard({ account, onEdit, onReconcile }: AccountCardProps) {
   const isNegative = account.balanceMinor < 0;
 
   return (
-    <View className="p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
-      <View className="flex-row items-start justify-between gap-3">
-        <View className="flex-row items-center gap-3 flex-1 min-w-0">
+    <View className="flex-1 justify-between p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
+      <View className="gap-3">
+        <View className="flex-row items-center gap-3">
           <View className="w-11 h-11 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center shrink-0">
             <ThemedText className="text-xl">{account.icon}</ThemedText>
           </View>
@@ -147,7 +161,7 @@ function AccountCard({ account, onEdit, onReconcile }: AccountCardProps) {
                 style={{ backgroundColor: account.color }}
               />
               <ThemedText
-                className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                className="flex-1 text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
                 numberOfLines={1}
               >
                 {account.name}
@@ -162,24 +176,31 @@ function AccountCard({ account, onEdit, onReconcile }: AccountCardProps) {
           </View>
         </View>
 
-        <ThemedText
-          numeric
-          className={`text-base sm:text-lg font-extrabold shrink-0 ${
-            isNegative
-              ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
-              : 'text-ledger-ink dark:text-ledger-ink-dark'
-          }`}
-        >
-          {formattedBalance}
-        </ThemedText>
+        <View className="gap-0.5">
+          <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+            Balance
+          </ThemedText>
+          <ThemedText
+            numeric
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            className={`text-xl font-extrabold ${
+              isNegative
+                ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                : 'text-ledger-ink dark:text-ledger-ink-dark'
+            }`}
+          >
+            {formattedBalance}
+          </ThemedText>
+        </View>
       </View>
 
-      <View className="flex-row items-center justify-end gap-2 pt-2.5 border-t border-ledger-border dark:border-ledger-border-dark">
+      <View className="flex-row flex-wrap items-center gap-2 pt-2.5 border-t border-ledger-border dark:border-ledger-border-dark">
         <Pressable
           onPress={() => onEdit(account)}
           accessibilityRole="button"
           accessibilityLabel={`Edit ${account.name}`}
-          className="min-h-[44px] px-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
+          className="flex-1 min-w-[92px] min-h-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
         >
           <AppIcon name="edit" size={14} color={theme.textSecondary} />
           <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
@@ -191,7 +212,7 @@ function AccountCard({ account, onEdit, onReconcile }: AccountCardProps) {
           onPress={onReconcile}
           accessibilityRole="button"
           accessibilityLabel={`Reconcile ${account.name}`}
-          className="min-h-[44px] px-3.5 rounded-xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
+          className="flex-1 min-w-[104px] min-h-[44px] px-3 rounded-xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
         >
           <AppIcon name="reconcile" size={14} color={theme.positive} />
           <ThemedText className="text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
@@ -210,6 +231,7 @@ export interface AccountsScreenProps {
 export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   const { isAuthenticated, logout } = useRequireAuth();
   const theme = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const { showSuccess, showError } = useFeedback();
   const modalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
   const accountsQuery = useAccounts();
@@ -220,6 +242,8 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   const recurringCommitments = commitmentsQuery.data ?? [];
   const sinkingFundsQuery = useSinkingFunds();
   const sinkingFunds = sinkingFundsQuery.data ?? [];
+  const incomeSourcesQuery = useIncomeSources();
+  const incomeSources = incomeSourcesQuery.data ?? [];
   const upsertAccountMutation = useUpsertAccount();
   const deleteAccountMutation = useDeleteAccount();
 
@@ -267,6 +291,12 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
     [accounts, filter],
   );
 
+  const accountGridColumns = windowWidth >= 1150 ? 3 : windowWidth >= 768 ? 2 : 1;
+  const accountRows = useMemo(
+    () => chunkIntoRows(filteredAccounts, accountGridColumns),
+    [filteredAccounts, accountGridColumns],
+  );
+
   const cashAndBankAccounts = useMemo(
     () => accounts.filter((a) => a.accountType !== 'CREDIT_CARD'),
     [accounts],
@@ -292,10 +322,10 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
   const editingLinkedRecords = useMemo(() => {
     if (!editingAccount) return null;
     return getAccountLinkedRecords(
-      { transactions, recurringCommitments, sinkingFunds },
+      { transactions, recurringCommitments, sinkingFunds, incomeSources },
       editingAccount.id,
     );
-  }, [editingAccount, transactions, recurringCommitments, sinkingFunds]);
+  }, [editingAccount, transactions, recurringCommitments, sinkingFunds, incomeSources]);
 
   const openAddModal = (initialType: AccountType = 'BANK') => {
     const config = getTypeConfig(initialType);
@@ -449,7 +479,7 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                 Accounts
               </ThemedText>
               <ThemedText className="text-sm text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                Banks, e-wallets, cash, and credit cards
+                Accounts, income sources, and sinking funds
               </ThemedText>
             </View>
 
@@ -486,25 +516,25 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
             </View>
           </View>
 
-          {/* 2-Tab Segmented Switcher */}
+          {/* 3-Tab Segmented Switcher */}
           <View
             accessibilityRole="tablist"
-            className="flex-row p-1 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1"
+            className="flex-row flex-wrap p-1 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1"
           >
             <Pressable
               onPress={() => setActiveTab('ACCOUNTS')}
               accessibilityRole="tab"
               accessibilityLabel={`Accounts (${accounts.length})`}
               accessibilityState={{ selected: activeTab === 'ACCOUNTS' }}
-              className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
+              className={`flex-1 min-w-[100px] min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
                 activeTab === 'ACCOUNTS'
                   ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
-                  : 'active:opacity-75'
+                  : 'border border-transparent active:opacity-75'
               }`}
             >
               <ThemedText
                 numeric
-                className={`text-xs sm:text-sm font-bold ${
+                className={`text-xs sm:text-sm font-bold text-center ${
                   activeTab === 'ACCOUNTS'
                     ? 'text-ledger-ink dark:text-ledger-ink-dark'
                     : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
@@ -515,19 +545,42 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
             </Pressable>
 
             <Pressable
-              onPress={() => setActiveTab('SINKING_FUNDS')}
+              onPress={() => setActiveTab('INCOME_SOURCES')}
               accessibilityRole="tab"
-              accessibilityLabel={`Sinking Funds (${sinkingFunds.length})`}
-              accessibilityState={{ selected: activeTab === 'SINKING_FUNDS' }}
-              className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
-                activeTab === 'SINKING_FUNDS'
+              accessibilityLabel={`Income Sources (${incomeSources.length})`}
+              accessibilityState={{ selected: activeTab === 'INCOME_SOURCES' }}
+              className={`flex-1 min-w-[120px] min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
+                activeTab === 'INCOME_SOURCES'
                   ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
-                  : 'active:opacity-75'
+                  : 'border border-transparent active:opacity-75'
               }`}
             >
               <ThemedText
                 numeric
-                className={`text-xs sm:text-sm font-bold ${
+                className={`text-xs sm:text-sm font-bold text-center ${
+                  activeTab === 'INCOME_SOURCES'
+                    ? 'text-ledger-ink dark:text-ledger-ink-dark'
+                    : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                }`}
+              >
+                {`Income Sources (${incomeSources.length})`}
+              </ThemedText>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setActiveTab('SINKING_FUNDS')}
+              accessibilityRole="tab"
+              accessibilityLabel={`Sinking Funds (${sinkingFunds.length})`}
+              accessibilityState={{ selected: activeTab === 'SINKING_FUNDS' }}
+              className={`flex-1 min-w-[120px] min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
+                activeTab === 'SINKING_FUNDS'
+                  ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
+                  : 'border border-transparent active:opacity-75'
+              }`}
+            >
+              <ThemedText
+                numeric
+                className={`text-xs sm:text-sm font-bold text-center ${
                   activeTab === 'SINKING_FUNDS'
                     ? 'text-ledger-ink dark:text-ledger-ink-dark'
                     : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
@@ -538,7 +591,9 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
             </Pressable>
           </View>
 
-          {activeTab === 'SINKING_FUNDS' ? (
+          {activeTab === 'INCOME_SOURCES' ? (
+            <IncomeSourcesPanel />
+          ) : activeTab === 'SINKING_FUNDS' ? (
             <SinkingFundsPanel />
           ) : (
             <>
@@ -738,13 +793,29 @@ export function AccountsScreen({ initialTab }: AccountsScreenProps = {}) {
                   </View>
                 ) : (
                   <View className="gap-3">
-                    {filteredAccounts.map((account) => (
-                      <AccountCard
-                        key={account.id}
-                        account={account}
-                        onEdit={openEditModal}
-                        onReconcile={() => router.push('/reconciliation')}
-                      />
+                    {accountRows.map((row, rowIndex) => (
+                      <View
+                        key={`account-row-${rowIndex}`}
+                        className="flex-row items-stretch gap-3"
+                      >
+                        {row.map((account) => (
+                          <View key={account.id} className="flex-1 min-w-0">
+                            <AccountCard
+                              account={account}
+                              onEdit={openEditModal}
+                              onReconcile={() => router.push('/reconciliation')}
+                            />
+                          </View>
+                        ))}
+                        {Array.from({
+                          length: accountGridColumns - row.length,
+                        }).map((_, spacerIndex) => (
+                          <View
+                            key={`account-spacer-${rowIndex}-${spacerIndex}`}
+                            className="flex-1 min-w-0"
+                          />
+                        ))}
+                      </View>
                     ))}
                   </View>
                 )}

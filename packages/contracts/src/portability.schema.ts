@@ -15,6 +15,7 @@ import {
   smartDefaultsSchema,
 } from './transactions.schema';
 import { categoryBudgetSchema } from './category-budget.schema';
+import { incomeSourceSchema } from './income-plan.schema';
 import { recurringCommitmentSchema } from './recurring.schema';
 import { sinkingFundSchema } from './sinking-funds.schema';
 import { quickPresetSchema } from './presets.schema';
@@ -30,6 +31,7 @@ export const backupEnvelopeSchema = z.object({
     recurringCommitments: z.array(recurringCommitmentSchema).max(200),
     sinkingFunds: z.array(sinkingFundSchema).max(100),
     quickPresets: z.array(quickPresetSchema).max(100),
+    incomeSources: z.array(incomeSourceSchema).max(50).optional(),
     smartDefaults: smartDefaultsSchema.optional(),
   }),
 });
@@ -189,6 +191,9 @@ export function normalizeBackupEnvelope(raw: unknown): unknown {
   const normalizedPresets = Array.isArray(data.quickPresets)
     ? data.quickPresets.map((qp) => mapRecordCategoryRefs(mapRecordAccountRefs(qp, legacyIdMap)))
     : data.quickPresets;
+  const normalizedIncomeSources = Array.isArray(data.incomeSources)
+    ? data.incomeSources.map((src) => mapRecordAccountRefs(src, legacyIdMap))
+    : [];
 
   let normalizedSmartDefaults = data.smartDefaults;
   if (isRecord(data.smartDefaults)) {
@@ -223,6 +228,7 @@ export function normalizeBackupEnvelope(raw: unknown): unknown {
       recurringCommitments: normalizedCommitments,
       sinkingFunds: normalizedFunds,
       quickPresets: normalizedPresets,
+      incomeSources: normalizedIncomeSources,
       smartDefaults: normalizedSmartDefaults,
     },
   };

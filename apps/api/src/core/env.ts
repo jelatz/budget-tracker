@@ -92,6 +92,12 @@ export function getVercelDeploymentOrigins(
   return Array.from(new Set(origins));
 }
 
+export function isLocalDevOrigin(origin: string): boolean {
+  return /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):\d+$/i.test(
+    origin.trim().replace(/\/+$/, ''),
+  );
+}
+
 export function parseAllowedCorsOrigins(
   rawOrigins: string | undefined = process.env.CORS_ORIGINS,
   nodeEnv: string | undefined = process.env.NODE_ENV,

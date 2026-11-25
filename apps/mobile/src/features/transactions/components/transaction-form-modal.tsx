@@ -40,6 +40,7 @@ import {
   useCreateCustomCategory,
   useCreateTransaction,
   useDeleteTransaction,
+  useIncomeSources,
   useUpdateTransaction,
 } from '../hooks/use-transactions';
 import { SplitEditorModal } from './split-editor-modal';
@@ -147,6 +148,8 @@ export function TransactionFormModal({
   const updateTransactionMutation = useUpdateTransaction();
   const deleteTransactionMutation = useDeleteTransaction();
   const createCategoryMutation = useCreateCustomCategory();
+  const incomeSourcesQuery = useIncomeSources();
+  const incomeSources = incomeSourcesQuery.data ?? [];
 
   const wasVisibleRef = useRef(false);
   const modalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
@@ -159,6 +162,7 @@ export function TransactionFormModal({
   const [accountId, setAccountId] = useState('');
   const [toAccountId, setToAccountId] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [incomeSourceId, setIncomeSourceId] = useState('');
   const [draftSplits, setDraftSplits] = useState<TransactionSplit[]>([]);
   const [isSplitEditorOpen, setIsSplitEditorOpen] = useState(false);
 
@@ -210,6 +214,9 @@ export function TransactionFormModal({
           ? ''
           : (editingTransaction.categoryId ?? ranked[0]?.id ?? ''),
       );
+      setIncomeSourceId(
+        txType === 'INCOME' ? (editingTransaction.incomeSourceId ?? '') : '',
+      );
       setDraftSplits(
         txType !== 'TRANSFER' && editingTransaction.splits
           ? [...editingTransaction.splits]
@@ -236,6 +243,7 @@ export function TransactionFormModal({
       setAccountId(defaultAcc);
       setToAccountId(startType === 'TRANSFER' ? otherAcc : '');
       setCategoryId(ranked[0]?.id ?? '');
+      setIncomeSourceId('');
       setDraftSplits([]);
       setDateInput(formatDateInputValue(new Date().toISOString()));
       setMerchantInput('');
@@ -310,11 +318,15 @@ export function TransactionFormModal({
           : (accounts.find((a) => a.id !== accountId)?.id ?? ''),
       );
       setCategoryId('');
+      setIncomeSourceId('');
       setDraftSplits([]);
       setShowCustomCategoryForm(false);
       setCustomCategoryError(null);
     } else {
       setToAccountId('');
+      if (nextType !== 'INCOME') {
+        setIncomeSourceId('');
+      }
       setDraftSplits([]);
       const nextCategories = rankCategoriesByFrequency(categories, nextType);
       const currentMatchesType = nextCategories.some((c) => c.id === categoryId);
@@ -454,6 +466,8 @@ export function TransactionFormModal({
       accountId: sourceAccount.id,
       toAccountId: type === 'TRANSFER' ? toAccountId : undefined,
       categoryId: type === 'TRANSFER' || hasSplits ? undefined : categoryId,
+      incomeSourceId:
+        type === 'INCOME' && incomeSourceId ? incomeSourceId : undefined,
       splits: type !== 'TRANSFER' && hasSplits ? draftSplits : undefined,
       merchant: trimmedMerchant.length > 0 ? trimmedMerchant : undefined,
       tags: parsedTags,
@@ -1039,6 +1053,77 @@ export function TransactionFormModal({
                         })}
                       </View>
                     )}
+                  </View>
+                )}
+
+                {/* Optional Income Source Selector (Incoming only) */}
+                {type === 'INCOME' && incomeSources.length > 0 && (
+                  <View className="gap-1.5">
+                    <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                      Income Source / Job (Optional)
+                    </ThemedText>
+                    <View className="flex-row flex-wrap gap-2">
+                      <Pressable
+                        onPress={() => setIncomeSourceId('')}
+                        disabled={isBusy}
+                        accessibilityRole="button"
+                        accessibilityLabel="No specific job or income source"
+                        accessibilityState={{ selected: incomeSourceId === '' }}
+                        className={`min-h-[44px] px-3.5 py-2 rounded-xl border items-center justify-center ${
+                          incomeSourceId === ''
+                            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                        }`}
+                      >
+                        <ThemedText
+                          className={`text-xs font-semibold ${
+                            incomeSourceId === ''
+                              ? 'text-brand-500 dark:text-brand-400'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                          }`}
+                        >
+                          None
+                        </ThemedText>
+                      </Pressable>
+
+                      {incomeSources.map((src) => {
+                        const isSelected = incomeSourceId === src.id;
+                        return (
+                          <Pressable
+                            key={src.id}
+                            onPress={() => {
+                              setIncomeSourceId(src.id);
+                              if (merchantInput.trim().length === 0) {
+                                setMerchantInput(src.name);
+                              }
+                            }}
+                            disabled={isBusy}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Attribute income to ${src.name}`}
+                            accessibilityState={{ selected: isSelected }}
+                            className={`min-h-[44px] px-3.5 py-2 rounded-xl border flex-row items-center gap-2 ${
+                              isSelected
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                            }`}
+                          >
+                            <View
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: src.color }}
+                            />
+                            <ThemedText
+                              className={`text-xs font-semibold ${
+                                isSelected
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink dark:text-ledger-ink-dark'
+                              }`}
+                            >
+                              {src.name}
+                            </ThemedText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   </View>
                 )}
 

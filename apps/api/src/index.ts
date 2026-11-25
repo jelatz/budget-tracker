@@ -1,4 +1,6 @@
-import { pathToFileURL } from 'node:url';
+import { existsSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { serve } from '@hono/node-server';
 import { createApp } from './app';
 import { closeDbPool } from './core/db/client';
@@ -7,11 +9,30 @@ import { logError, logInfo } from './core/logger';
 
 export { createApp, type AppType } from './app';
 
+function loadLocalEnvFile(): void {
+  if (process.env.NODE_ENV === 'test' || typeof process.loadEnvFile !== 'function') {
+    return;
+  }
+  const moduleDir = dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    resolve(process.cwd(), '.env'),
+    resolve(moduleDir, '..', '.env'),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) {
+      process.loadEnvFile(candidate);
+      return;
+    }
+  }
+}
+
 export function startServer() {
+  loadLocalEnvFile();
   const env = getEnv();
   const allowedOrigins = parseAllowedCorsOrigins(env.CORS_ORIGINS, env.NODE_ENV);
   const app = createApp({
     allowedOrigins,
+    allowLocalhostCors: env.NODE_ENV !== 'production',
     getMinSupportedVersion: () => env.MIN_SUPPORTED_VERSION,
     allowDemoEndpoint: () => env.ALLOW_UNAUTHENTICATED_DEMO,
   });

@@ -1,5 +1,6 @@
 import { DEFAULT_CURRENCY, MAX_SAFE_MONEY_MINOR } from './money';
 import { categoryBudgetSchema } from './category-budget.schema';
+import { incomeSourceSchema } from './income-plan.schema';
 import { quickPresetSchema } from './presets.schema';
 import {
   balanceReconciliationSchema,
@@ -81,6 +82,7 @@ export function createInitialSyncDataState(_referenceDate = new Date()): SyncDat
     sinkingFunds: [],
     quickPresets: [],
     reconciliations: [],
+    incomeSources: [],
   };
 }
 
@@ -291,15 +293,18 @@ export interface AccountLinkedRecordsSummary {
   transferCount: number;
   recurringCommitments: SyncDataState['recurringCommitments'];
   sinkingFunds: SyncDataState['sinkingFunds'];
+  incomeSources: SyncDataState['incomeSources'];
   totalCount: number;
   isLinked: boolean;
 }
 
 /**
- * Finds all transactions, recurring commitments, and sinking funds linked to an account.
+ * Finds all transactions, recurring commitments, sinking funds, and income sources linked to an account.
  */
 export function getAccountLinkedRecords(
-  state: Pick<SyncDataState, 'transactions' | 'recurringCommitments' | 'sinkingFunds'>,
+  state: Pick<SyncDataState, 'transactions' | 'recurringCommitments' | 'sinkingFunds'> & {
+    incomeSources?: SyncDataState['incomeSources'];
+  },
   accountId: string,
 ): AccountLinkedRecordsSummary {
   const transactions = state.transactions.filter(
@@ -321,8 +326,14 @@ export function getAccountLinkedRecords(
     (rc) => rc.accountId === accountId,
   );
   const sinkingFunds = state.sinkingFunds.filter((sf) => sf.accountId === accountId);
+  const incomeSources = (state.incomeSources ?? []).filter(
+    (src) => src.accountId === accountId,
+  );
   const totalCount =
-    transactions.length + recurringCommitments.length + sinkingFunds.length;
+    transactions.length +
+    recurringCommitments.length +
+    sinkingFunds.length +
+    incomeSources.length;
 
   return {
     transactions,
@@ -331,6 +342,7 @@ export function getAccountLinkedRecords(
     transferCount,
     recurringCommitments,
     sinkingFunds,
+    incomeSources,
     totalCount,
     isLinked: totalCount > 0,
   };
@@ -390,6 +402,14 @@ export function formatAccountLinkedErrorMessage(
     const namesPreview = formatLinkedNamesPreview(summary.sinkingFunds);
     parts.push(
       `${count} ${count === 1 ? 'sinking fund' : 'sinking funds'} (${namesPreview})`,
+    );
+  }
+
+  if (summary.incomeSources.length > 0) {
+    const count = summary.incomeSources.length;
+    const namesPreview = formatLinkedNamesPreview(summary.incomeSources);
+    parts.push(
+      `${count} ${count === 1 ? 'income source' : 'income sources'} (${namesPreview})`,
     );
   }
 
@@ -630,6 +650,99 @@ export function applySyncMutation(
         ...state,
         categoryBudgets: state.categoryBudgets.filter((b) => b.id !== mutation.id),
       };
+    }
+
+    case 'categoryBudget.copyMonth': {
+      if (mutation.fromPeriodMonth === mutation.toPeriodMonth) {
+        return state;
+      }
+      const sourceBudgets = state.categoryBudgets.filter(
+        (b) => b.periodMonth === mutation.fromPeriodMonth,
+      );
+      if (sourceBudgets.length === 0) {
+        return state;
+      }
+      const existingCategoryIds = new Set(
+        state.categoryBudgets
+          .filter((b) => b.periodMonth === mutation.toPeriodMonth)
+          .map((b) => b.categoryId),
+      );
+      let nextBudgets = state.categoryBudgets;
+      let changed = false;
+      for (const sourceBudget of sourceBudgets) {
+        if (existingCategoryIds.has(sourceBudget.categoryId)) {
+          continue;
+        }
+        const newId = `${mutation.idPrefix}-${sourceBudget.categoryId}`;
+        if (nextBudgets.some((b) => b.id === newId)) {
+          continue;
+        }
+        const copied = categoryBudgetSchema.parse({
+          id: newId,
+          categoryId: sourceBudget.categoryId,
+          periodMonth: mutation.toPeriodMonth,
+          assignedMinor: sourceBudget.assignedMinor,
+          rolloverEnabled: sourceBudget.rolloverEnabled,
+          ...(sourceBudget.notes ? { notes: sourceBudget.notes } : {}),
+        });
+        nextBudgets = [...nextBudgets, copied];
+        existingCategoryIds.add(sourceBudget.categoryId);
+        changed = true;
+      }
+      if (!changed) {
+        return state;
+      }
+      return {
+        ...state,
+        categoryBudgets: nextBudgets,
+      };
+    }
+
+    case 'incomeSource.upsert': {
+      const saved = incomeSourceSchema.parse(mutation.source);
+      return {
+        ...state,
+        incomeSources: upsertById(state.incomeSources, saved),
+      };
+    }
+
+    case 'incomeSource.delete': {
+      return {
+        ...state,
+        incomeSources: state.incomeSources.filter((src) => src.id !== mutation.id),
+      };
+    }
+
+    case 'incomeSource.logPayday': {
+      const source = state.incomeSources.find((src) => src.id === mutation.sourceId);
+      if (!source) {
+        return state;
+      }
+      if (state.transactions.some((tx) => tx.id === mutation.transactionId)) {
+        return state;
+      }
+      const targetAccountId = mutation.accountId ?? source.accountId;
+      const targetAccount = state.accounts.find((a) => a.id === targetAccountId);
+      if (!targetAccount || targetAccount.currency !== source.currency) {
+        return state;
+      }
+
+      const tx = transactionSchema.parse({
+        id: mutation.transactionId,
+        type: 'INCOME',
+        amountMinor: mutation.amountMinor,
+        currency: targetAccount.currency,
+        accountId: targetAccountId,
+        categoryId: source.categoryId || 'cat-salary',
+        incomeSourceId: source.id,
+        merchant: truncateText(source.name, 80) || 'Salary',
+        ...(mutation.note ? { note: truncateText(mutation.note, 280) } : {}),
+        tags: ['salary'],
+        occurredAt: mutation.occurredAt,
+        createdAt: mutation.occurredAt,
+      });
+
+      return addTransactionToState(state, tx);
     }
 
     case 'commitment.upsert': {
@@ -998,6 +1111,9 @@ export function applySyncMutation(
           quickPresets: mergeById([], envelope.data.quickPresets).map((qp) =>
             quickPresetSchema.parse(qp),
           ),
+          incomeSources: mergeById([], envelope.data.incomeSources ?? []).map((src) =>
+            incomeSourceSchema.parse(src),
+          ),
           smartDefaults: envelope.data.smartDefaults
             ? smartDefaultsSchema.parse(envelope.data.smartDefaults)
             : state.smartDefaults,
@@ -1046,6 +1162,10 @@ export function applySyncMutation(
           state.quickPresets,
           envelope.data.quickPresets,
         ).map((qp) => quickPresetSchema.parse(qp)),
+        incomeSources: mergeById(
+          state.incomeSources,
+          envelope.data.incomeSources ?? [],
+        ).map((src) => incomeSourceSchema.parse(src)),
         smartDefaults: smartDefaultsSchema.parse({
           ...state.smartDefaults,
           knownTags: mergedKnownTags,

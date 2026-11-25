@@ -47,15 +47,21 @@ describe('Dashboard Route Tab Param Parsers', () => {
   describe('parseAccountsTabParam', () => {
     it('parses canonical lowercase values', () => {
       expect(parseAccountsTabParam('accounts')).toBe('ACCOUNTS');
+      expect(parseAccountsTabParam('income-sources')).toBe('INCOME_SOURCES');
       expect(parseAccountsTabParam('sinking-funds')).toBe('SINKING_FUNDS');
     });
 
     it('normalizes uppercase and surrounding whitespace', () => {
       expect(parseAccountsTabParam('  ACCOUNTS  ')).toBe('ACCOUNTS');
+      expect(parseAccountsTabParam('  Income-Sources  ')).toBe('INCOME_SOURCES');
       expect(parseAccountsTabParam('\tSinking-Funds\n')).toBe('SINKING_FUNDS');
     });
 
     it('resolves supported route aliases', () => {
+      expect(parseAccountsTabParam('income_sources')).toBe('INCOME_SOURCES');
+      expect(parseAccountsTabParam('incomesources')).toBe('INCOME_SOURCES');
+      expect(parseAccountsTabParam('income')).toBe('INCOME_SOURCES');
+      expect(parseAccountsTabParam('salary')).toBe('INCOME_SOURCES');
       expect(parseAccountsTabParam('sinking_funds')).toBe('SINKING_FUNDS');
       expect(parseAccountsTabParam(' SINKING_FUNDS ')).toBe('SINKING_FUNDS');
       expect(parseAccountsTabParam('sinkingfunds')).toBe('SINKING_FUNDS');
@@ -63,6 +69,7 @@ describe('Dashboard Route Tab Param Parsers', () => {
     });
 
     it('handles string arrays by taking the first element', () => {
+      expect(parseAccountsTabParam(['income-sources', 'accounts'])).toBe('INCOME_SOURCES');
       expect(parseAccountsTabParam(['sinking-funds', 'accounts'])).toBe('SINKING_FUNDS');
       expect(parseAccountsTabParam([' sinkingfunds ', 'accounts'])).toBe('SINKING_FUNDS');
       expect(parseAccountsTabParam([])).toBeUndefined();

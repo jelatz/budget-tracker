@@ -13,6 +13,7 @@ import {
   DEFAULT_CURRENCY,
   formatAccountLinkedErrorMessage,
   getAccountLinkedRecords,
+  incomeSourceSchema,
   isCommitmentPaidOff,
   normalizeBackupEnvelope,
   positiveAmountMinorSchema,
@@ -31,6 +32,8 @@ import {
   type CategoryBudgetStatus,
   type CreateCategoryInput,
   type CreateTransactionInput,
+  type IncomeSource,
+  type IncomeSourceInput,
   type RecurringCommitment,
   type RecurringCommitmentInput,
   type SafeToSpendMetrics,
@@ -441,6 +444,141 @@ export async function deleteCategoryBudget(id: string): Promise<void> {
   });
 }
 
+export async function copyCategoryBudgetsFromMonth(
+  fromPeriodMonth: string,
+  toPeriodMonth: string,
+): Promise<{ copiedCount: number }> {
+  if (fromPeriodMonth === toPeriodMonth) {
+    return { copiedCount: 0 };
+  }
+  const state = getCurrentSyncState();
+  const sourceBudgets = state.categoryBudgets.filter(
+    (b) => b.periodMonth === fromPeriodMonth,
+  );
+  const existingCategoryIds = new Set(
+    state.categoryBudgets
+      .filter((b) => b.periodMonth === toPeriodMonth)
+      .map((b) => b.categoryId),
+  );
+  const missing = sourceBudgets.filter(
+    (b) => !existingCategoryIds.has(b.categoryId),
+  );
+
+  if (missing.length === 0) {
+    return { copiedCount: 0 };
+  }
+
+  enqueueSyncMutation({
+    opId: createSyncOpId(),
+    clientTimestamp: new Date().toISOString(),
+    type: 'categoryBudget.copyMonth',
+    fromPeriodMonth,
+    toPeriodMonth,
+    idPrefix: generateEntityId('budget'),
+  });
+
+  return { copiedCount: missing.length };
+}
+
+// ==========================================
+// Income Sources (Salary & Jobs) API
+// ==========================================
+
+export async function getIncomeSources(): Promise<IncomeSource[]> {
+  const state = getCurrentSyncState();
+  return state.incomeSources.map((src) => incomeSourceSchema.parse(src));
+}
+
+export async function upsertIncomeSource(
+  input: Omit<IncomeSourceInput, 'id'> & { id?: string },
+): Promise<IncomeSource> {
+  const id = input.id || generateEntityId('job');
+  const validated = incomeSourceSchema.parse({
+    ...input,
+    id,
+  });
+
+  const state = getCurrentSyncState();
+  const account = state.accounts.find((a) => a.id === validated.accountId);
+  if (!account) {
+    throw new Error('Selected deposit account was not found.');
+  }
+  if (account.currency !== validated.currency) {
+    throw new Error(
+      `Deposit account currency (${account.currency}) must match income source currency (${validated.currency}).`,
+    );
+  }
+
+  enqueueSyncMutation({
+    opId: createSyncOpId(),
+    clientTimestamp: new Date().toISOString(),
+    type: 'incomeSource.upsert',
+    source: validated,
+  });
+
+  return validated;
+}
+
+export async function deleteIncomeSource(id: string): Promise<void> {
+  enqueueSyncMutation({
+    opId: createSyncOpId(),
+    clientTimestamp: new Date().toISOString(),
+    type: 'incomeSource.delete',
+    id,
+  });
+}
+
+export async function logPayday(params: {
+  sourceId: string;
+  amountMinor: number;
+  accountId?: string;
+  occurredAt?: string;
+  note?: string;
+}): Promise<{ source: IncomeSource; transaction: Transaction }> {
+  positiveAmountMinorSchema.parse(params.amountMinor);
+  const state = getCurrentSyncState();
+  const source = state.incomeSources.find((src) => src.id === params.sourceId);
+  if (!source) {
+    throw new Error('Income source was not found.');
+  }
+
+  const targetAccountId = params.accountId ?? source.accountId;
+  const targetAccount = state.accounts.find((a) => a.id === targetAccountId);
+  if (!targetAccount) {
+    throw new Error('Selected deposit account was not found.');
+  }
+  if (targetAccount.currency !== source.currency) {
+    throw new Error(
+      `Deposit account currency (${targetAccount.currency}) must match ${source.name} currency (${source.currency}).`,
+    );
+  }
+
+  const transactionId = generateEntityId('tx');
+  const occurredAt = params.occurredAt ?? new Date().toISOString();
+
+  const nextState = enqueueSyncMutation({
+    opId: createSyncOpId(),
+    clientTimestamp: new Date().toISOString(),
+    type: 'incomeSource.logPayday',
+    sourceId: source.id,
+    transactionId,
+    amountMinor: params.amountMinor,
+    accountId: targetAccountId,
+    occurredAt,
+    ...(params.note?.trim() ? { note: params.note.trim() } : {}),
+  });
+
+  const createdTx = nextState.transactions.find((tx) => tx.id === transactionId);
+  if (!createdTx) {
+    throw new Error('Could not record payday. Please verify the selected account.');
+  }
+
+  return {
+    source,
+    transaction: createdTx,
+  };
+}
+
 // ==========================================
 // Recurring Commitments API
 // ==========================================
@@ -770,6 +908,7 @@ export async function exportBackupEnvelope(): Promise<BackupEnvelope> {
       recurringCommitments: state.recurringCommitments,
       sinkingFunds: state.sinkingFunds,
       quickPresets: state.quickPresets,
+      incomeSources: state.incomeSources,
       smartDefaults: state.smartDefaults,
     },
   });

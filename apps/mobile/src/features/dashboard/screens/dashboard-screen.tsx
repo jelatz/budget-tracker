@@ -23,10 +23,11 @@ import { useTheme } from '@/common/hooks/use-theme';
 
 import { useDashboardMetrics } from '@/features/transactions/hooks/use-transactions';
 
-import { SafeToSpendCard } from '../components/safe-to-spend-card';
-import { NetWorthCard } from '../components/net-worth-card';
 import { BudgetProgressCard } from '../components/budget-progress-card';
 import { EnvelopeBudgetsCard } from '../components/envelope-budgets-card';
+import { NetWorthCard } from '../components/net-worth-card';
+import { SafeToSpendCard } from '../components/safe-to-spend-card';
+import { SalarySummaryCard } from '../components/salary-summary-card';
 import { SinkingFundsCard } from '../components/sinking-funds-card';
 import { CategoryBreakdownCard } from '../components/category-breakdown-card';
 import { TagInsightsCard } from '../components/tag-insights-card';
@@ -391,6 +392,11 @@ export function DashboardScreen() {
               <View className={isDesktopBento ? 'flex-row gap-5 items-start' : 'gap-5'}>
                 {/* Left Column: Planning & Budgets */}
                 <View className={isDesktopBento ? 'flex-1 min-w-0 gap-5' : 'gap-5'}>
+                  <SalarySummaryCard
+                    onPress={() =>
+                      router.push({ pathname: '/accounts', params: { tab: 'income-sources' } })
+                    }
+                  />
                   <BudgetProgressCard
                     budget={metrics.budget}
                     onPress={() =>

@@ -4,7 +4,7 @@ import type { SinkingFund } from './sinking-funds.schema';
 import type { Account, Category, Transaction } from './transactions.schema';
 
 export type ExpensesRouteTab = 'RECORDED' | 'SCHEDULED' | 'BUDGETS';
-export type AccountsRouteTab = 'ACCOUNTS' | 'SINKING_FUNDS';
+export type AccountsRouteTab = 'ACCOUNTS' | 'INCOME_SOURCES' | 'SINKING_FUNDS';
 
 export interface CategoryBudgetsOverviewSummary {
   totalAssignedMinor: number;
@@ -278,6 +278,11 @@ const EXPENSES_TAB_MAP: Record<string, ExpensesRouteTab> = {
 
 const ACCOUNTS_TAB_MAP: Record<string, AccountsRouteTab> = {
   accounts: 'ACCOUNTS',
+  'income-sources': 'INCOME_SOURCES',
+  income_sources: 'INCOME_SOURCES',
+  incomesources: 'INCOME_SOURCES',
+  income: 'INCOME_SOURCES',
+  salary: 'INCOME_SOURCES',
   'sinking-funds': 'SINKING_FUNDS',
   sinking_funds: 'SINKING_FUNDS',
   sinkingfunds: 'SINKING_FUNDS',

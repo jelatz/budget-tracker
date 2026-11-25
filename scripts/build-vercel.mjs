@@ -97,6 +97,9 @@ run('pnpm --filter @repo/api build');
 // 3. Export @repo/mobile static web bundle (produces apps/mobile/dist)
 run('pnpm --filter @repo/mobile exec npx expo export --platform web', rootDir, {
   EXPO_PUBLIC_BUILD_ID: buildId,
+  ...(process.env.EXPO_PUBLIC_API_URL === undefined
+    ? { EXPO_PUBLIC_API_URL: '' }
+    : {}),
 });
 
 // 4. Copy static frontend assets into .vercel/output/static and write version manifest

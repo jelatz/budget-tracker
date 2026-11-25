@@ -231,6 +231,8 @@ export function CategoryEnvelopesPanel() {
 
   const editingCategory = editingEnvelope ? categoryMap.get(editingEnvelope.categoryId) : undefined;
   const editingCategoryName = editingCategory?.name ?? 'Envelope';
+  const currentPeriod = getCurrentPeriod();
+  const isCurrentPeriod = periodMonth === currentPeriod;
 
   return (
     <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-4">
@@ -272,13 +274,20 @@ export function CategoryEnvelopesPanel() {
               </ThemedText>
             </Pressable>
 
-            <View className="px-2.5 py-1">
+            <View className="px-2.5 py-1 flex-row items-center gap-1.5">
               <ThemedText
                 numeric
                 className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
               >
                 {formatPeriodDisplay(periodMonth)}
               </ThemedText>
+              {isCurrentPeriod && (
+                <View className="px-2 py-0.5 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft">
+                  <ThemedText className="text-[11px] font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                    Current
+                  </ThemedText>
+                </View>
+              )}
             </View>
 
             <Pressable
@@ -291,20 +300,20 @@ export function CategoryEnvelopesPanel() {
                 Next
               </ThemedText>
             </Pressable>
-
-            {periodMonth !== getCurrentPeriod() && (
-              <Pressable
-                onPress={() => setPeriodMonth(getCurrentPeriod())}
-                accessibilityRole="button"
-                accessibilityLabel="Reset to Current Month"
-                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-              >
-                <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
-                  Today
-                </ThemedText>
-              </Pressable>
-            )}
           </View>
+
+          {!isCurrentPeriod && (
+            <Pressable
+              onPress={() => setPeriodMonth(currentPeriod)}
+              accessibilityRole="button"
+              accessibilityLabel={`Jump to current month, ${formatPeriodDisplay(currentPeriod)}`}
+              className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+            >
+              <ThemedText className="text-xs font-semibold text-brand-500 dark:text-brand-400">
+                Current Month
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
 
         {envelopes.length > 0 && (

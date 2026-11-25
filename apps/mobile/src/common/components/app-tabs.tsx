@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAuth } from '@/features/auth/context/auth-context';
+import { QuickAddTransactionFab } from '@/features/transactions/components/quick-add-transaction-fab';
 import { useTheme } from '@/hooks/use-theme';
 import { SyncStatusBadge } from './sync-status-badge';
 import { ThemedText } from './themed-text';
@@ -178,6 +179,8 @@ export default function AppTabs() {
 
         <TabSlot style={{ flex: 1, minWidth: 0, height: '100%' }} />
       </Tabs>
+
+      <QuickAddTransactionFab hidden={!isDesktop && drawerOpen} />
     </View>
   );
 }

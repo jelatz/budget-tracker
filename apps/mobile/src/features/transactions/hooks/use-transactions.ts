@@ -1,6 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   computeDashboardMetrics,
+  computeMonthlySalaryPlan,
+  getPreviousPeriodMonth,
   rankCategoriesByFrequency,
   type ApplyReconciliationInput,
   type CategoryBudget,
@@ -9,7 +11,10 @@ import {
   type CreateTransactionInput,
   type DashboardMetrics,
   type DashboardPeriod,
+  type IncomeSourceInput,
+  type MonthlySalaryPlan,
   type RecurringCommitmentInput,
+  type SalaryPlanBasis,
   type SinkingFund,
   type UpdateTransactionInput,
   type UpsertAccountInput,
@@ -18,11 +23,13 @@ import {
   applyReconciliation,
   clearAllTransactions,
   contributeToSinkingFund,
+  copyCategoryBudgetsFromMonth,
   createCustomCategory,
   createTransaction,
   createTransactionsBatch,
   deleteAccount,
   deleteCategoryBudget,
+  deleteIncomeSource,
   deleteRecurringCommitment,
   deleteSinkingFund,
   deleteTransaction,
@@ -30,6 +37,7 @@ import {
   getAccounts,
   getCategories,
   getCategoryBudgets,
+  getIncomeSources,
   getReconciliations,
   getRecurringCommitments,
   getSafeToSpendMetrics,
@@ -37,6 +45,7 @@ import {
   getSmartDefaults,
   getTransactions,
   importBackupEnvelope,
+  logPayday,
   payRecurringCommitment,
   resetLocalStore,
   unpayRecurringCommitment,
@@ -44,6 +53,7 @@ import {
   updateTransaction,
   upsertAccount,
   upsertCategoryBudget,
+  upsertIncomeSource,
   upsertRecurringCommitment,
   upsertSinkingFund,
 } from '../api';
@@ -59,6 +69,7 @@ export const TRANSACTION_KEYS = {
   allCategoryBudgets: ['transactions-domain', 'category-budgets'] as const,
   recurringCommitments: ['transactions-domain', 'recurring-commitments'] as const,
   sinkingFunds: ['transactions-domain', 'sinking-funds'] as const,
+  incomeSources: ['transactions-domain', 'income-sources'] as const,
   safeToSpend: (dateIso?: string) =>
     ['transactions-domain', 'safe-to-spend', dateIso ?? 'current'] as const,
   reconciliations: ['transactions-domain', 'reconciliations'] as const,
@@ -295,6 +306,135 @@ export function useDeleteCategoryBudget() {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },
   });
+}
+
+export function useCopyCategoryBudgetsFromMonth() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      fromPeriodMonth,
+      toPeriodMonth,
+    }: {
+      fromPeriodMonth: string;
+      toPeriodMonth: string;
+    }) => copyCategoryBudgetsFromMonth(fromPeriodMonth, toPeriodMonth),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+// ==========================================
+// Income Sources & Salary Plan Hooks
+// ==========================================
+
+export function useIncomeSources() {
+  return useQuery({
+    queryKey: TRANSACTION_KEYS.incomeSources,
+    queryFn: getIncomeSources,
+  });
+}
+
+export function useUpsertIncomeSource() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: Omit<IncomeSourceInput, 'id'> & { id?: string }) =>
+      upsertIncomeSource(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useDeleteIncomeSource() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => deleteIncomeSource(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useLogPayday() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: {
+      sourceId: string;
+      amountMinor: number;
+      accountId?: string;
+      occurredAt?: string;
+      note?: string;
+    }) => logPayday(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useMonthlySalaryPlan(
+  periodMonth: string,
+  basis: SalaryPlanBasis = 'EXPECTED',
+) {
+  const previousPeriodMonth = getPreviousPeriodMonth(periodMonth);
+  const incomeSourcesQuery = useIncomeSources();
+  const transactionsQuery = useTransactions();
+  const accountsQuery = useAccounts();
+  const categoriesQuery = useAllCategories();
+  const categoryBudgetsQuery = useCategoryBudgets(periodMonth);
+  const previousCategoryBudgetsQuery = useCategoryBudgets(previousPeriodMonth);
+  const commitmentsQuery = useRecurringCommitments();
+  const sinkingFundsQuery = useSinkingFunds();
+  const smartDefaultsQuery = useSmartDefaults();
+
+  const plan: MonthlySalaryPlan = computeMonthlySalaryPlan({
+    periodMonth,
+    basis,
+    incomeSources: incomeSourcesQuery.data ?? [],
+    transactions: transactionsQuery.data ?? [],
+    categoryBudgets: categoryBudgetsQuery.data ?? [],
+    recurringCommitments: commitmentsQuery.data ?? [],
+    sinkingFunds: sinkingFundsQuery.data ?? [],
+  });
+
+  return {
+    plan,
+    previousPeriodMonth,
+    previousMonthEnvelopeCount: (previousCategoryBudgetsQuery.data ?? []).length,
+    accounts: accountsQuery.data ?? [],
+    categories: categoriesQuery.categories,
+    smartDefaults: smartDefaultsQuery.data,
+    isLoading:
+      incomeSourcesQuery.isLoading ||
+      transactionsQuery.isLoading ||
+      accountsQuery.isLoading ||
+      categoryBudgetsQuery.isLoading ||
+      commitmentsQuery.isLoading ||
+      sinkingFundsQuery.isLoading,
+    isError:
+      incomeSourcesQuery.isError ||
+      transactionsQuery.isError ||
+      accountsQuery.isError ||
+      categoryBudgetsQuery.isError ||
+      commitmentsQuery.isError ||
+      sinkingFundsQuery.isError,
+    refetch: () =>
+      Promise.all([
+        incomeSourcesQuery.refetch(),
+        transactionsQuery.refetch(),
+        accountsQuery.refetch(),
+        categoriesQuery.refetch(),
+        categoryBudgetsQuery.refetch(),
+        previousCategoryBudgetsQuery.refetch(),
+        commitmentsQuery.refetch(),
+        sinkingFundsQuery.refetch(),
+        smartDefaultsQuery.refetch(),
+      ]),
+  };
 }
 
 // ==========================================

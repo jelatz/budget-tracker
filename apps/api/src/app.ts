@@ -32,7 +32,11 @@ import {
 import { createTransactionsRoutes } from './capabilities/transactions/routes';
 import { createRequireAuthMiddleware } from './core/auth/middleware';
 import { checkDbConnection, getDb } from './core/db/client';
-import { getMinSupportedVersion, parseAllowedCorsOrigins } from './core/env';
+import {
+  getMinSupportedVersion,
+  isLocalDevOrigin,
+  parseAllowedCorsOrigins,
+} from './core/env';
 import { handleApiError } from './core/errors';
 import {
   createRequestLoggerMiddleware,
@@ -50,6 +54,7 @@ export interface AppDependencies {
   getMinSupportedVersion?: () => string;
   allowDemoEndpoint?: () => boolean;
   allowedOrigins?: readonly string[];
+  allowLocalhostCors?: boolean;
   disableRateLimit?: boolean;
 }
 
@@ -59,6 +64,9 @@ export function createApp(deps?: AppDependencies) {
       origin.trim().replace(/\/+$/, ''),
     ),
   );
+  const allowLocalhostCors =
+    deps?.allowLocalhostCors ??
+    (deps?.allowedOrigins === undefined && process.env.NODE_ENV !== 'production');
 
   const authRepo: AuthRepository =
     deps?.authRepo ?? {
@@ -203,7 +211,13 @@ export function createApp(deps?: AppDependencies) {
             return '';
           }
           const normalized = origin.trim().replace(/\/+$/, '');
-          return allowedOriginSet.has(normalized) ? origin : null;
+          if (
+            allowedOriginSet.has(normalized) ||
+            (allowLocalhostCors && isLocalDevOrigin(normalized))
+          ) {
+            return origin;
+          }
+          return null;
         },
         credentials: true,
         allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

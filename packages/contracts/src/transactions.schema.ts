@@ -96,6 +96,7 @@ export const baseCreateTransactionInputSchema = z.object({
   accountId: z.string().min(1),
   toAccountId: z.string().min(1).optional(),
   categoryId: z.string().min(1).optional(),
+  incomeSourceId: z.string().min(1).optional(),
   splits: z.array(transactionSplitSchema).max(50).optional(),
   merchant: z.string().trim().max(80).optional(),
   tags: z.array(z.string().trim().min(1).max(32)).max(20).default([]),
@@ -111,10 +112,19 @@ function refineTransactionRules(
     accountId: string;
     toAccountId?: string;
     categoryId?: string;
+    incomeSourceId?: string;
     splits?: TransactionSplit[];
   },
   ctx: z.RefinementCtx,
 ) {
+  if (val.incomeSourceId && val.type !== 'INCOME') {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Income source can only be linked to income transactions',
+      path: ['incomeSourceId'],
+    });
+  }
+
   if (val.type === 'TRANSFER') {
     if (!val.toAccountId) {
       ctx.addIssue({

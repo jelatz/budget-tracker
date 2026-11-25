@@ -65,6 +65,24 @@ export class ApiClientError extends Error {
   }
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  return (
+    normalized === 'localhost' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized === '[::1]'
+  );
+}
+
+function isLoopbackUrl(rawUrl: string): boolean {
+  try {
+    return isLoopbackHostname(new URL(rawUrl).hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function getApiBaseUrl(): string {
   const envUrl = process.env.EXPO_PUBLIC_API_URL;
   const extraApiUrl = Constants.expoConfig?.extra?.apiUrl;
@@ -75,15 +93,23 @@ export function getApiBaseUrl(): string {
         ? extraApiUrl.trim()
         : '';
 
+  const hasWebOrigin =
+    typeof window !== 'undefined' &&
+    typeof window.location?.origin === 'string' &&
+    /^https?:\/\//i.test(window.location.origin);
+
   if (raw) {
+    if (
+      hasWebOrigin &&
+      isLoopbackUrl(raw) &&
+      !isLoopbackHostname(window.location.hostname)
+    ) {
+      return window.location.origin.replace(/\/+$/, '');
+    }
     return raw.replace(/\/+$/, '');
   }
 
-  if (
-    typeof window !== 'undefined' &&
-    typeof window.location?.origin === 'string' &&
-    /^https?:\/\//i.test(window.location.origin)
-  ) {
+  if (hasWebOrigin) {
     return window.location.origin.replace(/\/+$/, '');
   }
 
@@ -127,10 +153,15 @@ export async function apiFetch<T>(
       headers,
     });
   } catch (error: unknown) {
+    const rawMessage =
+      error instanceof Error && error.message ? error.message.trim() : '';
     const message =
-      error instanceof Error && error.message
-        ? error.message
-        : 'Network request failed while contacting API server.';
+      !rawMessage ||
+      /^(?:failed to fetch|load failed|network request failed)$/i.test(
+        rawMessage,
+      )
+        ? `Cannot reach the API server at ${baseUrl}. Make sure the backend is running and try again.`
+        : rawMessage;
     throw new ApiClientError(message, {
       status: 0,
       code: 'NETWORK_ERROR',

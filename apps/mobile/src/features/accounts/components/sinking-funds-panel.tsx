@@ -7,6 +7,7 @@ import {
   Pressable,
   ScrollView,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {
@@ -57,8 +58,20 @@ function getDefaultTargetDate(): string {
   return `${year}-${month}-${day}`;
 }
 
+function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
+  if (columns <= 1) {
+    return items.map((item) => [item]);
+  }
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += columns) {
+    rows.push(items.slice(i, i + columns));
+  }
+  return rows;
+}
+
 export function SinkingFundsPanel() {
   const theme = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
   const { showSuccess } = useFeedback();
   const editModalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
   const stashModalScrollRef = useRef<React.ComponentRef<typeof ScrollView> | null>(null);
@@ -116,6 +129,12 @@ export function SinkingFundsPanel() {
     }
     return { totalSaved, totalTarget };
   }, [sinkingFunds]);
+
+  const fundGridColumns = windowWidth >= 1150 ? 3 : windowWidth >= 768 ? 2 : 1;
+  const sinkingFundRows = useMemo(
+    () => chunkIntoRows(sinkingFunds, fundGridColumns),
+    [sinkingFunds, fundGridColumns],
+  );
 
   const livePreview = useMemo(() => {
     const minor = parseDecimalToMinorUnits(targetAmountInput);
@@ -427,140 +446,156 @@ export function SinkingFundsPanel() {
         </View>
       ) : (
         <View className="gap-3">
-          {sinkingFunds.map((fund) => {
-            const holdingAccount = accountMap.get(fund.accountId);
-            const percent =
-              fund.targetAmountMinor > 0
-                ? Math.round(
-                    (fund.currentSavedMinor * 100) / fund.targetAmountMinor,
-                  )
-                : 0;
-            const clampedPercent = Math.min(100, Math.max(0, percent));
-            const calc = computeSinkingFundMonthlyTarget(
-              fund.targetAmountMinor,
-              fund.currentSavedMinor,
-              fund.targetDate,
-            );
-            const accentColor = fund.color || DEFAULT_FUND_COLOR;
-            const monogram = getFundMonogram(fund.name);
+          {sinkingFundRows.map((row, rowIndex) => (
+            <View
+              key={`fund-row-${rowIndex}`}
+              className="flex-row items-stretch gap-3"
+            >
+              {row.map((fund) => {
+                const holdingAccount = accountMap.get(fund.accountId);
+                const percent =
+                  fund.targetAmountMinor > 0
+                    ? Math.round(
+                        (fund.currentSavedMinor * 100) / fund.targetAmountMinor,
+                      )
+                    : 0;
+                const clampedPercent = Math.min(100, Math.max(0, percent));
+                const calc = computeSinkingFundMonthlyTarget(
+                  fund.targetAmountMinor,
+                  fund.currentSavedMinor,
+                  fund.targetDate,
+                );
+                const accentColor = fund.color || DEFAULT_FUND_COLOR;
+                const monogram = getFundMonogram(fund.name);
 
-            return (
-              <View
-                key={fund.id}
-                className="p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2.5"
-              >
-                {/* Row 1: Monogram, Name, Holding Account, Quick Stash */}
-                <View className="flex-row items-center justify-between gap-2">
-                  <Pressable
-                    onPress={() => handleOpenEditModal(fund)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Edit ${fund.name}`}
-                    className="min-h-[44px] flex-row items-center gap-2.5 flex-1 min-w-0 active:opacity-75"
-                  >
-                    <View
-                      className="w-10 h-10 rounded-xl items-center justify-center shrink-0 border border-ledger-border dark:border-ledger-border-dark"
-                      style={{ backgroundColor: `${accentColor}20` }}
-                    >
-                      <ThemedText className="text-xs font-extrabold tracking-wide text-ledger-ink dark:text-ledger-ink-dark">
-                        {monogram}
-                      </ThemedText>
+                return (
+                  <View key={fund.id} className="flex-1 min-w-0">
+                    <View className="flex-1 justify-between p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2.5">
+                      <View className="gap-2.5">
+                        {/* Row 1: Monogram, Name, Holding Account, Quick Stash */}
+                        <View className="flex-row flex-wrap items-center justify-between gap-2">
+                          <Pressable
+                            onPress={() => handleOpenEditModal(fund)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Edit ${fund.name}`}
+                            className="min-h-[44px] flex-row items-center gap-2.5 flex-1 min-w-[120px] active:opacity-75"
+                          >
+                            <View
+                              className="w-10 h-10 rounded-xl items-center justify-center shrink-0 border border-ledger-border dark:border-ledger-border-dark"
+                              style={{ backgroundColor: `${accentColor}20` }}
+                            >
+                              <ThemedText className="text-xs font-extrabold tracking-wide text-ledger-ink dark:text-ledger-ink-dark">
+                                {monogram}
+                              </ThemedText>
+                            </View>
+                            <View className="flex-1 min-w-0">
+                              <ThemedText
+                                className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                                numberOfLines={1}
+                              >
+                                {fund.name}
+                              </ThemedText>
+                              <ThemedText
+                                className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
+                                numberOfLines={1}
+                              >
+                                {`Vault: ${holdingAccount ? holdingAccount.name : 'Main Account'}`}
+                              </ThemedText>
+                            </View>
+                          </Pressable>
+
+                          {/* Quick Stash Button */}
+                          <Pressable
+                            onPress={() => handleOpenStashModal(fund)}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Stash funds into ${fund.name}`}
+                            className="min-h-[44px] min-w-[44px] bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-85 px-3 py-2 rounded-xl items-center justify-center shrink-0"
+                          >
+                            <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
+                              Stash
+                            </ThemedText>
+                          </Pressable>
+                        </View>
+
+                        {/* Row 2: Saved vs Target & Percent */}
+                        <View className="flex-row items-baseline justify-between gap-2">
+                          <ThemedText
+                            numeric
+                            className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary flex-1"
+                          >
+                            Saved:{' '}
+                            <ThemedText
+                              numeric
+                              className="font-bold text-ledger-ink dark:text-ledger-ink-dark text-sm"
+                            >
+                              {formatMinorUnits(fund.currentSavedMinor)}
+                            </ThemedText>{' '}
+                            {`of ${formatMinorUnits(fund.targetAmountMinor)}`}
+                          </ThemedText>
+                          <ThemedText
+                            numeric
+                            className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                          >
+                            {`${percent}%`}
+                          </ThemedText>
+                        </View>
+
+                        {/* Row 3: Progress Bar */}
+                        <View className="h-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
+                          <View
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${clampedPercent}%`,
+                              backgroundColor: accentColor,
+                            }}
+                          />
+                        </View>
+                      </View>
+
+                      {/* Row 4: Target Date Pill & Monthly Target Pill */}
+                      <View className="flex-row items-center justify-between flex-wrap gap-1.5 pt-0.5">
+                        <View className="px-2.5 py-1 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
+                          <ThemedText
+                            numeric
+                            className="text-[11px] font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                          >
+                            {`Target: ${fund.targetDate}`}
+                          </ThemedText>
+                        </View>
+
+                        {calc.isTargetReached ? (
+                          <View className="px-2.5 py-1 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft">
+                            <ThemedText className="text-[11px] font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                              Goal Reached
+                            </ThemedText>
+                          </View>
+                        ) : (
+                          <View className="px-2.5 py-1 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft">
+                            <ThemedText
+                              numeric
+                              className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                            >
+                              {`${formatMinorUnits(calc.monthlyTargetMinor)}/mo needed (${
+                                calc.remainingMonths
+                              } mo)`}
+                            </ThemedText>
+                          </View>
+                        )}
+                      </View>
                     </View>
-                    <View className="flex-1 min-w-0">
-                      <ThemedText
-                        className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                        numberOfLines={1}
-                      >
-                        {fund.name}
-                      </ThemedText>
-                      <ThemedText
-                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
-                        numberOfLines={1}
-                      >
-                        {`Vault: ${holdingAccount ? holdingAccount.name : 'Main Account'}`}
-                      </ThemedText>
-                    </View>
-                  </Pressable>
-
-                  {/* Quick Stash Button */}
-                  <Pressable
-                    onPress={() => handleOpenStashModal(fund)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Stash funds into ${fund.name}`}
-                    className="min-h-[44px] min-w-[44px] bg-ledger-pine dark:bg-ledger-pine-dark active:opacity-85 px-4 py-2 rounded-xl items-center justify-center shrink-0"
-                  >
-                    <ThemedText className="text-ledger-canvas dark:text-brand-900 text-xs font-bold">
-                      Stash
-                    </ThemedText>
-                  </Pressable>
-                </View>
-
-                {/* Row 2: Saved vs Target & Percent */}
-                <View className="flex-row items-baseline justify-between gap-2">
-                  <ThemedText
-                    numeric
-                    className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary flex-1"
-                  >
-                    Saved:{' '}
-                    <ThemedText
-                      numeric
-                      className="font-bold text-ledger-ink dark:text-ledger-ink-dark text-sm"
-                    >
-                      {formatMinorUnits(fund.currentSavedMinor)}
-                    </ThemedText>{' '}
-                    {`of ${formatMinorUnits(fund.targetAmountMinor)}`}
-                  </ThemedText>
-                  <ThemedText
-                    numeric
-                    className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                  >
-                    {`${percent}%`}
-                  </ThemedText>
-                </View>
-
-                {/* Row 3: Progress Bar */}
-                <View className="h-2 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark overflow-hidden">
-                  <View
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${clampedPercent}%`,
-                      backgroundColor: accentColor,
-                    }}
-                  />
-                </View>
-
-                {/* Row 4: Target Date Pill & Monthly Target Pill */}
-                <View className="flex-row items-center justify-between flex-wrap gap-1.5 pt-0.5">
-                  <View className="px-2.5 py-1 rounded-full bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
-                    <ThemedText
-                      numeric
-                      className="text-[11px] font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    >
-                      {`Target: ${fund.targetDate}`}
-                    </ThemedText>
                   </View>
-
-                  {calc.isTargetReached ? (
-                    <View className="px-2.5 py-1 rounded-full bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft">
-                      <ThemedText className="text-[11px] font-semibold text-ledger-pine dark:text-ledger-pine-dark">
-                        Goal Reached
-                      </ThemedText>
-                    </View>
-                  ) : (
-                    <View className="px-2.5 py-1 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft">
-                      <ThemedText
-                        numeric
-                        className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark"
-                      >
-                        {`${formatMinorUnits(calc.monthlyTargetMinor)}/mo needed (${
-                          calc.remainingMonths
-                        } mo)`}
-                      </ThemedText>
-                    </View>
-                  )}
-                </View>
-              </View>
-            );
-          })}
+                );
+              })}
+              {Array.from({
+                length: fundGridColumns - row.length,
+              }).map((_, spacerIndex) => (
+                <View
+                  key={`fund-spacer-${rowIndex}-${spacerIndex}`}
+                  className="flex-1 min-w-0"
+                />
+              ))}
+            </View>
+          ))}
         </View>
       )}
 

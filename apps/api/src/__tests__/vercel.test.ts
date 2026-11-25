@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   getEnv,
   getVercelDeploymentOrigins,
+  isLocalDevOrigin,
   parseAllowedCorsOrigins,
   resetEnvCache,
 } from '../core/env';
@@ -113,6 +114,16 @@ describe('Vercel adapter helpers', () => {
       resetEnvCache();
 
       expect(getEnv().DB_POOL_MAX).toBe(4);
+    });
+
+    it('matches loopback HTTP origins for local dev and rejects non-loopback or HTTPS origins', () => {
+      expect(isLocalDevOrigin('http://localhost:8082')).toBe(true);
+      expect(isLocalDevOrigin('http://127.0.0.1:8082')).toBe(true);
+      expect(isLocalDevOrigin('http://[::1]:8082')).toBe(true);
+
+      expect(isLocalDevOrigin('https://evil.example.com')).toBe(false);
+      expect(isLocalDevOrigin('http://localhost.evil.com:8082')).toBe(false);
+      expect(isLocalDevOrigin('https://localhost:8082')).toBe(false);
     });
   });
 });

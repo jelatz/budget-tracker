@@ -97,6 +97,7 @@ export const transactions = pgTable(
     accountId: text('account_id').notNull(),
     toAccountId: text('to_account_id'),
     categoryId: text('category_id'),
+    incomeSourceId: text('income_source_id'),
     merchant: text('merchant'),
     tags: jsonb('tags').$type<string[]>().notNull(),
     note: text('note'),
@@ -237,6 +238,29 @@ export const balanceReconciliations = pgTable(
     discrepancyMinor: bigint('discrepancy_minor', { mode: 'number' }).notNull(),
     reconciledAt: timestamp('reconciled_at', { withTimezone: true }).notNull(),
     adjustmentTransactionId: text('adjustment_transaction_id'),
+    sortOrder: integer('sort_order').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.id] })],
+);
+
+export const incomeSources = pgTable(
+  'income_sources',
+  {
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    expectedMonthlyMinor: bigint('expected_monthly_minor', { mode: 'number' }).notNull(),
+    typicalPayoutMinor: bigint('typical_payout_minor', { mode: 'number' }),
+    currency: varchar('currency', { length: 3 }).notNull(),
+    accountId: text('account_id').notNull(),
+    categoryId: text('category_id').notNull(),
+    paySchedule: text('pay_schedule').notNull().default('SEMI_MONTHLY'),
+    payDaysLabel: text('pay_days_label'),
+    color: text('color').notNull(),
+    isActive: boolean('is_active').notNull().default(true),
+    notes: text('notes'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.userId, table.id] })],

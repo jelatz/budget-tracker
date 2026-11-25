@@ -12,6 +12,7 @@ import {
   balanceReconciliations,
   categories,
   categoryBudgets,
+  incomeSources,
   quickPresets,
   recurringCommitments,
   sinkingFunds,
@@ -92,6 +93,7 @@ export async function loadUserSyncStateInTx(
     fundRows,
     presetRows,
     reconciliationRows,
+    incomeSourceRows,
   ] = await Promise.all([
     db.select().from(userSettings).where(eq(userSettings.userId, userId)),
     db
@@ -139,6 +141,11 @@ export async function loadUserSyncStateInTx(
       .from(balanceReconciliations)
       .where(eq(balanceReconciliations.userId, userId))
       .orderBy(asc(balanceReconciliations.sortOrder)),
+    db
+      .select()
+      .from(incomeSources)
+      .where(eq(incomeSources.userId, userId))
+      .orderBy(asc(incomeSources.sortOrder)),
   ]);
 
   const settings = settingsRows[0];
@@ -191,6 +198,7 @@ export async function loadUserSyncStateInTx(
         accountId: t.accountId,
         ...(t.toAccountId ? { toAccountId: t.toAccountId } : {}),
         ...(t.categoryId ? { categoryId: t.categoryId } : {}),
+        ...(t.incomeSourceId ? { incomeSourceId: t.incomeSourceId } : {}),
         ...(splits && splits.length > 0 ? { splits } : {}),
         ...(t.merchant ? { merchant: t.merchant } : {}),
         tags: t.tags,
@@ -281,6 +289,22 @@ export async function loadUserSyncStateInTx(
         ? { adjustmentTransactionId: rec.adjustmentTransactionId }
         : {}),
     })),
+    incomeSources: incomeSourceRows.map((src) => ({
+      id: src.id,
+      name: src.name,
+      expectedMonthlyMinor: src.expectedMonthlyMinor,
+      ...(src.typicalPayoutMinor !== null
+        ? { typicalPayoutMinor: src.typicalPayoutMinor }
+        : {}),
+      currency: src.currency,
+      accountId: src.accountId,
+      categoryId: src.categoryId,
+      paySchedule: src.paySchedule,
+      ...(src.payDaysLabel ? { payDaysLabel: src.payDaysLabel } : {}),
+      color: src.color,
+      isActive: src.isActive,
+      ...(src.notes ? { notes: src.notes } : {}),
+    })),
   });
 }
 
@@ -327,6 +351,7 @@ export async function saveUserSyncStateInTx(
   await tx
     .delete(balanceReconciliations)
     .where(eq(balanceReconciliations.userId, userId));
+  await tx.delete(incomeSources).where(eq(incomeSources.userId, userId));
 
   if (state.accounts.length > 0) {
     for (const chunk of chunkArray(
@@ -376,6 +401,7 @@ export async function saveUserSyncStateInTx(
       accountId: t.accountId,
       toAccountId: t.toAccountId ?? null,
       categoryId: t.categoryId ?? null,
+      incomeSourceId: t.incomeSourceId ?? null,
       merchant: t.merchant ?? null,
       tags: t.tags,
       note: t.note ?? null,
@@ -515,6 +541,30 @@ export async function saveUserSyncStateInTx(
       200,
     )) {
       await tx.insert(balanceReconciliations).values(chunk);
+    }
+  }
+
+  if (state.incomeSources.length > 0) {
+    for (const chunk of chunkArray(
+      state.incomeSources.map((src, index) => ({
+        userId,
+        id: src.id,
+        name: src.name,
+        expectedMonthlyMinor: src.expectedMonthlyMinor,
+        typicalPayoutMinor: src.typicalPayoutMinor ?? null,
+        currency: src.currency,
+        accountId: src.accountId,
+        categoryId: src.categoryId,
+        paySchedule: src.paySchedule,
+        payDaysLabel: src.payDaysLabel ?? null,
+        color: src.color,
+        isActive: src.isActive,
+        notes: src.notes ?? null,
+        sortOrder: index,
+      })),
+      200,
+    )) {
+      await tx.insert(incomeSources).values(chunk);
     }
   }
 }
