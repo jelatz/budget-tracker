@@ -26,6 +26,7 @@ import { useDashboardMetrics } from '@/features/transactions/hooks/use-transacti
 import { BudgetProgressCard } from '../components/budget-progress-card';
 import { EnvelopeBudgetsCard } from '../components/envelope-budgets-card';
 import { NetWorthCard } from '../components/net-worth-card';
+import { RemainingPayablesCard } from '../components/remaining-payables-card';
 import { SafeToSpendCard } from '../components/safe-to-spend-card';
 import { SalarySummaryCard } from '../components/salary-summary-card';
 import { SinkingFundsCard } from '../components/sinking-funds-card';
@@ -315,6 +316,13 @@ export function DashboardScreen() {
                   />
                 </View>
               </View>
+
+              {/* 2b. Remaining Payables This Month (full width glimpse) */}
+              <RemainingPayablesCard
+                onPress={() =>
+                  router.push({ pathname: '/expenses', params: { tab: 'scheduled' } })
+                }
+              />
 
               {/* 3. Full-Width Accounts Horizontal Strip */}
               <View className="gap-2">

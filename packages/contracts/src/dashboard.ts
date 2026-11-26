@@ -1,5 +1,13 @@
 import { z } from 'zod';
 import type { CategoryBudgetStatus } from './category-budget.schema';
+import {
+  formatCalendarDateString,
+  getCommitmentDueStatus,
+  isCommitmentPaidOff,
+  parseCalendarDate,
+  type CommitmentDueState,
+  type RecurringCommitment,
+} from './recurring.schema';
 import type { SinkingFund } from './sinking-funds.schema';
 import type { Account, Category, Transaction } from './transactions.schema';
 
@@ -21,6 +29,30 @@ export interface SinkingFundsOverviewSummary {
   utilizationPercent: number;
   activeCount: number;
   completedCount: number;
+}
+
+export interface MonthlyPayableItem {
+  commitment: RecurringCommitment;
+  /** YYYY-MM-DD due date within (or before, if overdue) the current month. */
+  dueDate: string;
+  state: CommitmentDueState;
+}
+
+export interface MonthlyPayablesSummary {
+  /** Current month as YYYY-MM. */
+  period: string;
+  remainingMinor: number;
+  remainingCount: number;
+  overdueMinor: number;
+  overdueCount: number;
+  paidMinor: number;
+  paidCount: number;
+  /** remaining + paid for the current month. */
+  totalDueMinor: number;
+  /** Share of this month's payables already paid (0-100). */
+  paidPercent: number;
+  /** Unpaid items due this month, overdue first, then by due date. */
+  remainingItems: MonthlyPayableItem[];
 }
 
 export const dashboardPeriodSchema = z.enum(['THIS_MONTH', 'LAST_7_DAYS', 'ALL_TIME']);
@@ -338,6 +370,88 @@ export function summarizeCategoryBudgets(
     totalRemainingMinor,
     utilizationPercent,
     overspentCount,
+  };
+}
+
+function resolveDueDateThisMonth(commitment: RecurringCommitment, now: Date): string {
+  const nextDue = commitment.nextDueDate?.trim();
+  if (nextDue && parseCalendarDate(nextDue)) {
+    return nextDue;
+  }
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const day = Math.min(commitment.dueDay, daysInMonth);
+  return formatCalendarDateString(new Date(now.getFullYear(), now.getMonth(), day, 12, 0, 0, 0));
+}
+
+/**
+ * Summarizes scheduled commitments (bills, installments) for the current month:
+ * how much is still payable (including overdue) versus already paid.
+ * Uses the same due rules as the Expenses → Scheduled view (`getCommitmentDueStatus`).
+ */
+export function summarizeMonthlyPayables(
+  commitments: readonly RecurringCommitment[],
+  now = new Date(),
+): MonthlyPayablesSummary {
+  const period = formatCalendarDateString(now).slice(0, 7);
+
+  let remainingMinor = 0;
+  let overdueMinor = 0;
+  let overdueCount = 0;
+  let paidMinor = 0;
+  let paidCount = 0;
+  const remainingItems: MonthlyPayableItem[] = [];
+
+  for (const c of commitments) {
+    if (c.lastPaidPeriod === period) {
+      paidMinor += c.amountMinor;
+      paidCount += 1;
+      continue;
+    }
+
+    if (!c.isActive || isCommitmentPaidOff(c)) {
+      continue;
+    }
+
+    const status = getCommitmentDueStatus(c, now);
+    if (!status.isDueThisMonth) {
+      continue;
+    }
+
+    remainingMinor += c.amountMinor;
+    if (status.isOverdue) {
+      overdueMinor += c.amountMinor;
+      overdueCount += 1;
+    }
+    remainingItems.push({
+      commitment: c,
+      dueDate: resolveDueDateThisMonth(c, now),
+      state: status.state,
+    });
+  }
+
+  remainingItems.sort((a, b) => {
+    const aOverdue = a.state === 'OVERDUE' ? 0 : 1;
+    const bOverdue = b.state === 'OVERDUE' ? 0 : 1;
+    if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+    if (a.dueDate !== b.dueDate) return a.dueDate < b.dueDate ? -1 : 1;
+    return b.commitment.amountMinor - a.commitment.amountMinor;
+  });
+
+  const totalDueMinor = remainingMinor + paidMinor;
+  const paidPercent =
+    totalDueMinor > 0 ? Math.min(100, Math.round((paidMinor * 100) / totalDueMinor)) : 0;
+
+  return {
+    period,
+    remainingMinor,
+    remainingCount: remainingItems.length,
+    overdueMinor,
+    overdueCount,
+    paidMinor,
+    paidCount,
+    totalDueMinor,
+    paidPercent,
+    remainingItems,
   };
 }
 
