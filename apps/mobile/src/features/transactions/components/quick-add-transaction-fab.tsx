@@ -40,7 +40,7 @@ export function QuickAddTransactionFab({
           style={{
             position: 'absolute',
             right: isDesktop ? 28 : Math.max(16, insets.right + 16),
-            bottom: isDesktop ? 28 : insets.bottom + 76,
+            bottom: isDesktop ? 28 : Math.max(12, insets.bottom) + 74,
             zIndex: 25,
           }}
         >

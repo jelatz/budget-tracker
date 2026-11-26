@@ -21,6 +21,7 @@ import {
   type Account,
   type IncomeSource,
 } from '@repo/contracts';
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
 import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
@@ -171,11 +172,9 @@ export function LogPaydayModal({
                 disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Close dialog"
-                className="min-h-[44px] min-w-[44px] px-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                className="min-h-[44px] min-w-[44px] rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
-                <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                  Close
-                </ThemedText>
+                <AppIcon name="close" size={18} color={theme.textSecondary} />
               </Pressable>
             </View>
 

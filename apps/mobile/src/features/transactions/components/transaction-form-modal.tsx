@@ -669,11 +669,9 @@ export function TransactionFormModal({
                   disabled={isBusy}
                   accessibilityRole="button"
                   accessibilityLabel="Close dialog"
-                  className="min-h-[44px] px-4 py-2 rounded-xl items-center justify-center bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75"
+                  className="min-h-[44px] min-w-[44px] rounded-xl items-center justify-center bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-75"
                 >
-                  <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                    Close
-                  </ThemedText>
+                  <AppIcon name="close" size={18} color={theme.textSecondary} />
                 </Pressable>
               </View>
 

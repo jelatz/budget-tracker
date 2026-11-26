@@ -151,6 +151,7 @@ export function NavTabItem({
 
   const focused = Boolean(isFocused);
   const iconColor = focused ? theme.primary : theme.textSecondary;
+  const slotStyle = typeof style === 'function' ? undefined : style;
 
   if (!isDesktop) {
     return (
@@ -160,11 +161,18 @@ export function NavTabItem({
         accessibilityRole="tab"
         accessibilityLabel={label}
         accessibilityState={{ selected: focused }}
-        style={(state) => [
-          typeof style === 'function' ? style(state) : style,
-          { flex: 1, minWidth: 64 },
-        ]}
-        className={`min-h-[52px] py-1.5 px-2 rounded-xl items-center justify-center gap-0.5 ${
+        style={StyleSheet.flatten([
+          slotStyle,
+          {
+            flex: 1,
+            flexBasis: 0,
+            minWidth: 0,
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+          },
+        ])}
+        className={`flex-1 min-w-0 min-h-[52px] py-1.5 px-1.5 rounded-xl flex-col items-center justify-center gap-1 ${
           focused
             ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft'
             : 'active:opacity-75'
@@ -172,7 +180,9 @@ export function NavTabItem({
         <AppIcon name={icon} size={20} color={iconColor} />
         <ThemedText
           numberOfLines={1}
-          className={`text-[11px] ${
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+          className={`text-[11px] text-center ${
             focused
               ? 'font-bold text-brand-500 dark:text-brand-400'
               : 'font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
@@ -190,11 +200,15 @@ export function NavTabItem({
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected: focused }}
-      style={(state) => [
-        typeof style === 'function' ? style(state) : style,
-        { justifyContent: 'flex-start' },
-      ]}
-      className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex-row items-center gap-2.5 ${
+      style={StyleSheet.flatten([
+        slotStyle,
+        {
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+        },
+      ])}
+      className={`w-full min-h-[44px] px-3 py-2.5 rounded-xl flex-row items-center justify-start gap-2.5 ${
         focused
           ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200/70 dark:border-ledger-border-dark'
           : 'border border-transparent hover:bg-ledger-selected/70 dark:hover:bg-ledger-selected-dark active:opacity-75'
@@ -243,13 +257,15 @@ export function NavigationTabList({
         style={StyleSheet.flatten([
           style,
           {
-            paddingBottom: Math.max(8, insets.bottom),
-            paddingLeft: Math.max(8, insets.left + 8),
-            paddingRight: Math.max(8, insets.right + 8),
-            paddingTop: 6,
+            width: '100%',
+            paddingBottom: Math.max(12, insets.bottom),
+            paddingLeft: Math.max(12, insets.left + 12),
+            paddingRight: Math.max(12, insets.right + 12),
+            paddingTop: 8,
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
+            justifyContent: 'center',
+            gap: 6,
           },
         ])}
         className="bg-ledger-surface dark:bg-ledger-surface-dark border-t border-ledger-border dark:border-ledger-border-dark z-20">
