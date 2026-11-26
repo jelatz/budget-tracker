@@ -21,6 +21,7 @@ import {
   type TransactionType,
 } from '@repo/contracts';
 
+import { AppIcon } from '@/common/components/app-icon';
 import { useFeedback } from '@/common/components/feedback-provider';
 import { ThemedText } from '@/common/components/themed-text';
 import { ThemedView } from '@/common/components/themed-view';
@@ -42,50 +43,72 @@ import {
 } from '../hooks/use-transactions';
 
 type FilterType = 'ALL' | TransactionType;
+type SpendingPeriod = 'TODAY' | DashboardPeriod;
 
-const PERIOD_OPTIONS: readonly { key: DashboardPeriod; label: string }[] = [
+const PERIOD_OPTIONS: readonly { key: SpendingPeriod; label: string }[] = [
+  { key: 'TODAY', label: 'Today' },
+  { key: 'LAST_7_DAYS', label: '7 Days' },
   { key: 'THIS_MONTH', label: 'This Month' },
-  { key: 'LAST_7_DAYS', label: 'Last 7 Days' },
   { key: 'ALL_TIME', label: 'All Time' },
 ] as const;
 
 const FILTER_OPTIONS: readonly { key: FilterType; label: string }[] = [
   { key: 'ALL', label: 'All' },
-  { key: 'INCOME', label: 'Incoming' },
-  { key: 'EXPENSE', label: 'Outgoing' },
+  { key: 'EXPENSE', label: 'Expenses' },
+  { key: 'INCOME', label: 'Income' },
   { key: 'TRANSFER', label: 'Transfers' },
 ] as const;
+
+function isSameLocalDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function isTransactionInSpendingPeriod(
+  occurredAt: string,
+  period: SpendingPeriod,
+): boolean {
+  if (period === 'TODAY') {
+    const d = new Date(occurredAt);
+    if (Number.isNaN(d.getTime())) {
+      return false;
+    }
+    return isSameLocalDay(d, new Date());
+  }
+  return isTransactionInPeriod(occurredAt, period);
+}
 
 function formatTxDate(isoString: string): string {
   try {
     const d = new Date(isoString);
-    return `${d.toLocaleDateString(undefined, {
+    return d.toLocaleDateString(undefined, {
       month: 'short',
       day: 'numeric',
-      year: 'numeric',
-    })}, ${d.toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-    })}`;
+    });
   } catch (error: unknown) {
     return isoString;
   }
 }
 
 function getTypeLabel(type: TransactionType): string {
-  if (type === 'INCOME') return 'Incoming';
+  if (type === 'INCOME') return 'Income';
   if (type === 'TRANSFER') return 'Transfer';
-  return 'Outgoing';
+  return 'Expense';
 }
 
 export interface TransactionsScreenProps {
   initialAccountId?: string;
   initialType?: TransactionType;
+  initialCategoryId?: string;
 }
 
 export function TransactionsScreen({
   initialAccountId,
   initialType,
+  initialCategoryId,
 }: TransactionsScreenProps = {}) {
   const { isAuthenticated } = useRequireAuth();
   const theme = useTheme();
@@ -94,9 +117,12 @@ export function TransactionsScreen({
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 768;
 
-  const [period, setPeriod] = useState<DashboardPeriod>('THIS_MONTH');
+  const [period, setPeriod] = useState<SpendingPeriod>('THIS_MONTH');
   const [filter, setFilter] = useState<FilterType>(initialType ?? 'ALL');
   const [accountFilter, setAccountFilter] = useState<string>('ALL');
+  const [categoryFilter, setCategoryFilter] = useState<string>(
+    initialCategoryId ?? 'ALL',
+  );
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -123,6 +149,13 @@ export function TransactionsScreen({
     }
   }, [initialAccountId, accounts]);
 
+  useEffect(() => {
+    if (initialCategoryId) {
+      setCategoryFilter(initialCategoryId);
+      setFilter('EXPENSE');
+    }
+  }, [initialCategoryId]);
+
   const accountLookup = useMemo(() => {
     const map = new Map<string, Account>();
     for (const acc of accounts) {
@@ -143,44 +176,80 @@ export function TransactionsScreen({
     accountFilter !== 'ALL' ? (accountLookup.get(accountFilter) ?? null) : null;
   const selectedAccountName = selectedAccount?.name ?? 'Selected Account';
 
-  const periodAndAccountTransactions = useMemo(() => {
-    return transactions.filter((tx) => {
-      if (!isTransactionInPeriod(tx.occurredAt, period)) {
-        return false;
-      }
-      if (
-        accountFilter !== 'ALL' &&
-        tx.accountId !== accountFilter &&
-        tx.toAccountId !== accountFilter
+  const accountScopedTransactions = useMemo(() => {
+    if (accountFilter === 'ALL') {
+      return transactions;
+    }
+    return transactions.filter(
+      (tx) => tx.accountId === accountFilter || tx.toAccountId === accountFilter,
+    );
+  }, [transactions, accountFilter]);
+
+  const summaryKpis = useMemo(() => {
+    let spentTodayMinor = 0;
+    let spentThisMonthMinor = 0;
+    let incomeThisMonthMinor = 0;
+    const now = new Date();
+
+    for (const tx of accountScopedTransactions) {
+      const txDate = new Date(tx.occurredAt);
+      if (tx.type === 'EXPENSE') {
+        if (!Number.isNaN(txDate.getTime()) && isSameLocalDay(txDate, now)) {
+          spentTodayMinor += tx.amountMinor;
+        }
+        if (isTransactionInPeriod(tx.occurredAt, 'THIS_MONTH')) {
+          spentThisMonthMinor += tx.amountMinor;
+        }
+      } else if (
+        tx.type === 'INCOME' &&
+        isTransactionInPeriod(tx.occurredAt, 'THIS_MONTH')
       ) {
-        return false;
-      }
-      return true;
-    });
-  }, [transactions, period, accountFilter]);
-
-  const kpiSummary = useMemo(() => {
-    let incomingMinor = 0;
-    let outgoingMinor = 0;
-    let transferMinor = 0;
-
-    for (const tx of periodAndAccountTransactions) {
-      if (tx.type === 'INCOME') {
-        incomingMinor += tx.amountMinor;
-      } else if (tx.type === 'EXPENSE') {
-        outgoingMinor += tx.amountMinor;
-      } else if (tx.type === 'TRANSFER') {
-        transferMinor += tx.amountMinor;
+        incomeThisMonthMinor += tx.amountMinor;
       }
     }
 
     return {
-      incomingMinor,
-      outgoingMinor,
-      transferMinor,
-      netCashflowMinor: incomingMinor - outgoingMinor,
+      spentTodayMinor,
+      spentThisMonthMinor,
+      incomeThisMonthMinor,
     };
-  }, [periodAndAccountTransactions]);
+  }, [accountScopedTransactions]);
+
+  const periodAndAccountTransactions = useMemo(() => {
+    return accountScopedTransactions.filter((tx) =>
+      isTransactionInSpendingPeriod(tx.occurredAt, period),
+    );
+  }, [accountScopedTransactions, period]);
+
+  const categoryBreakdown = useMemo(() => {
+    const totals = new Map<string, number>();
+    let totalSpentMinor = 0;
+
+    for (const tx of periodAndAccountTransactions) {
+      if (tx.type !== 'EXPENSE') {
+        continue;
+      }
+      const key = tx.categoryId ?? 'uncategorized';
+      totals.set(key, (totals.get(key) ?? 0) + tx.amountMinor);
+      totalSpentMinor += tx.amountMinor;
+    }
+
+    return Array.from(totals.entries())
+      .map(([catId, amountMinor]) => {
+        const category = categoryLookup.get(catId);
+        return {
+          categoryId: catId,
+          name: category?.name ?? 'Uncategorized',
+          color: category?.color ?? theme.primary,
+          amountMinor,
+          sharePercent:
+            totalSpentMinor > 0
+              ? Math.round((amountMinor / totalSpentMinor) * 100)
+              : 0,
+        };
+      })
+      .sort((a, b) => b.amountMinor - a.amountMinor);
+  }, [periodAndAccountTransactions, categoryLookup, theme.primary]);
 
   const filteredTransactions = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -190,34 +259,28 @@ export function TransactionsScreen({
         if (filter !== 'ALL' && tx.type !== filter) {
           return false;
         }
+        if (categoryFilter !== 'ALL') {
+          if (tx.categoryId !== categoryFilter) {
+            return false;
+          }
+        }
 
         if (normalizedQuery.length > 0) {
           const fromAccountName = accountLookup.get(tx.accountId)?.name ?? '';
           const toAccountName = tx.toAccountId
             ? (accountLookup.get(tx.toAccountId)?.name ?? '')
             : '';
+          const catName = tx.categoryId
+            ? (categoryLookup.get(tx.categoryId)?.name ?? '')
+            : '';
 
-          const categoryParts: string[] = [];
-          if (tx.splits && tx.splits.length > 0) {
-            for (const split of tx.splits) {
-              const cat = categoryLookup.get(split.categoryId);
-              if (cat) categoryParts.push(cat.name);
-              if (split.note) categoryParts.push(split.note);
-            }
-          } else if (tx.categoryId) {
-            const cat = categoryLookup.get(tx.categoryId);
-            if (cat) categoryParts.push(cat.name);
-          }
-
-          const tagParts = tx.tags.map((tag) => `${tag} #${tag}`);
           const haystack = [
             getTypeLabel(tx.type),
             tx.merchant ?? '',
             tx.note ?? '',
             fromAccountName,
             toAccountName,
-            ...categoryParts,
-            ...tagParts,
+            catName,
           ]
             .join(' ')
             .toLowerCase();
@@ -241,6 +304,7 @@ export function TransactionsScreen({
   }, [
     periodAndAccountTransactions,
     filter,
+    categoryFilter,
     searchQuery,
     accountLookup,
     categoryLookup,
@@ -262,12 +326,12 @@ export function TransactionsScreen({
     try {
       await deleteTransactionMutation.mutateAsync(transactionId);
       setConfirmingDeleteId(null);
-      showSuccess('Transaction deleted and account balance restored.');
+      showSuccess('Entry deleted and account balance restored.');
     } catch (error: unknown) {
       showError(
         getUserErrorMessage(
           error,
-          'Could not delete transaction. Please try again.',
+          'Could not delete entry. Please try again.',
         ),
       );
     }
@@ -277,6 +341,7 @@ export function TransactionsScreen({
     setPeriod('THIS_MONTH');
     setFilter('ALL');
     setAccountFilter('ALL');
+    setCategoryFilter('ALL');
     setSearchQuery('');
   };
 
@@ -288,14 +353,11 @@ export function TransactionsScreen({
     period !== 'THIS_MONTH' ||
     filter !== 'ALL' ||
     accountFilter !== 'ALL' ||
+    categoryFilter !== 'ALL' ||
     searchQuery.trim().length > 0;
 
   const summaryCurrency = selectedAccount?.currency ?? DEFAULT_CURRENCY;
-  const scrollBottomPadding = Math.max(40, BottomTabInset + insets.bottom + 24);
-  const netCashflowFormatted =
-    kpiSummary.netCashflowMinor > 0
-      ? `+${formatMinorUnits(kpiSummary.netCashflowMinor, summaryCurrency)}`
-      : formatMinorUnits(kpiSummary.netCashflowMinor, summaryCurrency);
+  const scrollBottomPadding = Math.max(40, BottomTabInset + insets.bottom + 28);
 
   return (
     <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
@@ -321,23 +383,81 @@ export function TransactionsScreen({
                 accessibilityRole="header"
                 className="text-2xl font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark"
               >
-                Transactions
+                Spending
               </ThemedText>
               <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
-                Incoming, outgoing, and account transfers
+                Day-to-day expenses, swipes, income, and transfers
               </ThemedText>
             </View>
 
             <Pressable
               onPress={handleOpenAdd}
               accessibilityRole="button"
-              accessibilityLabel="Add Transaction"
-              className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-90 px-4 py-2.5 rounded-full items-center justify-center"
+              accessibilityLabel="Add Entry"
+              className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-90 px-4 py-2.5 rounded-full flex-row items-center gap-1.5"
             >
+              <AppIcon name="add" size={16} color={theme.onPrimary} />
               <ThemedText className="text-ledger-canvas dark:text-brand-900 font-bold text-xs sm:text-sm">
-                Add Transaction
+                Add Entry
               </ThemedText>
             </Pressable>
+          </View>
+
+          {/* Summary Strip: Today, This Month, Income This Month */}
+          <View className="flex-row flex-wrap gap-3 mb-4">
+            <View
+              className={`${
+                isWide ? 'flex-1 min-w-[180px]' : 'w-[48%]'
+              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
+            >
+              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                Spent Today
+              </ThemedText>
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="text-base sm:text-lg font-extrabold text-ledger-terracotta dark:text-ledger-terracotta-dark mt-1"
+                numberOfLines={1}
+              >
+                {formatMinorUnits(summaryKpis.spentTodayMinor, summaryCurrency)}
+              </ThemedText>
+            </View>
+
+            <View
+              className={`${
+                isWide ? 'flex-1 min-w-[180px]' : 'w-[48%]'
+              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
+            >
+              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                Spent This Month
+              </ThemedText>
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="text-base sm:text-lg font-extrabold text-ledger-ink dark:text-ledger-ink-dark mt-1"
+                numberOfLines={1}
+              >
+                {formatMinorUnits(summaryKpis.spentThisMonthMinor, summaryCurrency)}
+              </ThemedText>
+            </View>
+
+            <View
+              className={`${
+                isWide ? 'flex-1 min-w-[180px]' : 'w-full'
+              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
+            >
+              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                Income This Month
+              </ThemedText>
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="text-base sm:text-lg font-extrabold text-ledger-pine dark:text-ledger-pine-dark mt-1"
+                numberOfLines={1}
+              >
+                +{formatMinorUnits(summaryKpis.incomeThisMonthMinor, summaryCurrency)}
+              </ThemedText>
+            </View>
           </View>
 
           {/* Segmented Period Selector */}
@@ -354,13 +474,14 @@ export function TransactionsScreen({
                   accessibilityRole="tab"
                   accessibilityLabel={`Filter period ${opt.label}`}
                   accessibilityState={{ selected: isSelected }}
-                  className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl items-center justify-center ${
+                  className={`flex-1 min-h-[44px] px-2 py-2 rounded-xl items-center justify-center ${
                     isSelected
                       ? 'bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark'
                       : 'active:opacity-75'
                   }`}
                 >
                   <ThemedText
+                    numberOfLines={1}
                     className={`text-xs font-bold ${
                       isSelected
                         ? 'text-ledger-ink dark:text-ledger-ink-dark'
@@ -374,93 +495,82 @@ export function TransactionsScreen({
             })}
           </View>
 
-          {/* 4 Summary KPI Cards */}
-          <View className="flex-row flex-wrap gap-3 mb-5">
-            <View
-              className={`${
-                isWide ? 'flex-1 min-w-[180px]' : 'w-[48%]'
-              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
-            >
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                Incoming
-              </ThemedText>
-              <ThemedText
-                numeric
-                style={TABULAR_NUMS_STYLE}
-                className="text-base sm:text-lg font-extrabold text-ledger-pine dark:text-ledger-pine-dark mt-1"
-                numberOfLines={1}
-              >
-                +{formatMinorUnits(kpiSummary.incomingMinor, summaryCurrency)}
-              </ThemedText>
-            </View>
+          {/* Interactive Category Breakdown Pills */}
+          {categoryBreakdown.length > 0 && (
+            <View className="p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark mb-4 gap-2.5">
+              <View className="flex-row items-center justify-between">
+                <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                  Where Money Went ({PERIOD_OPTIONS.find((p) => p.key === period)?.label})
+                </ThemedText>
+                {categoryFilter !== 'ALL' ? (
+                  <Pressable
+                    onPress={() => setCategoryFilter('ALL')}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear category filter"
+                    className="min-h-[44px] px-2.5 justify-center"
+                  >
+                    <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                      Show All
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
+              </View>
 
-            <View
-              className={`${
-                isWide ? 'flex-1 min-w-[180px]' : 'w-[48%]'
-              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
-            >
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                Outgoing
-              </ThemedText>
-              <ThemedText
-                numeric
-                style={TABULAR_NUMS_STYLE}
-                className="text-base sm:text-lg font-extrabold text-ledger-terracotta dark:text-ledger-terracotta-dark mt-1"
-                numberOfLines={1}
-              >
-                -{formatMinorUnits(kpiSummary.outgoingMinor, summaryCurrency)}
-              </ThemedText>
+              <View className="flex-row flex-wrap gap-2">
+                {categoryBreakdown.map((item) => {
+                  const isSelected = categoryFilter === item.categoryId;
+                  return (
+                    <Pressable
+                      key={item.categoryId}
+                      onPress={() =>
+                        setCategoryFilter((prev) =>
+                          prev === item.categoryId ? 'ALL' : item.categoryId,
+                        )
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`Filter by ${item.name}`}
+                      accessibilityState={{ selected: isSelected }}
+                      className={`min-h-[44px] px-3 py-2 rounded-xl border flex-row items-center gap-2 ${
+                        isSelected
+                          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-80'
+                      }`}
+                    >
+                      <View
+                        className="w-2.5 h-2.5 rounded-full"
+                        style={{ backgroundColor: item.color }}
+                      />
+                      <ThemedText
+                        className={`text-xs font-semibold ${
+                          isSelected
+                            ? 'text-brand-500 dark:text-brand-400'
+                            : 'text-ledger-ink dark:text-ledger-ink-dark'
+                        }`}
+                      >
+                        {item.name}
+                      </ThemedText>
+                      <ThemedText
+                        numeric
+                        style={TABULAR_NUMS_STYLE}
+                        className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                      >
+                        {formatMinorUnits(item.amountMinor, summaryCurrency)} · {item.sharePercent}%
+                      </ThemedText>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
-
-            <View
-              className={`${
-                isWide ? 'flex-1 min-w-[180px]' : 'w-[48%]'
-              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
-            >
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                Transfers
-              </ThemedText>
-              <ThemedText
-                numeric
-                style={TABULAR_NUMS_STYLE}
-                className="text-base sm:text-lg font-extrabold text-ledger-teal dark:text-ledger-teal-dark mt-1"
-                numberOfLines={1}
-              >
-                {formatMinorUnits(kpiSummary.transferMinor, summaryCurrency)}
-              </ThemedText>
-            </View>
-
-            <View
-              className={`${
-                isWide ? 'flex-1 min-w-[180px]' : 'w-[48%]'
-              } p-3.5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark`}
-            >
-              <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                Net Cashflow
-              </ThemedText>
-              <ThemedText
-                numeric
-                style={TABULAR_NUMS_STYLE}
-                className={`text-base sm:text-lg font-extrabold mt-1 ${
-                  kpiSummary.netCashflowMinor >= 0
-                    ? 'text-ledger-pine dark:text-ledger-pine-dark'
-                    : 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
-                }`}
-                numberOfLines={1}
-              >
-                {netCashflowFormatted}
-              </ThemedText>
-            </View>
-          </View>
+          )}
 
           {/* Search Bar */}
-          <View className="flex-row items-center gap-2 mb-4">
+          <View className="flex-row items-center gap-2 mb-3">
             <TextInput
               value={searchQuery}
               onChangeText={setSearchQuery}
-              placeholder="Search merchant, category, account, note, or tag..."
+              placeholder="Search store, category, account, or note..."
               placeholderTextColor={theme.textMuted}
-              accessibilityLabel="Search transactions"
+              accessibilityLabel="Search entries"
               autoCapitalize="none"
               autoCorrect={false}
               className="flex-1 h-12 px-4 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-ledger-ink dark:text-ledger-ink-dark text-sm"
@@ -513,7 +623,7 @@ export function TransactionsScreen({
           {/* Horizontal Accounts Filter Strip */}
           <View className="mb-4">
             <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted mb-2">
-              Accounts
+              Filter by Account
             </ThemedText>
             <ScrollView
               horizontal
@@ -586,7 +696,7 @@ export function TransactionsScreen({
           {/* Transactions List Count Header */}
           <View className="flex-row items-center justify-between mb-3">
             <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-              Ledger Entries
+              Entries
             </ThemedText>
             <ThemedText
               numeric
@@ -602,21 +712,22 @@ export function TransactionsScreen({
             <View className="p-8 items-center justify-center gap-3 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
               <ActivityIndicator size="large" color={theme.primary} />
               <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                Loading transactions...
+                Loading spending ledger...
               </ThemedText>
             </View>
           ) : transactionsQuery.isError ? (
             <View className="p-6 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center gap-3 mt-2">
+              <AppIcon name="warning" size={24} color={theme.negative} />
               <ThemedText
                 accessibilityRole="alert"
                 className="text-sm font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark text-center"
               >
-                Could not load transaction history right now.
+                Could not load your spending entries right now.
               </ThemedText>
               <Pressable
                 onPress={() => transactionsQuery.refetch()}
                 accessibilityRole="button"
-                accessibilityLabel="Retry loading transactions"
+                accessibilityLabel="Retry loading entries"
                 className="min-h-[44px] px-5 py-2.5 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark active:opacity-90 items-center justify-center"
               >
                 <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
@@ -626,13 +737,14 @@ export function TransactionsScreen({
             </View>
           ) : filteredTransactions.length === 0 ? (
             <View className="p-8 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-3 mt-2">
+              <AppIcon name="expenses" size={28} color={theme.textMuted} />
               <ThemedText className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
-                No Transactions Found
+                No Entries Found
               </ThemedText>
               <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[300px] leading-relaxed">
                 {transactions.length === 0
-                  ? 'Add your first incoming, outgoing, or transfer entry to get started.'
-                  : 'No recorded transactions match your current period, account, type, or search filters.'}
+                  ? 'Tap Add Entry to log your first expense, credit card swipe, or salary payout.'
+                  : 'No entries match your active period, category, account, or search filter.'}
               </ThemedText>
               {transactions.length > 0 || hasActiveFilters ? (
                 <Pressable
@@ -649,11 +761,11 @@ export function TransactionsScreen({
                 <Pressable
                   onPress={handleOpenAdd}
                   accessibilityRole="button"
-                  accessibilityLabel="Add First Transaction"
+                  accessibilityLabel="Add First Entry"
                   className="min-h-[44px] bg-brand-500 dark:bg-brand-400 active:opacity-90 px-6 py-3 rounded-xl mt-2 items-center justify-center"
                 >
                   <ThemedText className="text-ledger-canvas dark:text-brand-900 font-bold text-sm">
-                    Add First Transaction
+                    Add First Entry
                   </ThemedText>
                 </Pressable>
               )}
@@ -730,22 +842,13 @@ function TransactionItemCard({
   const toAccount = tx.toAccountId ? accountLookup.get(tx.toAccountId) : undefined;
 
   let amountPrefix = '- ';
-  let badgeClass =
-    'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-border dark:border-ledger-border-dark';
-  let badgeTextClass = 'text-ledger-terracotta dark:text-ledger-terracotta-dark';
   let amountColorClass = 'text-ledger-terracotta dark:text-ledger-terracotta-dark';
 
   if (tx.type === 'INCOME') {
     amountPrefix = '+ ';
-    badgeClass =
-      'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-border dark:border-ledger-border-dark';
-    badgeTextClass = 'text-ledger-pine dark:text-ledger-pine-dark';
     amountColorClass = 'text-ledger-pine dark:text-ledger-pine-dark';
   } else if (tx.type === 'TRANSFER') {
     amountPrefix = '';
-    badgeClass =
-      'bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border-ledger-border dark:border-ledger-border-dark';
-    badgeTextClass = 'text-ledger-teal dark:text-ledger-teal-dark';
     amountColorClass = 'text-ledger-teal dark:text-ledger-teal-dark';
   }
 
@@ -755,48 +858,35 @@ function TransactionItemCard({
   )}`;
 
   const isTransfer = tx.type === 'TRANSFER';
-  const isSplit = Boolean(tx.splits && tx.splits.length > 0);
+  const categoryName = tx.categoryId
+    ? (categoryLookup.get(tx.categoryId)?.name ?? 'Uncategorized')
+    : 'Uncategorized';
 
-  let title = 'Uncategorized';
-  if (isTransfer) {
-    title = `Transfer: ${fromAccount?.name ?? 'Account'} -> ${
-      toAccount?.name ?? 'Account'
-    }`;
-  } else if (isSplit) {
-    title = `Split (${tx.splits?.length ?? 0})`;
-  } else if (tx.categoryId) {
-    title = categoryLookup.get(tx.categoryId)?.name ?? 'Uncategorized';
-  }
+  const title = isTransfer
+    ? `${fromAccount?.name ?? 'Account'} -> ${toAccount?.name ?? 'Account'}`
+    : tx.merchant?.trim() || categoryName;
 
-  const hasMetadata = Boolean(
-    tx.merchant || (tx.tags && tx.tags.length > 0) || tx.note,
-  );
+  const metadataLine = isTransfer
+    ? `Transfer · ${formatTxDate(tx.occurredAt)}`
+    : `${categoryName} · ${fromAccount?.name ?? 'Account'} · ${formatTxDate(tx.occurredAt)}`;
 
   return (
-    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-2.5">
-      {/* Top Row: Type Badge + Title / Date+Account + Signed Amount */}
+    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-2">
       <View className="flex-row items-start justify-between gap-3">
-        <View className="flex-1 min-w-0 gap-1">
-          <View className="flex-row items-center gap-2 flex-wrap">
-            <View className={`px-2.5 py-0.5 rounded-full border ${badgeClass}`}>
-              <ThemedText className={`text-[11px] font-bold ${badgeTextClass}`}>
-                {getTypeLabel(tx.type)}
-              </ThemedText>
-            </View>
-            <ThemedText
-              className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark flex-shrink"
-              numberOfLines={1}
-            >
-              {title}
-            </ThemedText>
-          </View>
+        <View className="flex-1 min-w-0 gap-0.5">
+          <ThemedText
+            className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+            numberOfLines={1}
+          >
+            {title}
+          </ThemedText>
 
           <ThemedText
             numeric
             className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
             numberOfLines={1}
           >
-            {formatTxDate(tx.occurredAt)} · {fromAccount?.name ?? 'Account'}
+            {metadataLine}
           </ThemedText>
         </View>
 
@@ -809,128 +899,81 @@ function TransactionItemCard({
         </ThemedText>
       </View>
 
-      {/* Optional Split Breakdown Rows */}
-      {isSplit && tx.splits && tx.splits.length > 0 ? (
-        <View className="flex-row flex-wrap gap-1.5 pt-0.5">
-          {tx.splits.map((split) => {
-            const splitCat = categoryLookup.get(split.categoryId);
-            return (
-              <View
-                key={split.id}
-                className="px-2.5 py-1 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark"
-              >
-                <ThemedText
-                  numeric
-                  style={TABULAR_NUMS_STYLE}
-                  className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                >
-                  {splitCat?.name ?? 'Category'}:{' '}
-                  {formatMinorUnits(split.amountMinor, tx.currency)}
-                  {split.note ? ` · ${split.note}` : ''}
-                </ThemedText>
-              </View>
-            );
-          })}
-        </View>
-      ) : null}
-
-      {/* Optional Metadata Tags */}
-      {hasMetadata ? (
-        <View className="flex-row flex-wrap items-center gap-2 pt-0.5">
-          {tx.merchant ? (
-            <View className="px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
-              <ThemedText
-                className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                numberOfLines={1}
-              >
-                Merchant: {tx.merchant}
-              </ThemedText>
-            </View>
-          ) : null}
-
-          {tx.tags && tx.tags.length > 0
-            ? tx.tags.map((tag) => (
-                <View
-                  key={tag}
-                  className="px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark"
-                >
-                  <ThemedText
-                    className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    numberOfLines={1}
-                  >
-                    #{tag}
-                  </ThemedText>
-                </View>
-              ))
-            : null}
-
-          {tx.note ? (
-            <View className="px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
-              <ThemedText
-                className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary max-w-[240px]"
-                numberOfLines={1}
-              >
-                Note: {tx.note}
-              </ThemedText>
-            </View>
-          ) : null}
-        </View>
+      {tx.note ? (
+        <ThemedText
+          className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+          numberOfLines={2}
+        >
+          {tx.note}
+        </ThemedText>
       ) : null}
 
       {/* Action Row: Edit & Inline Two-Step Delete */}
-      <View className="border-t border-ledger-border dark:border-ledger-border-dark pt-2.5 flex-row justify-end items-center gap-2">
-        <Pressable
-          onPress={onEdit}
-          disabled={isDeleting}
-          accessibilityRole="button"
-          accessibilityLabel={`Edit transaction ${title}`}
-          className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-        >
-          <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
-            Edit
-          </ThemedText>
-        </Pressable>
-
-        {isConfirmingDelete ? (
-          <>
-            <Pressable
-              onPress={onCancelDelete}
-              disabled={isDeleting}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel delete"
-              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-            >
-              <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
-                Cancel
-              </ThemedText>
-            </Pressable>
-
-            <Pressable
-              onPress={onConfirmDelete}
-              disabled={isDeleting}
-              accessibilityRole="button"
-              accessibilityLabel="Confirm delete"
-              className={`min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85 ${
-                isDeleting ? 'opacity-60' : ''
-              }`}
-            >
-              <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
-                {isDeleting ? 'Deleting...' : 'Confirm'}
-              </ThemedText>
-            </Pressable>
-          </>
+      <View className="border-t border-ledger-border dark:border-ledger-border-dark pt-2.5 flex-row justify-between items-center gap-2">
+        {tx.commitmentId ? (
+          <View className="px-2.5 py-0.5 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark">
+            <ThemedText className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark">
+              Obligation Payment
+            </ThemedText>
+          </View>
         ) : (
+          <View />
+        )}
+
+        <View className="flex-row items-center gap-2">
           <Pressable
-            onPress={onRequestDelete}
+            onPress={onEdit}
+            disabled={isDeleting}
             accessibilityRole="button"
-            accessibilityLabel={`Delete transaction ${title}`}
-            className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+            accessibilityLabel={`Edit entry ${title}`}
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
           >
-            <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-              Delete
+            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+              Edit
             </ThemedText>
           </Pressable>
-        )}
+
+          {isConfirmingDelete ? (
+            <>
+              <Pressable
+                onPress={onCancelDelete}
+                disabled={isDeleting}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel delete"
+                className="min-h-[44px] px-3.5 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                  Cancel
+                </ThemedText>
+              </Pressable>
+
+              <Pressable
+                onPress={onConfirmDelete}
+                disabled={isDeleting}
+                accessibilityRole="button"
+                accessibilityLabel="Confirm delete"
+                className={`min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85 ${
+                  isDeleting ? 'opacity-60' : ''
+                }`}
+              >
+                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                  {isDeleting ? 'Deleting...' : 'Confirm'}
+                </ThemedText>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable
+              onPress={onRequestDelete}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete entry ${title}`}
+              className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+            >
+              <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+                Delete
+              </ThemedText>
+            </Pressable>
+          )}
+        </View>
       </View>
     </View>
   );

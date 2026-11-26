@@ -1,7 +1,6 @@
 import {
   bigint,
   boolean,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -44,7 +43,6 @@ export const userSettings = pgTable('user_settings', {
   lastAccountId: text('last_account_id').notNull(),
   lastTransferToAccountId: text('last_transfer_to_account_id'),
   recentMerchants: jsonb('recent_merchants').$type<string[]>().notNull(),
-  knownTags: jsonb('known_tags').$type<string[]>().notNull(),
   monthlyBudgetMinor: text('monthly_budget_minor').notNull(),
 });
 
@@ -61,6 +59,8 @@ export const accounts = pgTable(
     color: text('color').notNull(),
     currency: varchar('currency', { length: 3 }).notNull(),
     balanceMinor: text('balance_minor').notNull(),
+    statementDay: integer('statement_day'),
+    dueDay: integer('due_day'),
     sortOrder: integer('sort_order').notNull().default(0),
   },
   (table) => [primaryKey({ columns: [table.userId, table.id] })],
@@ -98,10 +98,9 @@ export const transactions = pgTable(
     toAccountId: text('to_account_id'),
     categoryId: text('category_id'),
     incomeSourceId: text('income_source_id'),
+    commitmentId: text('commitment_id'),
     merchant: text('merchant'),
-    tags: jsonb('tags').$type<string[]>().notNull(),
     note: text('note'),
-    receiptUri: text('receipt_uri'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     sortOrder: integer('sort_order').notNull().default(0),
@@ -112,43 +111,6 @@ export const transactions = pgTable(
   ],
 );
 
-export const transactionSplits = pgTable(
-  'transaction_splits',
-  {
-    userId: text('user_id').notNull(),
-    transactionId: text('transaction_id').notNull(),
-    id: text('id').notNull(),
-    categoryId: text('category_id').notNull(),
-    amountMinor: text('amount_minor').notNull(),
-    note: text('note'),
-    sortOrder: integer('sort_order').notNull().default(0),
-  },
-  (table) => [
-    primaryKey({ columns: [table.userId, table.transactionId, table.id] }),
-    foreignKey({
-      columns: [table.userId, table.transactionId],
-      foreignColumns: [transactions.userId, transactions.id],
-    }).onDelete('cascade'),
-  ],
-);
-
-export const categoryBudgets = pgTable(
-  'category_budgets',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    id: text('id').notNull(),
-    categoryId: text('category_id').notNull(),
-    periodMonth: varchar('period_month', { length: 7 }).notNull(),
-    assignedMinor: text('assigned_minor').notNull(),
-    rolloverEnabled: boolean('rollover_enabled').notNull().default(false),
-    notes: text('notes'),
-    sortOrder: integer('sort_order').notNull().default(0),
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.id] })],
-);
-
 export const recurringCommitments = pgTable(
   'recurring_commitments',
   {
@@ -157,7 +119,7 @@ export const recurringCommitments = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     id: text('id').notNull(),
     name: text('name').notNull(),
-    kind: text('kind').notNull().default('RECURRING'),
+    kind: text('kind').notNull().default('BILL'),
     amountMinor: text('amount_minor').notNull(),
     currency: varchar('currency', { length: 3 }).notNull(),
     accountId: text('account_id').notNull(),
@@ -179,68 +141,6 @@ export const recurringCommitments = pgTable(
   (table) => [primaryKey({ columns: [table.userId, table.id] })],
 );
 
-export const sinkingFunds = pgTable(
-  'sinking_funds',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    id: text('id').notNull(),
-    name: text('name').notNull(),
-    icon: text('icon').notNull(),
-    color: text('color').notNull(),
-    targetAmountMinor: text('target_amount_minor').notNull(),
-    currentSavedMinor: text('current_saved_minor').notNull(),
-    targetDate: text('target_date').notNull(),
-    accountId: text('account_id').notNull(),
-    monthlyContributionMinor: text('monthly_contribution_minor').notNull(),
-    isCompleted: boolean('is_completed').notNull().default(false),
-    notes: text('notes'),
-    sortOrder: integer('sort_order').notNull().default(0),
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.id] })],
-);
-
-export const quickPresets = pgTable(
-  'quick_presets',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    id: text('id').notNull(),
-    label: text('label').notNull(),
-    icon: text('icon').notNull(),
-    type: text('type').notNull(),
-    amountMinor: text('amount_minor').notNull(),
-    accountId: text('account_id').notNull(),
-    toAccountId: text('to_account_id'),
-    categoryId: text('category_id'),
-    merchant: text('merchant'),
-    tags: jsonb('tags').$type<string[]>().notNull(),
-    defaultOrder: integer('default_order').notNull().default(0),
-    sortOrder: integer('sort_order').notNull().default(0),
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.id] })],
-);
-
-export const balanceReconciliations = pgTable(
-  'balance_reconciliations',
-  {
-    userId: text('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    id: text('id').notNull(),
-    accountId: text('account_id').notNull(),
-    appBalanceMinor: text('app_balance_minor').notNull(),
-    actualBalanceMinor: text('actual_balance_minor').notNull(),
-    discrepancyMinor: text('discrepancy_minor').notNull(),
-    reconciledAt: timestamp('reconciled_at', { withTimezone: true }).notNull(),
-    adjustmentTransactionId: text('adjustment_transaction_id'),
-    sortOrder: integer('sort_order').notNull().default(0),
-  },
-  (table) => [primaryKey({ columns: [table.userId, table.id] })],
-);
-
 export const incomeSources = pgTable(
   'income_sources',
   {
@@ -255,6 +155,11 @@ export const incomeSources = pgTable(
     accountId: text('account_id').notNull(),
     categoryId: text('category_id').notNull(),
     paySchedule: text('pay_schedule').notNull().default('SEMI_MONTHLY'),
+    payDays: jsonb('pay_days').$type<[number, number]>(),
+    weekday: integer('weekday'),
+    weekdayOrdinals: jsonb('weekday_ordinals').$type<[number, number]>(),
+    monthlyPayDay: integer('monthly_pay_day'),
+    anchorDate: text('anchor_date'),
     payDaysLabel: text('pay_days_label'),
     color: text('color').notNull(),
     isActive: boolean('is_active').notNull().default(true),

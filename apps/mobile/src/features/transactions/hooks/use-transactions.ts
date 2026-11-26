@@ -1,61 +1,55 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   computeDashboardMetrics,
+  computeDebtOverview,
   computeMonthlySalaryPlan,
-  getPreviousPeriodMonth,
+  getNextPayday,
+  getNextPaydayHorizonDate,
+  getUpcomingPaydays,
   rankCategoriesByFrequency,
-  type ApplyReconciliationInput,
-  type CategoryBudget,
   type CategoryType,
   type CreateCategoryInput,
   type CreateTransactionInput,
   type DashboardMetrics,
   type DashboardPeriod,
+  type DebtOverview,
   type IncomeSourceInput,
   type MonthlySalaryPlan,
   type RecurringCommitmentInput,
   type SalaryPlanBasis,
-  type SinkingFund,
+  type UpcomingPayday,
   type UpdateTransactionInput,
   type UpsertAccountInput,
 } from '@repo/contracts';
 import {
-  applyReconciliation,
   clearAllTransactions,
-  contributeToSinkingFund,
-  copyCategoryBudgetsFromMonth,
   createCustomCategory,
   createTransaction,
   createTransactionsBatch,
   deleteAccount,
-  deleteCategoryBudget,
   deleteIncomeSource,
   deleteRecurringCommitment,
-  deleteSinkingFund,
   deleteTransaction,
   exportBackupEnvelope,
   getAccounts,
   getCategories,
-  getCategoryBudgets,
   getIncomeSources,
-  getReconciliations,
   getRecurringCommitments,
   getSafeToSpendMetrics,
-  getSinkingFunds,
   getSmartDefaults,
   getTransactions,
   importBackupEnvelope,
   logPayday,
+  payCreditCardBill,
   payRecurringCommitment,
   resetLocalStore,
+  setAccountBalance,
   unpayRecurringCommitment,
   updateMonthlyBudget,
   updateTransaction,
   upsertAccount,
-  upsertCategoryBudget,
   upsertIncomeSource,
   upsertRecurringCommitment,
-  upsertSinkingFund,
 } from '../api';
 
 export const TRANSACTION_KEYS = {
@@ -64,15 +58,10 @@ export const TRANSACTION_KEYS = {
   categories: ['transactions-domain', 'categories'] as const,
   smartDefaults: ['transactions-domain', 'smart-defaults'] as const,
   list: ['transactions-domain', 'list'] as const,
-  categoryBudgets: (periodMonth: string) =>
-    ['transactions-domain', 'category-budgets', periodMonth] as const,
-  allCategoryBudgets: ['transactions-domain', 'category-budgets'] as const,
   recurringCommitments: ['transactions-domain', 'recurring-commitments'] as const,
-  sinkingFunds: ['transactions-domain', 'sinking-funds'] as const,
   incomeSources: ['transactions-domain', 'income-sources'] as const,
   safeToSpend: (dateIso?: string) =>
     ['transactions-domain', 'safe-to-spend', dateIso ?? 'current'] as const,
-  reconciliations: ['transactions-domain', 'reconciliations'] as const,
 };
 
 // ==========================================
@@ -91,6 +80,18 @@ export function useUpsertAccount() {
 
   return useMutation({
     mutationFn: (input: UpsertAccountInput) => upsertAccount(input),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useSetAccountBalance() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (params: { accountId: string; balanceMinor: number }) =>
+      setAccountBalance(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },
@@ -275,58 +276,7 @@ export function useClearAllTransactions() {
 }
 
 // ==========================================
-// Envelope Budgets Hooks
-// ==========================================
-
-export function useCategoryBudgets(periodMonth: string) {
-  return useQuery({
-    queryKey: TRANSACTION_KEYS.categoryBudgets(periodMonth),
-    queryFn: () => getCategoryBudgets(periodMonth),
-  });
-}
-
-export function useUpsertCategoryBudget() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (budget: Omit<CategoryBudget, 'id'> & { id?: string }) =>
-      upsertCategoryBudget(budget),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
-  });
-}
-
-export function useDeleteCategoryBudget() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: string) => deleteCategoryBudget(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
-  });
-}
-
-export function useCopyCategoryBudgetsFromMonth() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: ({
-      fromPeriodMonth,
-      toPeriodMonth,
-    }: {
-      fromPeriodMonth: string;
-      toPeriodMonth: string;
-    }) => copyCategoryBudgetsFromMonth(fromPeriodMonth, toPeriodMonth),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
-  });
-}
-
-// ==========================================
-// Income Sources & Salary Plan Hooks
+// Income Sources & Payday Hooks
 // ==========================================
 
 export function useIncomeSources() {
@@ -376,19 +326,52 @@ export function useLogPayday() {
   });
 }
 
+export function useUpcomingPaydays(count = 6) {
+  const incomeSourcesQuery = useIncomeSources();
+  const transactionsQuery = useTransactions();
+
+  const paydays: UpcomingPayday[] = getUpcomingPaydays({
+    sources: incomeSourcesQuery.data ?? [],
+    transactions: transactionsQuery.data ?? [],
+    count,
+  });
+
+  return {
+    paydays,
+    nextPayday: paydays[0] ?? null,
+    sources: incomeSourcesQuery.data ?? [],
+    isLoading: incomeSourcesQuery.isLoading || transactionsQuery.isLoading,
+    isError: incomeSourcesQuery.isError || transactionsQuery.isError,
+  };
+}
+
+export function useNextPayday(): {
+  nextPayday: UpcomingPayday | null;
+  horizonDate: string | null;
+  isLoading: boolean;
+} {
+  const incomeSourcesQuery = useIncomeSources();
+  const transactionsQuery = useTransactions();
+
+  const sources = incomeSourcesQuery.data ?? [];
+  const transactions = transactionsQuery.data ?? [];
+
+  return {
+    nextPayday: getNextPayday({ sources, transactions }),
+    horizonDate: getNextPaydayHorizonDate({ sources, transactions }),
+    isLoading: incomeSourcesQuery.isLoading || transactionsQuery.isLoading,
+  };
+}
+
 export function useMonthlySalaryPlan(
   periodMonth: string,
   basis: SalaryPlanBasis = 'EXPECTED',
 ) {
-  const previousPeriodMonth = getPreviousPeriodMonth(periodMonth);
   const incomeSourcesQuery = useIncomeSources();
   const transactionsQuery = useTransactions();
   const accountsQuery = useAccounts();
   const categoriesQuery = useAllCategories();
-  const categoryBudgetsQuery = useCategoryBudgets(periodMonth);
-  const previousCategoryBudgetsQuery = useCategoryBudgets(previousPeriodMonth);
   const commitmentsQuery = useRecurringCommitments();
-  const sinkingFundsQuery = useSinkingFunds();
   const smartDefaultsQuery = useSmartDefaults();
 
   const plan: MonthlySalaryPlan = computeMonthlySalaryPlan({
@@ -396,15 +379,11 @@ export function useMonthlySalaryPlan(
     basis,
     incomeSources: incomeSourcesQuery.data ?? [],
     transactions: transactionsQuery.data ?? [],
-    categoryBudgets: categoryBudgetsQuery.data ?? [],
     recurringCommitments: commitmentsQuery.data ?? [],
-    sinkingFunds: sinkingFundsQuery.data ?? [],
   });
 
   return {
     plan,
-    previousPeriodMonth,
-    previousMonthEnvelopeCount: (previousCategoryBudgetsQuery.data ?? []).length,
     accounts: accountsQuery.data ?? [],
     categories: categoriesQuery.categories,
     smartDefaults: smartDefaultsQuery.data,
@@ -412,33 +391,26 @@ export function useMonthlySalaryPlan(
       incomeSourcesQuery.isLoading ||
       transactionsQuery.isLoading ||
       accountsQuery.isLoading ||
-      categoryBudgetsQuery.isLoading ||
-      commitmentsQuery.isLoading ||
-      sinkingFundsQuery.isLoading,
+      commitmentsQuery.isLoading,
     isError:
       incomeSourcesQuery.isError ||
       transactionsQuery.isError ||
       accountsQuery.isError ||
-      categoryBudgetsQuery.isError ||
-      commitmentsQuery.isError ||
-      sinkingFundsQuery.isError,
+      commitmentsQuery.isError,
     refetch: () =>
       Promise.all([
         incomeSourcesQuery.refetch(),
         transactionsQuery.refetch(),
         accountsQuery.refetch(),
         categoriesQuery.refetch(),
-        categoryBudgetsQuery.refetch(),
-        previousCategoryBudgetsQuery.refetch(),
         commitmentsQuery.refetch(),
-        sinkingFundsQuery.refetch(),
         smartDefaultsQuery.refetch(),
       ]),
   };
 }
 
 // ==========================================
-// Recurring Commitments Hooks
+// Debts & Obligations Hooks
 // ==========================================
 
 export function useRecurringCommitments() {
@@ -475,8 +447,12 @@ export function usePayRecurringCommitment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (params: { commitmentId: string; paidAtIso?: string; accountId?: string }) =>
-      payRecurringCommitment(params),
+    mutationFn: (params: {
+      commitmentId: string;
+      paidAtIso?: string;
+      accountId?: string;
+      actualAmountMinor?: number;
+    }) => payRecurringCommitment(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },
@@ -494,80 +470,62 @@ export function useUnpayRecurringCommitment() {
   });
 }
 
-// ==========================================
-// Sinking Funds Hooks
-// ==========================================
-
-export function useSinkingFunds() {
-  return useQuery({
-    queryKey: TRANSACTION_KEYS.sinkingFunds,
-    queryFn: getSinkingFunds,
-  });
-}
-
-export function useUpsertSinkingFund() {
+export function usePayCreditCardBill() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: Omit<SinkingFund, 'id'> & { id?: string }) => upsertSinkingFund(input),
+    mutationFn: (params: {
+      creditCardAccountId: string;
+      paymentAccountId: string;
+      paidAtIso?: string;
+      amountOverrideMinor?: number;
+    }) => payCreditCardBill(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },
   });
 }
 
-export function useContributeToSinkingFund() {
-  const queryClient = useQueryClient();
+export function useDebtOverview(currentDate?: Date) {
+  const accountsQuery = useAccounts();
+  const commitmentsQuery = useRecurringCommitments();
+  const incomeSourcesQuery = useIncomeSources();
+  const transactionsQuery = useTransactions();
 
-  return useMutation({
-    mutationFn: ({
-      fundId,
-      amountMinor,
-      sourceAccountId,
-    }: {
-      fundId: string;
-      amountMinor: number;
-      sourceAccountId: string;
-    }) => contributeToSinkingFund(fundId, amountMinor, sourceAccountId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
+  const nextPaydayDate = getNextPaydayHorizonDate({
+    sources: incomeSourcesQuery.data ?? [],
+    transactions: transactionsQuery.data ?? [],
+    fromDate: currentDate,
   });
-}
 
-export function useDeleteSinkingFund() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (id: string) => deleteSinkingFund(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
+  const overview: DebtOverview = computeDebtOverview({
+    accounts: accountsQuery.data ?? [],
+    commitments: commitmentsQuery.data ?? [],
+    nextPaydayDate,
+    currentDate,
   });
-}
 
-// ==========================================
-// Balance Reconciliation Hooks
-// ==========================================
-
-export function useApplyReconciliation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (input: ApplyReconciliationInput) => applyReconciliation(input),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-    },
-  });
-}
-
-export function useReconciliations(accountId?: string) {
-  return useQuery({
-    queryKey: accountId
-      ? ([...TRANSACTION_KEYS.reconciliations, accountId] as const)
-      : TRANSACTION_KEYS.reconciliations,
-    queryFn: () => getReconciliations(accountId),
-  });
+  return {
+    overview,
+    nextPaydayDate,
+    accounts: accountsQuery.data ?? [],
+    commitments: commitmentsQuery.data ?? [],
+    isLoading:
+      accountsQuery.isLoading ||
+      commitmentsQuery.isLoading ||
+      incomeSourcesQuery.isLoading,
+    isError:
+      accountsQuery.isError ||
+      commitmentsQuery.isError ||
+      incomeSourcesQuery.isError,
+    refetch: () =>
+      Promise.all([
+        accountsQuery.refetch(),
+        commitmentsQuery.refetch(),
+        incomeSourcesQuery.refetch(),
+        transactionsQuery.refetch(),
+      ]),
+  };
 }
 
 // ==========================================

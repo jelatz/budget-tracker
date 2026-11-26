@@ -21,12 +21,14 @@ export default function TransactionsRoute() {
   const params = useLocalSearchParams<{
     accountId?: string | string[];
     type?: string | string[];
+    categoryId?: string | string[];
   }>();
 
   return (
     <TransactionsScreen
       initialAccountId={parseStringParam(params.accountId)}
       initialType={parseTransactionType(params.type)}
+      initialCategoryId={parseStringParam(params.categoryId)}
     />
   );
 }

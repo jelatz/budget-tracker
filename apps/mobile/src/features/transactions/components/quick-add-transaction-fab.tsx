@@ -39,15 +39,15 @@ export function QuickAddTransactionFab({
           collapsable={false}
           style={{
             position: 'absolute',
-            right: isDesktop ? 28 : Math.max(20, insets.right + 16),
-            bottom: isDesktop ? 28 : Math.max(20, insets.bottom + 16),
+            right: isDesktop ? 28 : Math.max(16, insets.right + 16),
+            bottom: isDesktop ? 28 : insets.bottom + 76,
             zIndex: 25,
           }}
         >
           <Pressable
             onPress={() => setModalVisible(true)}
             accessibilityRole="button"
-            accessibilityLabel="Add new transaction"
+            accessibilityLabel="Add transaction"
             accessibilityHint="Opens the new transaction form"
             style={[
               Platform.OS === 'web'

@@ -1,167 +1,176 @@
-import React, { useMemo } from 'react';
+import React from 'react';
 import { ActivityIndicator, Pressable, View } from 'react-native';
-import { formatMinorUnits } from '@repo/contracts';
+import {
+  DEFAULT_CURRENCY,
+  formatCalendarDateShort,
+  formatMinorUnits,
+  type SafeToSpendMetrics,
+} from '@repo/contracts';
+
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
 import { useTheme } from '@/common/hooks/use-theme';
-import { useSafeToSpendMetrics } from '@/features/transactions/hooks/use-transactions';
 
 export interface SafeToSpendCardProps {
-  onPress?: () => void;
+  metrics: SafeToSpendMetrics | undefined;
+  currency?: string;
+  isLoading: boolean;
+  isError: boolean;
+  onRetry?: () => void;
+  onPressPaydays?: () => void;
+  onPressDebts?: () => void;
 }
 
-export function SafeToSpendCard({ onPress }: SafeToSpendCardProps) {
+export function SafeToSpendCard({
+  metrics,
+  currency = DEFAULT_CURRENCY,
+  isLoading,
+  isError,
+  onRetry,
+  onPressPaydays,
+  onPressDebts,
+}: SafeToSpendCardProps) {
   const theme = useTheme();
-  const { data: metrics, isLoading, isError } = useSafeToSpendMetrics();
 
-  const safeToSpendMinor = metrics?.safeToSpendMinor ?? 0;
-  const dailyDiscretionaryMinor = metrics?.dailyDiscretionaryBudgetMinor ?? 0;
-  const daysRemaining = metrics?.daysRemainingInMonth ?? 1;
+  if (isLoading) {
+    return (
+      <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center min-h-[168px]">
+        <ActivityIndicator size="small" color={theme.primary} />
+        <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-2">
+          Calculating safe-to-spend...
+        </ThemedText>
+      </View>
+    );
+  }
 
-  const isNegative = safeToSpendMinor < 0;
-  const isTight = !isNegative && dailyDiscretionaryMinor < 1000;
+  if (isError || !metrics) {
+    return (
+      <View className="p-5 rounded-2xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center gap-2.5">
+        <AppIcon name="warning" size={20} color={theme.negative} />
+        <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark text-center">
+          Unable to compute safe-to-spend liquidity right now.
+        </ThemedText>
+        {onRetry ? (
+          <Pressable
+            onPress={onRetry}
+            accessibilityRole="button"
+            accessibilityLabel="Retry safe-to-spend calculation"
+            className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark justify-center"
+          >
+            <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+              Retry
+            </ThemedText>
+          </Pressable>
+        ) : null}
+      </View>
+    );
+  }
 
-  const heroTheme = useMemo(() => {
-    if (isNegative) {
-      return {
-        badgeBg: 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft',
-        badgeText: 'text-ledger-terracotta dark:text-ledger-terracotta-dark',
-        statusText: 'Overcommitted',
-        amountColor: 'text-ledger-terracotta dark:text-ledger-terracotta-dark',
-      };
-    }
-    if (isTight) {
-      return {
-        badgeBg: 'bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft',
-        badgeText: 'text-ledger-ochre dark:text-ledger-ochre-dark',
-        statusText: 'Tight Liquidity',
-        amountColor: 'text-ledger-ochre dark:text-ledger-ochre-dark',
-      };
-    }
-    return {
-      badgeBg: 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft',
-      badgeText: 'text-ledger-pine dark:text-ledger-pine-dark',
-      statusText: 'Safe & On Track',
-      amountColor: 'text-ledger-pine dark:text-ledger-pine-dark',
-    };
-  }, [isNegative, isTight]);
+  const isNegative = metrics.safeToSpendMinor < 0;
+  const isTight =
+    !isNegative &&
+    metrics.totalLiquidBalanceMinor > 0 &&
+    metrics.safeToSpendMinor < metrics.totalLiquidBalanceMinor * 0.15;
+
+  const headlineLabel = metrics.nextPaydayDate
+    ? `Safe to Spend until ${formatCalendarDateShort(metrics.nextPaydayDate)}`
+    : 'Safe to Spend this Month';
+
+  const heroColorClass = isNegative
+    ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+    : isTight
+      ? 'text-ledger-ochre dark:text-ledger-ochre-dark'
+      : 'text-ledger-pine dark:text-ledger-pine-dark';
 
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={!onPress}
-      accessibilityRole="link"
-      accessibilityLabel="Safe to Spend. View recurring obligations in Expenses"
-      className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark active:opacity-85"
-    >
-      {/* Header row with status pill */}
-      <View className="flex-row items-center justify-between gap-2 mb-2.5 flex-wrap">
-        <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-          Safe to Spend
-        </ThemedText>
-
-        {!isLoading && !isError && metrics && (
-          <View
-            className={`px-2.5 py-1 rounded-full border border-ledger-border dark:border-ledger-border-dark ${heroTheme.badgeBg}`}
-          >
-            <ThemedText className={`text-xs font-semibold ${heroTheme.badgeText}`}>
-              {heroTheme.statusText}
+    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-5 gap-4">
+      <View className="flex-row flex-wrap items-start justify-between gap-2">
+        <View className="flex-1 min-w-[200px] gap-1">
+          <View className="flex-row items-center gap-1.5">
+            <AppIcon name="shield" size={14} color={theme.primary} />
+            <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+              {headlineLabel}
             </ThemedText>
           </View>
-        )}
+
+          <ThemedText
+            numeric
+            style={TABULAR_NUMS_STYLE}
+            className={`text-3xl sm:text-4xl font-extrabold tracking-tight ${heroColorClass}`}
+          >
+            {formatMinorUnits(metrics.safeToSpendMinor, currency)}
+          </ThemedText>
+        </View>
+
+        <View className="px-3 py-1.5 rounded-full bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-200 dark:border-ledger-border-dark">
+          <ThemedText
+            numeric
+            style={TABULAR_NUMS_STYLE}
+            className="text-xs font-bold text-brand-500 dark:text-brand-400"
+          >
+            {metrics.daysUntilNextPayday}{' '}
+            {metrics.daysUntilNextPayday === 1 ? 'day left' : 'days left'} ·{' '}
+            {formatMinorUnits(metrics.dailyDiscretionaryBudgetMinor, currency)}/day
+          </ThemedText>
+        </View>
       </View>
 
-      {isLoading ? (
-        <View className="py-6 items-center justify-center">
-          <ActivityIndicator size="small" color={theme.primary} />
-          <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted mt-2">
-            Calculating liquidity...
+      {/* Plain 2-Line Formula Breakdown */}
+      <View className="p-3.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-2">
+        <Pressable
+          onPress={onPressPaydays}
+          disabled={!onPressPaydays}
+          accessibilityRole={onPressPaydays ? 'button' : 'text'}
+          accessibilityLabel="Liquid Cash"
+          className="flex-row items-center justify-between gap-2"
+        >
+          <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+            Liquid cash (Bank, E-Wallet, Cash)
           </ThemedText>
-        </View>
-      ) : isError || !metrics ? (
-        <View className="py-4 px-3 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark">
-          <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-            Could not load liquidity metrics. Tap to view recurring obligations in Expenses.
+          <ThemedText
+            numeric
+            style={TABULAR_NUMS_STYLE}
+            className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark"
+          >
+            +{formatMinorUnits(metrics.totalLiquidBalanceMinor, currency)}
           </ThemedText>
-        </View>
-      ) : (
-        <>
-          {/* Hero Amount & Daily Rate */}
-          <View className="my-1">
-            <ThemedText
-              numeric
-              className={`text-3xl sm:text-4xl font-extrabold tracking-tight ${heroTheme.amountColor}`}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.75}
-            >
-              {formatMinorUnits(safeToSpendMinor)}
+        </Pressable>
+
+        <Pressable
+          onPress={onPressDebts}
+          disabled={!onPressDebts}
+          accessibilityRole={onPressDebts ? 'button' : 'text'}
+          accessibilityLabel="Obligations due before next payday"
+          className="flex-row items-center justify-between gap-2"
+        >
+          <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+            Due before payday (Cards, Loans, Bills)
+          </ThemedText>
+          <ThemedText
+            numeric
+            style={TABULAR_NUMS_STYLE}
+            className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark"
+          >
+            -{formatMinorUnits(metrics.dueBeforeNextPaydayMinor, currency)}
+          </ThemedText>
+        </Pressable>
+
+        {metrics.dueLaterThisMonthMinor > 0 ? (
+          <View className="flex-row items-center justify-between gap-2 pt-1.5 border-t border-ledger-border dark:border-ledger-border-dark">
+            <ThemedText className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+              Due later after next payday
             </ThemedText>
             <ThemedText
               numeric
-              className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-1"
+              style={TABULAR_NUMS_STYLE}
+              className="text-[11px] font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
             >
-              {`${formatMinorUnits(dailyDiscretionaryMinor)} / day for next ${daysRemaining} ${
-                daysRemaining === 1 ? 'day' : 'days'
-              }`}
+              {formatMinorUnits(metrics.dueLaterThisMonthMinor, currency)}
             </ThemedText>
           </View>
-
-          {/* Compact 4-Row Liquidity Summary */}
-          <View className="mt-4 pt-3.5 border-t border-ledger-border dark:border-ledger-border-dark gap-2">
-            <View className="flex-row items-center justify-between gap-2">
-              <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                (+) Liquid Cash
-              </ThemedText>
-              <ThemedText
-                numeric
-                className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark"
-              >
-                {`+${formatMinorUnits(metrics.totalLiquidBalanceMinor)}`}
-              </ThemedText>
-            </View>
-
-            <View className="flex-row items-center justify-between gap-2">
-              <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                (-) Sinking Fund Reserves
-              </ThemedText>
-              <ThemedText
-                numeric
-                className="text-xs font-bold text-ledger-ochre dark:text-ledger-ochre-dark"
-              >
-                {`-${formatMinorUnits(metrics.isolatedSinkingFundsMinor)}`}
-              </ThemedText>
-            </View>
-
-            <View className="flex-row items-center justify-between gap-2">
-              <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                (-) Upcoming Fixed Bills
-              </ThemedText>
-              <ThemedText
-                numeric
-                className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark"
-              >
-                {`-${formatMinorUnits(metrics.upcomingFixedBillsMinor)}`}
-              </ThemedText>
-            </View>
-
-            <View className="flex-row items-center justify-between gap-2">
-              <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                (-) Envelope Budgets Left
-              </ThemedText>
-              <ThemedText
-                numeric
-                className="text-xs font-bold text-ledger-teal dark:text-ledger-teal-dark"
-              >
-                {`-${formatMinorUnits(metrics.remainingCategoryBudgetsMinor)}`}
-              </ThemedText>
-            </View>
-          </View>
-
-          <ThemedText className="text-xs font-medium text-ledger-ink-muted dark:text-ledger-ink-dark-muted mt-3">
-            Tap to view recurring obligations
-          </ThemedText>
-        </>
-      )}
-    </Pressable>
+        ) : null}
+      </View>
+    </View>
   );
 }

@@ -48,6 +48,10 @@ export async function handleCreateAccount(
     color: params.input.color,
     currency: params.input.currency,
     balanceMinor: params.input.balanceMinor,
+    ...(params.input.statementDay !== undefined
+      ? { statementDay: params.input.statementDay }
+      : {}),
+    ...(params.input.dueDay !== undefined ? { dueDay: params.input.dueDay } : {}),
   });
 
   const result = await repo.createAccount(params.userId, account);

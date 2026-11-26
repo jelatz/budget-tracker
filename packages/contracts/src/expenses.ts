@@ -4,31 +4,15 @@ import type { Account, Category, Transaction } from './transactions.schema';
 
 export const recordedExpenseTypeFilterSchema = z.enum(['ALL', 'ONE_TIME', 'SCHEDULED']);
 export type RecordedExpenseTypeFilter = z.infer<typeof recordedExpenseTypeFilterSchema>;
-export type RecordedExpenseOrigin = 'ONE_TIME' | 'RECURRING' | 'LOAN';
+export type RecordedExpenseOrigin = 'ONE_TIME' | 'SCHEDULED';
 
 /**
- * Classifies a posted expense transaction by origin using canonical payment tags.
- */
-export function classifyRecordedExpense(
-  tx: Pick<Transaction, 'tags'>,
-): RecordedExpenseOrigin {
-  const normalizedTags = new Set(tx.tags.map((tag) => tag.trim().toLowerCase()));
-  if (normalizedTags.has('loan')) {
-    return 'LOAN';
-  }
-  if (normalizedTags.has('recurring')) {
-    return 'RECURRING';
-  }
-  return 'ONE_TIME';
-}
-
-/**
- * Returns true if a posted expense originated from a scheduled recurring bill or loan payment.
+ * Returns true if a posted expense originated from a scheduled bill, loan, or installment payment.
  */
 export function isScheduledRecordedExpense(
-  tx: Pick<Transaction, 'tags'>,
+  tx: Pick<Transaction, 'commitmentId'>,
 ): boolean {
-  return classifyRecordedExpense(tx) !== 'ONE_TIME';
+  return Boolean(tx.commitmentId);
 }
 
 /**
@@ -135,17 +119,14 @@ export function parseDateInputToIso(
 }
 
 /**
- * Returns true if an expense matches `categoryId` directly or via any split line.
+ * Returns true if an expense matches `categoryId`.
  */
 export function expenseMatchesCategory(tx: Transaction, categoryId: string): boolean {
-  if (tx.categoryId === categoryId) {
-    return true;
-  }
-  return Boolean(tx.splits?.some((split) => split.categoryId === categoryId));
+  return tx.categoryId === categoryId;
 }
 
 /**
- * Filters transactions to EXPENSE entries matching period, type, category (split-aware),
+ * Filters transactions to EXPENSE entries matching period, type, category,
  * account, and case-insensitive search query, sorted by occurredAt desc then createdAt desc.
  */
 export function filterExpenses(params: {
@@ -203,25 +184,15 @@ export function filterExpenses(params: {
 
       if (normalizedQuery.length > 0) {
         const accountName = accountLookup.get(tx.accountId)?.name ?? '';
-        const categoryNames: string[] = [];
-        if (tx.splits && tx.splits.length > 0) {
-          for (const split of tx.splits) {
-            const cat = categoryLookup.get(split.categoryId);
-            if (cat) categoryNames.push(cat.name);
-            if (split.note) categoryNames.push(split.note);
-          }
-        } else if (tx.categoryId) {
-          const cat = categoryLookup.get(tx.categoryId);
-          if (cat) categoryNames.push(cat.name);
-        }
+        const categoryName = tx.categoryId
+          ? (categoryLookup.get(tx.categoryId)?.name ?? '')
+          : '';
 
-        const tagSearch = tx.tags.map((t) => `${t} #${t}`).join(' ');
         const haystack = [
           tx.merchant ?? '',
           tx.note ?? '',
-          tagSearch,
           accountName,
-          ...categoryNames,
+          categoryName,
         ]
           .join(' ')
           .toLowerCase();
@@ -245,7 +216,7 @@ export function filterExpenses(params: {
 }
 
 /**
- * Computes integer minor-unit summary metrics and split-aware category counts for expenses.
+ * Computes integer minor-unit summary metrics and category counts for expenses.
  */
 export function computeExpenseSummary(params: {
   expenses: readonly Transaction[];
@@ -265,19 +236,7 @@ export function computeExpenseSummary(params: {
   const categoryCounts: Record<string, number> = {};
 
   for (const tx of expenses) {
-    if (tx.splits && tx.splits.length > 0) {
-      const seenInTx = new Set<string>();
-      for (const split of tx.splits) {
-        const entry = totalsMap.get(split.categoryId) ?? { amountMinor: 0, count: 0 };
-        entry.amountMinor += split.amountMinor;
-        if (!seenInTx.has(split.categoryId)) {
-          entry.count += 1;
-          categoryCounts[split.categoryId] = (categoryCounts[split.categoryId] ?? 0) + 1;
-          seenInTx.add(split.categoryId);
-        }
-        totalsMap.set(split.categoryId, entry);
-      }
-    } else if (tx.categoryId) {
+    if (tx.categoryId) {
       const entry = totalsMap.get(tx.categoryId) ?? { amountMinor: 0, count: 0 };
       entry.amountMinor += tx.amountMinor;
       entry.count += 1;

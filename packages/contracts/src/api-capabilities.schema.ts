@@ -1,10 +1,6 @@
 import { z } from 'zod';
 import { destructiveConfirmationSchema } from './confirmation';
 import {
-  applyReconciliationInputSchema,
-  balanceReconciliationSchema,
-} from './reconciliation.schema';
-import {
   accountSchema,
   accountTypeSchema,
   createTransactionInputSchema,
@@ -36,13 +32,17 @@ export const updateAccountRequestSchema = z
     accountType: accountTypeSchema.optional(),
     icon: z.string().min(1).optional(),
     color: z.string().min(1).optional(),
+    statementDay: z.number().int().min(1).max(31).optional(),
+    dueDay: z.number().int().min(1).max(31).optional(),
   })
   .refine(
     (val) =>
       val.name !== undefined ||
       val.accountType !== undefined ||
       val.icon !== undefined ||
-      val.color !== undefined,
+      val.color !== undefined ||
+      val.statementDay !== undefined ||
+      val.dueDay !== undefined,
     { message: 'At least one account metadata field is required' },
   );
 export type UpdateAccountRequest = z.infer<typeof updateAccountRequestSchema>;
@@ -101,37 +101,3 @@ export const clearTransactionsResponseSchema = z.object({
   revision: z.number().int().nonnegative(),
 });
 export type ClearTransactionsResponse = z.infer<typeof clearTransactionsResponseSchema>;
-
-// --- Reconcile capability contracts ---
-
-export const reconciliationsListResponseSchema = z.object({
-  reconciliations: z.array(balanceReconciliationSchema),
-  revision: z.number().int().nonnegative(),
-});
-export type ReconciliationsListResponse = z.infer<
-  typeof reconciliationsListResponseSchema
->;
-
-export const reconciliationResponseSchema = z.object({
-  reconciliation: balanceReconciliationSchema,
-  revision: z.number().int().nonnegative(),
-});
-export type ReconciliationResponse = z.infer<typeof reconciliationResponseSchema>;
-
-export const applyReconciliationRequestSchema = applyReconciliationInputSchema.extend({
-  confirmAction: z.literal(true),
-  confirmationToken: z.string().trim().min(1).max(160),
-});
-export type ApplyReconciliationRequest = z.infer<
-  typeof applyReconciliationRequestSchema
->;
-
-export const applyReconciliationResponseSchema = z.object({
-  reconciliation: balanceReconciliationSchema,
-  account: accountSchema,
-  adjustmentTransaction: transactionSchema.optional(),
-  revision: z.number().int().nonnegative(),
-});
-export type ApplyReconciliationResponse = z.infer<
-  typeof applyReconciliationResponseSchema
->;

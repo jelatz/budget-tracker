@@ -2,7 +2,7 @@
 
 **Product:** Budget Tracker (`@repo/mobile` — iOS, Android, Web)  
 **Currency:** Philippine Peso (`₱` / PHP) & multi-currency minor units  
-**Aesthetic:** **Warm Editorial Ledger** — calm financial clarity inspired by Mercury, Copilot Money, and Braun/Dieter Rams tactile instrumentation. Replaces generic cool-slate SaaS card-soup, emoji clutter, and glowing blue shadows with warm alabaster paper surfaces, deep forest pine accents, hairline structure, and strict tabular numerals.
+**Aesthetic:** **Warm Editorial Ledger** — calm financial clarity inspired by Mercury, Copilot Money, and Braun/Dieter Rams tactile instrumentation. Warm alabaster paper surfaces, deep forest pine accents, `1px` hairline structure, and strict tabular numerals.
 
 ---
 
@@ -13,7 +13,7 @@
 |---|---|---|
 | `background` (Canvas) | `#FAF8F4` | Primary app background — warm alabaster paper |
 | `surface` (Card / Sheet) | `#FFFFFF` | Elevated editorial cards & modals |
-| `backgroundElement` (Subtle) | `#F3F0EA` | Sidebar rail, segmented controls, calculator housing, inset wells |
+| `backgroundElement` (Subtle) | `#F3F0EA` | Sidebar rail, bottom tab bar well, segmented controls, calculator housing |
 | `backgroundSelected` | `#E9E4DA` | Active well / pressed state |
 | `border` (Hairline) | `#E5E0D6` | `1px` structural hairline borders & dividers |
 | `borderStrong` | `#CFC8BA` | Input borders & focused frames |
@@ -25,11 +25,11 @@
 | `primarySoft` | `#EAF2EE` | Soft pine tint for active nav wash & info pills |
 | `positive` (Income / Safe) | `#1E6F4E` | Inflows, positive net cashflow, balanced state |
 | `positiveSoft` | `#EBF5F0` | Soft sage wash for positive status badges |
-| `negative` (Expense / Deficit) | `#B4432C` | Outflows, over-budget alerts, destructive actions |
+| `negative` (Expense / Deficit) | `#B4432C` | Outflows, overdue debts, destructive actions |
 | `negativeSoft` | `#FDF1EE` | Soft terracotta wash for warning/error banners |
-| `warning` (Ochre) | `#A16207` | Tight liquidity, approaching threshold |
+| `warning` (Ochre) | `#A16207` | Tight liquidity, approaching due date |
 | `warningSoft` | `#FEF8EC` | Soft ochre wash |
-| `info` (Deep Teal) | `#2C5F6E` | Transfers, rollover/goal projections |
+| `info` (Deep Teal) | `#2C5F6E` | Transfers, credit card installments, upcoming schedule |
 | `infoSoft` | `#EDF5F7` | Soft teal wash |
 
 ### Dark Mode (Warm Obsidian)
@@ -51,9 +51,9 @@
 | `positiveSoft` | `#152820` | Deep sage wash |
 | `negative` | `#E07A5F` | Outflows / Deficit |
 | `negativeSoft` | `#2E1B16` | Deep terracotta wash |
-| `warning` | `#E0A458` | Tight liquidity / Near limit |
+| `warning` | `#E0A458` | Tight liquidity / Approaching due date |
 | `warningSoft` | `#2B2214` | Deep ochre wash |
-| `info` | `#76B4C4` | Transfers / Projections |
+| `info` | `#76B4C4` | Transfers / Card Installments |
 | `infoSoft` | `#16252A` | Deep teal wash |
 
 ---
@@ -73,8 +73,22 @@
 
 ---
 
-## 4. Iconography & Anti-Slop Rules
-- **Vector Symbols Only for UI Chrome**: Use `AppIcon` (`expo-symbols` `SymbolView` mapping iOS SF Symbols + Android/Web Material Symbols) for all navigation, buttons, empty states, status badges, and metadata indicators. Never use Unicode emojis (`⚡`, `💾`, `📊`, `📝`, `🎉`, `🚀`, `✨`) as UI icons. (User-selected category/account/vault avatars remain customizable data icons.)
-- **Consistent Surface Polarity**: Never place hardcoded `bg-slate-900` dark cards inside a Light Mode screen.
-- **Max 1–2 Status Badges per Row**: Replace stacked pill clusters with clean inline metadata separated by middots (`Groceries · BPI Savings · Monthly`).
-- **Two-Step Destructive Safety**: Every irreversible action (`Clear All Entries`, `Delete Envelope`, `Delete Bill`) requires an explicit cross-platform inline confirmation step (never bare `Alert.alert` or unconfirmed mutation).
+## 4. Navigation Architecture (4 Focused Tabs + Quick-Add `+`)
+
+- **Mobile (`width < 768px`)**: Persistent 4-tab Bottom Navigation Bar with `SafeAreaView` bottom inset + compact top brand/sync header + floating `+` Quick-Add button anchored above the bottom bar. No hidden hamburger drawer.
+- **Desktop (`width >= 768px`)**: Clean `240px` left sidebar rail with the same 4 destinations, sync badge, and account sign-out footer.
+
+| Tab | Route | Focus |
+|---|---|---|
+| **Home** | `/dashboard` | **Safe to Spend until Next Payday**, Next Payday 1-tap `Receive Pay` & Due Soon actions, Today vs. Month spending, Total Debt & Accounts strip |
+| **Spending** | `/transactions` | Chronological ledger of expenses, income, and transfers + category breakdown filter, period/account filters, and search |
+| **Debts** | `/debts` | **Credit Cards** (swipes + monthly installment slice = Upcoming Bill + 1-tap `Pay Full Bill`), **Loans** (`paid/total` months), and **Home & Utilities** (editable bill amount on pay) |
+| **Accounts** | `/accounts` | **Cash / Bank / E-Wallet / Credit Card** balances with direct **Set Balance** & card due-day settings, **Payday Schedules** (`15th & 30th`, `2nd & 4th Friday`), and **Backup & Data** modal |
+
+---
+
+## 5. Iconography & Anti-Slop Rules
+- **Vector Symbols Only for UI Chrome**: Use `AppIcon` (`expo-symbols` `SymbolView` mapping iOS SF Symbols + Android/Web Material Symbols) for all navigation, buttons, empty states, status badges, and metadata indicators. Never use Unicode emojis as UI chrome. (User-selected account/category avatars remain customizable data icons.)
+- **Consistent Surface Polarity**: Never place dark cards inside a Light Mode screen.
+- **Max 1–2 Status Badges per Row**: Keep metadata clean with middots (`Daily Living · Main Bank · Today`).
+- **Two-Step Destructive Safety**: Every irreversible action (`Clear All Entries`, `Delete Account`, `Delete Debt / Bill`) requires an explicit inline confirmation step.

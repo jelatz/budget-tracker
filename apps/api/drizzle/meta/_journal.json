@@ -22,6 +22,13 @@
       "when": 1795605308367,
       "tag": "0002_encrypt_monetary_figures",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795680335375,
+      "tag": "0003_simplify_ledger_and_debts",
+      "breakpoints": true
     }
   ]
 }

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import type { CategoryBudgetStatus } from './category-budget.schema';
 import {
   formatCalendarDateString,
   getCommitmentDueStatus,
@@ -8,28 +7,10 @@ import {
   type CommitmentDueState,
   type RecurringCommitment,
 } from './recurring.schema';
-import type { SinkingFund } from './sinking-funds.schema';
 import type { Account, Category, Transaction } from './transactions.schema';
 
-export type ExpensesRouteTab = 'RECORDED' | 'SCHEDULED' | 'BUDGETS';
-export type AccountsRouteTab = 'ACCOUNTS' | 'INCOME_SOURCES' | 'SINKING_FUNDS';
-
-export interface CategoryBudgetsOverviewSummary {
-  totalAssignedMinor: number;
-  totalEffectiveMinor: number;
-  totalSpentMinor: number;
-  totalRemainingMinor: number;
-  utilizationPercent: number;
-  overspentCount: number;
-}
-
-export interface SinkingFundsOverviewSummary {
-  totalSavedMinor: number;
-  totalTargetMinor: number;
-  utilizationPercent: number;
-  activeCount: number;
-  completedCount: number;
-}
+export type AccountsRouteTab = 'ACCOUNTS' | 'PAYDAYS';
+export type DebtsRouteTab = 'ALL' | 'CREDIT_CARDS' | 'LOANS' | 'BILLS';
 
 export interface MonthlyPayableItem {
   commitment: RecurringCommitment;
@@ -68,12 +49,6 @@ export interface CategorySpendItem {
   transactionCount: number;
 }
 
-export interface TagSpendItem {
-  tag: string;
-  amountMinor: number;
-  transactionCount: number;
-}
-
 export interface BudgetSummary {
   budgetMinor: number;
   spentMinor: number;
@@ -85,6 +60,7 @@ export interface BudgetSummary {
 export interface DashboardMetrics {
   period: DashboardPeriod;
   netWorthMinor: number;
+  todayExpenseMinor: number;
   incomeMinor: number;
   expenseMinor: number;
   netCashflowMinor: number;
@@ -92,7 +68,6 @@ export interface DashboardMetrics {
   transactionCount: number;
   budget: BudgetSummary;
   categoryBreakdown: CategorySpendItem[];
-  tagBreakdown: TagSpendItem[];
   recentTransactions: Transaction[];
 }
 
@@ -126,8 +101,7 @@ export function isTransactionInPeriod(
 }
 
 /**
- * Computes comprehensive financial metrics, split-aware category distributions,
- * tag spend breakdowns, and monthly budget progress for the dashboard.
+ * Computes financial metrics, category spend distributions, and today's spending for the dashboard & Spending screen.
  */
 export function computeDashboardMetrics(params: {
   transactions: readonly Transaction[];
@@ -138,16 +112,24 @@ export function computeDashboardMetrics(params: {
   now?: Date;
 }): DashboardMetrics {
   const now = params.now ?? new Date();
+  const todayStr = formatCalendarDateString(now);
 
-  // 1. Net worth: sum of non-credit-card account balances (excludes available credit limits)
-  const netWorthMinor = params.accounts
-    .filter((a) => a.accountType !== 'CREDIT_CARD')
-    .reduce((acc, a) => acc + a.balanceMinor, 0);
+  // 1. Net worth: sum of all account balances (including negative credit card balances)
+  const netWorthMinor = params.accounts.reduce((acc, a) => acc + a.balanceMinor, 0);
 
-  // 2. Filter transactions for the active dashboard period
+  // 2. Filter transactions for the active period + today's spending
   const periodTransactions = params.transactions.filter((tx) =>
     isTransactionInPeriod(tx.occurredAt, params.period, now),
   );
+
+  let todayExpenseMinor = 0;
+  for (const tx of params.transactions) {
+    if (tx.type !== 'EXPENSE') continue;
+    const d = new Date(tx.occurredAt);
+    if (!Number.isNaN(d.getTime()) && formatCalendarDateString(d) === todayStr) {
+      todayExpenseMinor += tx.amountMinor;
+    }
+  }
 
   // 3. Totals across the active period
   let incomeMinor = 0;
@@ -167,7 +149,7 @@ export function computeDashboardMetrics(params: {
   const netCashflowMinor = incomeMinor - expenseMinor;
   const transactionCount = periodTransactions.length;
 
-  // 4. Budget summary (monthly budget vs current month expenses)
+  // 4. Budget summary (monthly target vs current month expenses)
   const thisMonthExpenses = params.transactions.filter(
     (tx) => tx.type === 'EXPENSE' && isTransactionInPeriod(tx.occurredAt, 'THIS_MONTH', now),
   );
@@ -194,27 +176,17 @@ export function computeDashboardMetrics(params: {
     isOverBudget,
   };
 
-  // 5. Category breakdown (split-aware for EXPENSE transactions in filtered period)
+  // 5. Category breakdown for EXPENSE transactions in filtered period
   const categoryMap = new Map<string, { amountMinor: number; transactionCount: number }>();
 
   for (const tx of periodTransactions) {
-    if (tx.type !== 'EXPENSE') {
+    if (tx.type !== 'EXPENSE' || !tx.categoryId) {
       continue;
     }
-
-    if (tx.splits && tx.splits.length > 0) {
-      for (const split of tx.splits) {
-        const current = categoryMap.get(split.categoryId) ?? { amountMinor: 0, transactionCount: 0 };
-        current.amountMinor += split.amountMinor;
-        current.transactionCount += 1;
-        categoryMap.set(split.categoryId, current);
-      }
-    } else if (tx.categoryId) {
-      const current = categoryMap.get(tx.categoryId) ?? { amountMinor: 0, transactionCount: 0 };
-      current.amountMinor += tx.amountMinor;
-      current.transactionCount += 1;
-      categoryMap.set(tx.categoryId, current);
-    }
+    const current = categoryMap.get(tx.categoryId) ?? { amountMinor: 0, transactionCount: 0 };
+    current.amountMinor += tx.amountMinor;
+    current.transactionCount += 1;
+    categoryMap.set(tx.categoryId, current);
   }
 
   const categoryLookup = new Map<string, Category>();
@@ -244,36 +216,7 @@ export function computeDashboardMetrics(params: {
       return b.transactionCount - a.transactionCount;
     });
 
-  // 6. Tag breakdown (for EXPENSE transactions in filtered period)
-  const tagMap = new Map<string, { amountMinor: number; transactionCount: number }>();
-
-  for (const tx of periodTransactions) {
-    if (tx.type !== 'EXPENSE') {
-      continue;
-    }
-
-    for (const tag of tx.tags) {
-      const current = tagMap.get(tag) ?? { amountMinor: 0, transactionCount: 0 };
-      current.amountMinor += tx.amountMinor;
-      current.transactionCount += 1;
-      tagMap.set(tag, current);
-    }
-  }
-
-  const tagBreakdown: TagSpendItem[] = Array.from(tagMap.entries())
-    .map(([tag, data]) => ({
-      tag,
-      amountMinor: data.amountMinor,
-      transactionCount: data.transactionCount,
-    }))
-    .sort((a, b) => {
-      if (b.amountMinor !== a.amountMinor) {
-        return b.amountMinor - a.amountMinor;
-      }
-      return a.tag.localeCompare(b.tag);
-    });
-
-  // 7. Recent transactions: top 5 transactions sorted by occurredAt descending
+  // 6. Recent transactions: top 5 transactions sorted by occurredAt descending
   const recentTransactions = periodTransactions
     .slice()
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
@@ -282,6 +225,7 @@ export function computeDashboardMetrics(params: {
   return {
     period: params.period,
     netWorthMinor,
+    todayExpenseMinor,
     incomeMinor,
     expenseMinor,
     netCashflowMinor,
@@ -289,7 +233,6 @@ export function computeDashboardMetrics(params: {
     transactionCount,
     budget,
     categoryBreakdown,
-    tagBreakdown,
     recentTransactions,
   };
 }
@@ -302,33 +245,26 @@ function normalizeRouteTabParam(raw?: string | string[]): string | undefined {
   return first.trim().toLowerCase();
 }
 
-const EXPENSES_TAB_MAP: Record<string, ExpensesRouteTab> = {
-  recorded: 'RECORDED',
-  scheduled: 'SCHEDULED',
-  recurring: 'SCHEDULED',
-  budgets: 'BUDGETS',
-  envelopes: 'BUDGETS',
-};
-
 const ACCOUNTS_TAB_MAP: Record<string, AccountsRouteTab> = {
   accounts: 'ACCOUNTS',
-  'income-sources': 'INCOME_SOURCES',
-  income_sources: 'INCOME_SOURCES',
-  incomesources: 'INCOME_SOURCES',
-  income: 'INCOME_SOURCES',
-  salary: 'INCOME_SOURCES',
-  'sinking-funds': 'SINKING_FUNDS',
-  sinking_funds: 'SINKING_FUNDS',
-  sinkingfunds: 'SINKING_FUNDS',
+  paydays: 'PAYDAYS',
+  'income-sources': 'PAYDAYS',
+  income_sources: 'PAYDAYS',
+  incomesources: 'PAYDAYS',
+  income: 'PAYDAYS',
+  salary: 'PAYDAYS',
 };
 
-/**
- * Parses and normalizes the Expenses route tab query parameter.
- */
-export function parseExpensesTabParam(raw?: string | string[]): ExpensesRouteTab | undefined {
-  const normalized = normalizeRouteTabParam(raw);
-  return normalized ? EXPENSES_TAB_MAP[normalized] : undefined;
-}
+const DEBTS_TAB_MAP: Record<string, DebtsRouteTab> = {
+  all: 'ALL',
+  'credit-cards': 'CREDIT_CARDS',
+  credit_cards: 'CREDIT_CARDS',
+  creditcards: 'CREDIT_CARDS',
+  cards: 'CREDIT_CARDS',
+  loans: 'LOANS',
+  bills: 'BILLS',
+  utilities: 'BILLS',
+};
 
 /**
  * Parses and normalizes the Accounts route tab query parameter.
@@ -339,38 +275,11 @@ export function parseAccountsTabParam(raw?: string | string[]): AccountsRouteTab
 }
 
 /**
- * Aggregates category envelope statuses into an integer minor-unit dashboard overview summary.
+ * Parses and normalizes the Debts & Bills route tab query parameter.
  */
-export function summarizeCategoryBudgets(
-  envelopes: readonly CategoryBudgetStatus[],
-): CategoryBudgetsOverviewSummary {
-  let totalAssignedMinor = 0;
-  let totalEffectiveMinor = 0;
-  let totalSpentMinor = 0;
-  let totalRemainingMinor = 0;
-  let overspentCount = 0;
-
-  for (const env of envelopes) {
-    totalAssignedMinor += env.assignedMinor;
-    totalEffectiveMinor += env.effectiveBudgetMinor;
-    totalSpentMinor += env.spentMinor;
-    totalRemainingMinor += env.remainingMinor;
-    if (env.isOverspent || env.spentMinor > env.effectiveBudgetMinor) {
-      overspentCount += 1;
-    }
-  }
-
-  const utilizationPercent =
-    totalEffectiveMinor > 0 ? Math.round((totalSpentMinor * 100) / totalEffectiveMinor) : 0;
-
-  return {
-    totalAssignedMinor,
-    totalEffectiveMinor,
-    totalSpentMinor,
-    totalRemainingMinor,
-    utilizationPercent,
-    overspentCount,
-  };
+export function parseDebtsTabParam(raw?: string | string[]): DebtsRouteTab | undefined {
+  const normalized = normalizeRouteTabParam(raw);
+  return normalized ? DEBTS_TAB_MAP[normalized] : undefined;
 }
 
 function resolveDueDateThisMonth(commitment: RecurringCommitment, now: Date): string {
@@ -384,9 +293,7 @@ function resolveDueDateThisMonth(commitment: RecurringCommitment, now: Date): st
 }
 
 /**
- * Summarizes scheduled commitments (bills, installments) for the current month:
- * how much is still payable (including overdue) versus already paid.
- * Uses the same due rules as the Expenses → Scheduled view (`getCommitmentDueStatus`).
+ * Summarizes scheduled commitments (bills, loans, card installments) for the current month.
  */
 export function summarizeMonthlyPayables(
   commitments: readonly RecurringCommitment[],
@@ -452,36 +359,5 @@ export function summarizeMonthlyPayables(
     totalDueMinor,
     paidPercent,
     remainingItems,
-  };
-}
-
-/**
- * Aggregates sinking fund goals into an integer minor-unit dashboard overview summary.
- */
-export function summarizeSinkingFunds(
-  funds: readonly SinkingFund[],
-): SinkingFundsOverviewSummary {
-  let totalSavedMinor = 0;
-  let totalTargetMinor = 0;
-  let completedCount = 0;
-
-  for (const fund of funds) {
-    totalSavedMinor += fund.currentSavedMinor;
-    totalTargetMinor += fund.targetAmountMinor;
-    if (fund.isCompleted || fund.currentSavedMinor >= fund.targetAmountMinor) {
-      completedCount += 1;
-    }
-  }
-
-  const activeCount = funds.length - completedCount;
-  const utilizationPercent =
-    totalTargetMinor > 0 ? Math.round((totalSavedMinor * 100) / totalTargetMinor) : 0;
-
-  return {
-    totalSavedMinor,
-    totalTargetMinor,
-    utilizationPercent,
-    activeCount,
-    completedCount,
   };
 }

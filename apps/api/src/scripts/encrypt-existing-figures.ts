@@ -15,14 +15,9 @@ import type { AppDatabase } from '../core/db/client';
 import * as schema from '../core/db/schema';
 import {
   accounts,
-  balanceReconciliations,
-  categoryBudgets,
   incomeSources,
-  quickPresets,
   recurringCommitments,
-  sinkingFunds,
   transactions,
-  transactionSplits,
   userSettings,
 } from '../core/db/schema';
 
@@ -129,30 +124,6 @@ const TABLE_SPECS: readonly TableMigrationSpec<any>[] = [
     fields: [{ prop: 'amountMinor', column: 'amount_minor' }],
   },
   {
-    tableName: 'transaction_splits',
-    table: transactionSplits,
-    getRowId: (row: typeof transactionSplits.$inferSelect) =>
-      `${row.transactionId}:${row.id}`,
-    getWhere: (row: typeof transactionSplits.$inferSelect) =>
-      and(
-        eq(transactionSplits.userId, row.userId),
-        eq(transactionSplits.transactionId, row.transactionId),
-        eq(transactionSplits.id, row.id),
-      ),
-    fields: [{ prop: 'amountMinor', column: 'amount_minor' }],
-  },
-  {
-    tableName: 'category_budgets',
-    table: categoryBudgets,
-    getRowId: (row: typeof categoryBudgets.$inferSelect) => row.id,
-    getWhere: (row: typeof categoryBudgets.$inferSelect) =>
-      and(
-        eq(categoryBudgets.userId, row.userId),
-        eq(categoryBudgets.id, row.id),
-      ),
-    fields: [{ prop: 'assignedMinor', column: 'assigned_minor' }],
-  },
-  {
     tableName: 'recurring_commitments',
     table: recurringCommitments,
     getRowId: (row: typeof recurringCommitments.$inferSelect) => row.id,
@@ -162,44 +133,6 @@ const TABLE_SPECS: readonly TableMigrationSpec<any>[] = [
         eq(recurringCommitments.id, row.id),
       ),
     fields: [{ prop: 'amountMinor', column: 'amount_minor' }],
-  },
-  {
-    tableName: 'sinking_funds',
-    table: sinkingFunds,
-    getRowId: (row: typeof sinkingFunds.$inferSelect) => row.id,
-    getWhere: (row: typeof sinkingFunds.$inferSelect) =>
-      and(eq(sinkingFunds.userId, row.userId), eq(sinkingFunds.id, row.id)),
-    fields: [
-      { prop: 'targetAmountMinor', column: 'target_amount_minor' },
-      { prop: 'currentSavedMinor', column: 'current_saved_minor' },
-      {
-        prop: 'monthlyContributionMinor',
-        column: 'monthly_contribution_minor',
-      },
-    ],
-  },
-  {
-    tableName: 'quick_presets',
-    table: quickPresets,
-    getRowId: (row: typeof quickPresets.$inferSelect) => row.id,
-    getWhere: (row: typeof quickPresets.$inferSelect) =>
-      and(eq(quickPresets.userId, row.userId), eq(quickPresets.id, row.id)),
-    fields: [{ prop: 'amountMinor', column: 'amount_minor' }],
-  },
-  {
-    tableName: 'balance_reconciliations',
-    table: balanceReconciliations,
-    getRowId: (row: typeof balanceReconciliations.$inferSelect) => row.id,
-    getWhere: (row: typeof balanceReconciliations.$inferSelect) =>
-      and(
-        eq(balanceReconciliations.userId, row.userId),
-        eq(balanceReconciliations.id, row.id),
-      ),
-    fields: [
-      { prop: 'appBalanceMinor', column: 'app_balance_minor' },
-      { prop: 'actualBalanceMinor', column: 'actual_balance_minor' },
-      { prop: 'discrepancyMinor', column: 'discrepancy_minor' },
-    ],
   },
   {
     tableName: 'income_sources',

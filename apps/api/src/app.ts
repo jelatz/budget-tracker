@@ -16,11 +16,6 @@ import { createAuthRoutes } from './capabilities/auth/routes';
 import { createHealthRoutes } from './capabilities/health/routes';
 import { createMetaRoutes } from './capabilities/meta/routes';
 import {
-  createPgReconcileRepository,
-  type ReconcileRepository,
-} from './capabilities/reconcile/repository';
-import { createReconcileRoutes } from './capabilities/reconcile/routes';
-import {
   createPgSyncRepository,
   type SyncRepository,
 } from './capabilities/sync/repository';
@@ -49,7 +44,6 @@ export interface AppDependencies {
   syncRepo?: SyncRepository;
   accountsRepo?: AccountsRepository;
   transactionsRepo?: TransactionsRepository;
-  reconcileRepo?: ReconcileRepository;
   checkDb?: () => Promise<boolean>;
   getMinSupportedVersion?: () => string;
   allowDemoEndpoint?: () => boolean;
@@ -139,19 +133,6 @@ export function createApp(deps?: AppDependencies) {
         ),
       clearAllTransactions: (userId) =>
         createPgTransactionsRepository(getDb()).clearAllTransactions(userId),
-    };
-
-  const reconcileRepo: ReconcileRepository =
-    deps?.reconcileRepo ?? {
-      listReconciliations: (userId) =>
-        createPgReconcileRepository(getDb()).listReconciliations(userId),
-      getReconciliationById: (userId, reconciliationId) =>
-        createPgReconcileRepository(getDb()).getReconciliationById(
-          userId,
-          reconciliationId,
-        ),
-      applyReconciliation: (params) =>
-        createPgReconcileRepository(getDb()).applyReconciliation(params),
     };
 
   const requireAuth = createRequireAuthMiddleware((tokenHash) =>
@@ -271,8 +252,6 @@ export function createApp(deps?: AppDependencies) {
     .use('/v1/accounts/*', standardJsonBodyLimit)
     .use('/v1/transactions', standardJsonBodyLimit)
     .use('/v1/transactions/*', standardJsonBodyLimit)
-    .use('/v1/reconcile', standardJsonBodyLimit)
-    .use('/v1/reconcile/*', standardJsonBodyLimit)
     .onError((error, c) => handleApiError(error, c))
     .notFound((c) => {
       const requestId = c.get('requestId');
@@ -308,8 +287,7 @@ export function createApp(deps?: AppDependencies) {
     )
     .route('/', createSyncRoutes(syncRepo, requireAuth))
     .route('/', createAccountsRoutes(accountsRepo, requireAuth))
-    .route('/', createTransactionsRoutes(transactionsRepo, requireAuth))
-    .route('/', createReconcileRoutes(reconcileRepo, requireAuth));
+    .route('/', createTransactionsRoutes(transactionsRepo, requireAuth));
 
   return app;
 }

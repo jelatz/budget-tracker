@@ -1,35 +1,26 @@
 import {
   accountSchema,
-  applyReconciliationInputSchema,
   backupEnvelopeSchema,
-  categoryBudgetSchema,
   categorySchema,
-  computeEnvelopeRollovers,
-  computeReconciliationDelta,
   computeSafeToSpend,
   createCategoryInputSchema,
   createDestructiveConfirmation,
   createTransactionInputSchema,
-  DEFAULT_CURRENCY,
   formatAccountLinkedErrorMessage,
   getAccountLinkedRecords,
+  getNextPaydayHorizonDate,
   incomeSourceSchema,
   isCommitmentPaidOff,
   normalizeBackupEnvelope,
   positiveAmountMinorSchema,
   recurringCommitmentSchema,
-  sinkingFundSchema,
   smartDefaultsSchema,
   transactionSchema,
   updateTransactionInputSchema,
   upsertAccountInputSchema,
   type Account,
-  type ApplyReconciliationInput,
   type BackupEnvelope,
-  type BalanceReconciliation,
   type Category,
-  type CategoryBudget,
-  type CategoryBudgetStatus,
   type CreateCategoryInput,
   type CreateTransactionInput,
   type IncomeSource,
@@ -37,7 +28,6 @@ import {
   type RecurringCommitment,
   type RecurringCommitmentInput,
   type SafeToSpendMetrics,
-  type SinkingFund,
   type SmartDefaults,
   type SyncDataState,
   type Transaction,
@@ -107,7 +97,9 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
       existingAccount.accountType !== validated.accountType ||
       existingAccount.icon !== validated.icon ||
       existingAccount.color !== validated.color ||
-      existingAccount.currency !== validated.currency;
+      existingAccount.currency !== validated.currency ||
+      existingAccount.statementDay !== validated.statementDay ||
+      existingAccount.dueDay !== validated.dueDay;
     const balanceChanged =
       existingAccount.balanceMinor !== validated.balanceMinor;
 
@@ -129,6 +121,10 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
           icon: validated.icon,
           color: validated.color,
           currency: validated.currency,
+          ...(validated.statementDay !== undefined
+            ? { statementDay: validated.statementDay }
+            : {}),
+          ...(validated.dueDay !== undefined ? { dueDay: validated.dueDay } : {}),
         },
       });
     }
@@ -137,17 +133,9 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
       enqueueSyncMutation({
         opId: createSyncOpId(),
         clientTimestamp: nowIso,
-        type: 'reconciliation.apply',
-        reconciliationId: generateEntityId('rec'),
+        type: 'account.setBalance',
         accountId: existingAccount.id,
-        actualBalanceMinor: validated.balanceMinor,
-        createAdjustment: false,
-        notes: 'Account balance updated',
-        reconciledAt: nowIso,
-        confirmation: createDestructiveConfirmation(
-          'reconcile-account',
-          existingAccount.id,
-        ),
+        balanceMinor: validated.balanceMinor,
       });
     }
 
@@ -174,6 +162,10 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
     color: validated.color,
     currency: validated.currency,
     balanceMinor: validated.balanceMinor,
+    ...(validated.statementDay !== undefined
+      ? { statementDay: validated.statementDay }
+      : {}),
+    ...(validated.dueDay !== undefined ? { dueDay: validated.dueDay } : {}),
   });
 
   const nextState = enqueueSyncMutation({
@@ -189,6 +181,34 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
   }
 
   return accountSchema.parse(persisted);
+}
+
+export async function setAccountBalance(params: {
+  accountId: string;
+  balanceMinor: number;
+}): Promise<Account> {
+  const state = getCurrentSyncState();
+  const existing = state.accounts.find((a) => a.id === params.accountId);
+  if (!existing) {
+    throw new Error('Account not found.');
+  }
+  if (!Number.isInteger(params.balanceMinor)) {
+    throw new Error('Balance must be a valid integer amount.');
+  }
+
+  const nextState = enqueueSyncMutation({
+    opId: createSyncOpId(),
+    clientTimestamp: new Date().toISOString(),
+    type: 'account.setBalance',
+    accountId: params.accountId,
+    balanceMinor: params.balanceMinor,
+  });
+
+  const updated = nextState.accounts.find((a) => a.id === params.accountId);
+  if (!updated) {
+    throw new Error('Could not update account balance.');
+  }
+  return accountSchema.parse(updated);
 }
 
 export async function deleteAccount(id: string): Promise<void> {
@@ -402,86 +422,7 @@ export async function resetLocalStore(): Promise<void> {
 }
 
 // ==========================================
-// Envelope Budgets API
-// ==========================================
-
-export async function getCategoryBudgets(
-  periodMonth: string,
-): Promise<CategoryBudgetStatus[]> {
-  const state = getCurrentSyncState();
-  return computeEnvelopeRollovers({
-    budgets: state.categoryBudgets,
-    transactions: state.transactions,
-    periodMonth,
-  });
-}
-
-export async function upsertCategoryBudget(
-  budget: Omit<CategoryBudget, 'id'> & { id?: string },
-): Promise<CategoryBudget> {
-  const id = budget.id || generateEntityId('budget');
-  const validated = categoryBudgetSchema.parse({
-    ...budget,
-    id,
-  });
-
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: new Date().toISOString(),
-    type: 'categoryBudget.upsert',
-    budget: validated,
-  });
-
-  return validated;
-}
-
-export async function deleteCategoryBudget(id: string): Promise<void> {
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: new Date().toISOString(),
-    type: 'categoryBudget.delete',
-    id,
-  });
-}
-
-export async function copyCategoryBudgetsFromMonth(
-  fromPeriodMonth: string,
-  toPeriodMonth: string,
-): Promise<{ copiedCount: number }> {
-  if (fromPeriodMonth === toPeriodMonth) {
-    return { copiedCount: 0 };
-  }
-  const state = getCurrentSyncState();
-  const sourceBudgets = state.categoryBudgets.filter(
-    (b) => b.periodMonth === fromPeriodMonth,
-  );
-  const existingCategoryIds = new Set(
-    state.categoryBudgets
-      .filter((b) => b.periodMonth === toPeriodMonth)
-      .map((b) => b.categoryId),
-  );
-  const missing = sourceBudgets.filter(
-    (b) => !existingCategoryIds.has(b.categoryId),
-  );
-
-  if (missing.length === 0) {
-    return { copiedCount: 0 };
-  }
-
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: new Date().toISOString(),
-    type: 'categoryBudget.copyMonth',
-    fromPeriodMonth,
-    toPeriodMonth,
-    idPrefix: generateEntityId('budget'),
-  });
-
-  return { copiedCount: missing.length };
-}
-
-// ==========================================
-// Income Sources (Salary & Jobs) API
+// Income Sources (Salary & Paydays) API
 // ==========================================
 
 export async function getIncomeSources(): Promise<IncomeSource[]> {
@@ -580,7 +521,7 @@ export async function logPayday(params: {
 }
 
 // ==========================================
-// Recurring Commitments API
+// Debts & Monthly Obligations API
 // ==========================================
 
 export async function getRecurringCommitments(): Promise<RecurringCommitment[]> {
@@ -620,13 +561,18 @@ export async function payRecurringCommitment(params: {
   commitmentId: string;
   paidAtIso?: string;
   accountId?: string;
+  actualAmountMinor?: number;
 }): Promise<{ commitment: RecurringCommitment; transaction: Transaction }> {
   const state = getCurrentSyncState();
   const commitment = state.recurringCommitments.find(
     (rc) => rc.id === params.commitmentId,
   );
   if (!commitment) {
-    throw new Error('Scheduled expense not found.');
+    throw new Error('Obligation not found.');
+  }
+
+  if (params.actualAmountMinor !== undefined) {
+    positiveAmountMinorSchema.parse(params.actualAmountMinor);
   }
 
   const paidDate = params.paidAtIso ? new Date(params.paidAtIso) : new Date();
@@ -653,6 +599,9 @@ export async function payRecurringCommitment(params: {
     paidAtIso: paidIso,
     periodMonth,
     ...(params.accountId ? { accountId: params.accountId } : {}),
+    ...(params.actualAmountMinor !== undefined
+      ? { actualAmountMinor: params.actualAmountMinor }
+      : {}),
   });
 
   const updatedCommitment = nextState.recurringCommitments.find(
@@ -676,7 +625,7 @@ export async function unpayRecurringCommitment(
     (rc) => rc.id === commitmentId,
   );
   if (!commitment) {
-    throw new Error('Scheduled expense not found.');
+    throw new Error('Obligation not found.');
   }
 
   const nextState = enqueueSyncMutation({
@@ -689,165 +638,63 @@ export async function unpayRecurringCommitment(
   return nextState.recurringCommitments.find((rc) => rc.id === commitmentId)!;
 }
 
-// ==========================================
-// Sinking Funds API
-// ==========================================
-
-export async function getSinkingFunds(): Promise<SinkingFund[]> {
+export async function payCreditCardBill(params: {
+  creditCardAccountId: string;
+  paymentAccountId: string;
+  paidAtIso?: string;
+  amountOverrideMinor?: number;
+}): Promise<{ creditCardAccount: Account; transferTransaction: Transaction | null }> {
   const state = getCurrentSyncState();
-  return state.sinkingFunds.map((sf) => sinkingFundSchema.parse(sf));
-}
-
-export async function upsertSinkingFund(
-  input: Omit<SinkingFund, 'id'> & { id?: string },
-): Promise<SinkingFund> {
-  const id = input.id || generateEntityId('fund');
-  const validated = sinkingFundSchema.parse({
-    ...input,
-    id,
-  });
-
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: new Date().toISOString(),
-    type: 'sinkingFund.upsert',
-    fund: validated,
-  });
-
-  return validated;
-}
-
-export async function contributeToSinkingFund(
-  fundId: string,
-  amountMinor: number,
-  sourceAccountId: string,
-): Promise<{ fund: SinkingFund; transaction: Transaction }> {
-  positiveAmountMinorSchema.parse(amountMinor);
-  const state = getCurrentSyncState();
-  const fund = state.sinkingFunds.find((sf) => sf.id === fundId);
-  if (!fund) {
-    throw new Error(`Sinking fund "${fundId}" not found`);
+  const card = state.accounts.find((a) => a.id === params.creditCardAccountId);
+  if (!card || card.accountType !== 'CREDIT_CARD') {
+    throw new Error('Credit card account not found.');
   }
 
-  const sourceAccount = state.accounts.find((a) => a.id === sourceAccountId);
-  if (!sourceAccount) {
-    throw new Error('Selected source account was not found.');
+  const payer = state.accounts.find((a) => a.id === params.paymentAccountId);
+  if (!payer || payer.accountType === 'CREDIT_CARD') {
+    throw new Error('Please choose a bank, e-wallet, or cash account to pay from.');
+  }
+  if (payer.currency !== card.currency) {
+    throw new Error(
+      `Payment account currency (${payer.currency}) must match ${card.name} currency (${card.currency}).`,
+    );
   }
 
-  if (sourceAccountId !== fund.accountId) {
-    const destAccount = state.accounts.find((a) => a.id === fund.accountId);
-    if (!destAccount) {
-      throw new Error('Sinking fund holding account was not found.');
-    }
-    if (destAccount.currency !== sourceAccount.currency) {
-      throw new Error(
-        `Source account (${sourceAccount.currency}) must match holding account (${destAccount.currency}).`,
-      );
-    }
+  if (params.amountOverrideMinor !== undefined) {
+    positiveAmountMinorSchema.parse(params.amountOverrideMinor);
   }
 
-  const transactionId = generateEntityId('tx');
-  const occurredAt = new Date().toISOString();
+  const paidDate = params.paidAtIso ? new Date(params.paidAtIso) : new Date();
+  const validDate = Number.isNaN(paidDate.getTime()) ? new Date() : paidDate;
+  const periodMonth = `${validDate.getFullYear()}-${String(validDate.getMonth() + 1).padStart(2, '0')}`;
+  const transferTransactionId = generateEntityId('tx');
+  const installmentTxPrefix = generateEntityId('tx-inst');
 
   const nextState = enqueueSyncMutation({
     opId: createSyncOpId(),
-    clientTimestamp: occurredAt,
-    type: 'sinkingFund.contribute',
-    fundId,
-    transactionId,
-    amountMinor,
-    sourceAccountId,
-    occurredAt,
-  });
-
-  const updatedFund = nextState.sinkingFunds.find((sf) => sf.id === fundId);
-  const createdTx = nextState.transactions.find((tx) => tx.id === transactionId);
-  if (!updatedFund || !createdTx) {
-    throw new Error('Could not record sinking fund contribution.');
-  }
-
-  return {
-    fund: updatedFund,
-    transaction: createdTx,
-  };
-}
-
-export async function deleteSinkingFund(id: string): Promise<void> {
-  enqueueSyncMutation({
-    opId: createSyncOpId(),
     clientTimestamp: new Date().toISOString(),
-    type: 'sinkingFund.delete',
-    id,
+    type: 'creditCard.payBill',
+    creditCardAccountId: params.creditCardAccountId,
+    paymentAccountId: params.paymentAccountId,
+    transferTransactionId,
+    installmentTxPrefix,
+    paidAtIso: validDate.toISOString(),
+    periodMonth,
+    ...(params.amountOverrideMinor !== undefined
+      ? { amountOverrideMinor: params.amountOverrideMinor }
+      : {}),
   });
-}
 
-// ==========================================
-// Balance Reconciliation API
-// ==========================================
-
-export async function applyReconciliation(
-  input: ApplyReconciliationInput,
-): Promise<{
-  reconciliation: BalanceReconciliation;
-  adjustmentTransaction?: Transaction;
-  account: Account;
-}> {
-  const validatedInput = applyReconciliationInputSchema.parse(input);
-  const state = getCurrentSyncState();
-  const account = state.accounts.find((a) => a.id === validatedInput.accountId);
-  if (!account) {
-    throw new Error(`Account "${validatedInput.accountId}" not found`);
-  }
-
-  const delta = computeReconciliationDelta(
-    account.balanceMinor,
-    validatedInput.actualBalanceMinor,
+  const updatedCard = nextState.accounts.find(
+    (a) => a.id === params.creditCardAccountId,
   );
-
-  const reconciliationId = generateEntityId('rec');
-  const adjustmentTransactionId =
-    validatedInput.createAdjustment && delta.needsAdjustment
-      ? generateEntityId('tx')
-      : undefined;
-  const reconciledAt = new Date().toISOString();
-
-  const nextState = enqueueSyncMutation({
-    opId: createSyncOpId(),
-    clientTimestamp: reconciledAt,
-    type: 'reconciliation.apply',
-    reconciliationId,
-    accountId: validatedInput.accountId,
-    actualBalanceMinor: validatedInput.actualBalanceMinor,
-    createAdjustment: validatedInput.createAdjustment,
-    ...(validatedInput.notes ? { notes: validatedInput.notes } : {}),
-    ...(adjustmentTransactionId ? { adjustmentTransactionId } : {}),
-    reconciledAt,
-    confirmation: createDestructiveConfirmation(
-      'reconcile-account',
-      validatedInput.accountId,
-    ),
-  });
+  const transferTx =
+    nextState.transactions.find((tx) => tx.id === transferTransactionId) ?? null;
 
   return {
-    reconciliation: nextState.reconciliations.find(
-      (r) => r.id === reconciliationId,
-    )!,
-    adjustmentTransaction: adjustmentTransactionId
-      ? nextState.transactions.find((t) => t.id === adjustmentTransactionId)
-      : undefined,
-    account: nextState.accounts.find((a) => a.id === validatedInput.accountId)!,
+    creditCardAccount: updatedCard ?? card,
+    transferTransaction: transferTx,
   };
-}
-
-export async function getReconciliations(
-  accountId?: string,
-): Promise<BalanceReconciliation[]> {
-  const state = getCurrentSyncState();
-  const list = [...state.reconciliations].reverse();
-  if (accountId) {
-    return list.filter((r) => r.accountId === accountId);
-  }
-  return list;
 }
 
 // ==========================================
@@ -859,34 +706,16 @@ export async function getSafeToSpendMetrics(
 ): Promise<SafeToSpendMetrics> {
   const state = getCurrentSyncState();
   const date = currentDate ?? new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const periodMonth = `${year}-${month}`;
-
-  const cashLikeAccounts = state.accounts.filter(
-    (a) => a.accountType !== 'CREDIT_CARD',
-  );
-  const nonSavingsAccounts = cashLikeAccounts.filter(
-    (a) => a.id !== 'account-savings',
-  );
-  const liquidAccounts =
-    nonSavingsAccounts.length > 0
-      ? nonSavingsAccounts
-      : cashLikeAccounts.length > 0
-        ? cashLikeAccounts
-        : state.accounts;
-
-  const categoryBudgets = computeEnvelopeRollovers({
-    budgets: state.categoryBudgets,
+  const nextPaydayDate = getNextPaydayHorizonDate({
+    sources: state.incomeSources,
     transactions: state.transactions,
-    periodMonth,
+    fromDate: date,
   });
 
   return computeSafeToSpend({
-    liquidAccounts,
+    accounts: state.accounts,
     commitments: state.recurringCommitments,
-    categoryBudgets,
-    sinkingFunds: state.sinkingFunds,
+    nextPaydayDate,
     currentDate: date,
   });
 }
@@ -904,10 +733,7 @@ export async function exportBackupEnvelope(): Promise<BackupEnvelope> {
       accounts: state.accounts,
       categories: state.categories,
       transactions: state.transactions,
-      categoryBudgets: state.categoryBudgets,
       recurringCommitments: state.recurringCommitments,
-      sinkingFunds: state.sinkingFunds,
-      quickPresets: state.quickPresets,
       incomeSources: state.incomeSources,
       smartDefaults: state.smartDefaults,
     },

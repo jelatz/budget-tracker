@@ -47,20 +47,6 @@ function assertSyncMutationConfirmed(mutation: SyncMutation): void {
         );
       }
       return;
-    case 'reconciliation.apply':
-      if (
-        !verifyConfirmationToken(
-          mutation.confirmation,
-          'reconcile-account',
-          mutation.accountId,
-        )
-      ) {
-        throw new AppError(
-          'CONFIRMATION_REQUIRED',
-          'Explicit confirmation required for destructive sync mutation.',
-        );
-      }
-      return;
     default:
       return;
   }

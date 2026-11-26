@@ -1,6 +1,7 @@
 import {
   applySyncMutations,
   createInitialSyncDataState,
+  normalizeCommitmentKind,
   syncDataStateSchema,
   type SyncDataState,
   type SyncMutation,
@@ -13,16 +14,11 @@ import {
 import type { AppDatabase } from '../../core/db/client';
 import {
   accounts,
-  balanceReconciliations,
   categories,
-  categoryBudgets,
   incomeSources,
-  quickPresets,
   recurringCommitments,
-  sinkingFunds,
   syncOperations,
   transactions,
-  transactionSplits,
   users,
   userSettings,
 } from '../../core/db/schema';
@@ -63,7 +59,8 @@ export function isConflictingSyncMutation(
     case 'state.resetDemo':
     case 'transaction.update':
     case 'account.delete':
-    case 'reconciliation.apply':
+    case 'account.setBalance':
+    case 'creditCard.payBill':
       return true;
     case 'backup.import':
       return mutation.mode === 'overwrite';
@@ -92,12 +89,7 @@ export async function loadUserSyncStateInTx(
     accountRows,
     categoryRows,
     txRows,
-    splitRows,
-    budgetRows,
     commitmentRows,
-    fundRows,
-    presetRows,
-    reconciliationRows,
     incomeSourceRows,
   ] = await Promise.all([
     db.select().from(userSettings).where(eq(userSettings.userId, userId)),
@@ -118,34 +110,9 @@ export async function loadUserSyncStateInTx(
       .orderBy(asc(transactions.sortOrder)),
     db
       .select()
-      .from(transactionSplits)
-      .where(eq(transactionSplits.userId, userId))
-      .orderBy(asc(transactionSplits.sortOrder)),
-    db
-      .select()
-      .from(categoryBudgets)
-      .where(eq(categoryBudgets.userId, userId))
-      .orderBy(asc(categoryBudgets.sortOrder)),
-    db
-      .select()
       .from(recurringCommitments)
       .where(eq(recurringCommitments.userId, userId))
       .orderBy(asc(recurringCommitments.sortOrder)),
-    db
-      .select()
-      .from(sinkingFunds)
-      .where(eq(sinkingFunds.userId, userId))
-      .orderBy(asc(sinkingFunds.sortOrder)),
-    db
-      .select()
-      .from(quickPresets)
-      .where(eq(quickPresets.userId, userId))
-      .orderBy(asc(quickPresets.sortOrder)),
-    db
-      .select()
-      .from(balanceReconciliations)
-      .where(eq(balanceReconciliations.userId, userId))
-      .orderBy(asc(balanceReconciliations.sortOrder)),
     db
       .select()
       .from(incomeSources)
@@ -158,25 +125,9 @@ export async function loadUserSyncStateInTx(
     return createInitialSyncDataState();
   }
 
-  const splitsByTxId = new Map<
-    string,
-    Array<{ id: string; categoryId: string; amountMinor: number; note?: string }>
-  >();
-  for (const split of splitRows) {
-    const existing = splitsByTxId.get(split.transactionId) ?? [];
-    existing.push({
-      id: split.id,
-      categoryId: split.categoryId,
-      amountMinor: cipher.decrypt(split.amountMinor, {
-        userId,
-        table: 'transaction_splits',
-        rowId: `${split.transactionId}:${split.id}`,
-        column: 'amount_minor',
-      }),
-      ...(split.note ? { note: split.note } : {}),
-    });
-    splitsByTxId.set(split.transactionId, existing);
-  }
+  const accountTypeMap = new Map(
+    accountRows.map((a) => [a.id, a.accountType] as const),
+  );
 
   return syncDataStateSchema.parse({
     accounts: accountRows.map((a) => ({
@@ -192,6 +143,8 @@ export async function loadUserSyncStateInTx(
         rowId: a.id,
         column: 'balance_minor',
       }),
+      ...(a.statementDay !== null ? { statementDay: a.statementDay } : {}),
+      ...(a.dueDay !== null ? { dueDay: a.dueDay } : {}),
     })),
     categories: categoryRows.map((c) => ({
       id: c.id,
@@ -203,38 +156,32 @@ export async function loadUserSyncStateInTx(
       defaultOrder: c.defaultOrder,
       isCustom: c.isCustom,
     })),
-    transactions: txRows.map((t) => {
-      const splits = splitsByTxId.get(t.id);
-      return {
-        id: t.id,
-        type: t.type,
-        amountMinor: cipher.decrypt(t.amountMinor, {
-          userId,
-          table: 'transactions',
-          rowId: t.id,
-          column: 'amount_minor',
-        }),
-        currency: t.currency,
-        accountId: t.accountId,
-        ...(t.toAccountId ? { toAccountId: t.toAccountId } : {}),
-        ...(t.categoryId ? { categoryId: t.categoryId } : {}),
-        ...(t.incomeSourceId ? { incomeSourceId: t.incomeSourceId } : {}),
-        ...(splits && splits.length > 0 ? { splits } : {}),
-        ...(t.merchant ? { merchant: t.merchant } : {}),
-        tags: t.tags,
-        ...(t.note ? { note: t.note } : {}),
-        ...(t.receiptUri ? { receiptUri: t.receiptUri } : {}),
-        occurredAt: t.occurredAt.toISOString(),
-        createdAt: t.createdAt.toISOString(),
-      };
-    }),
+    transactions: txRows.map((t) => ({
+      id: t.id,
+      type: t.type,
+      amountMinor: cipher.decrypt(t.amountMinor, {
+        userId,
+        table: 'transactions',
+        rowId: t.id,
+        column: 'amount_minor',
+      }),
+      currency: t.currency,
+      accountId: t.accountId,
+      ...(t.toAccountId ? { toAccountId: t.toAccountId } : {}),
+      ...(t.categoryId ? { categoryId: t.categoryId } : {}),
+      ...(t.incomeSourceId ? { incomeSourceId: t.incomeSourceId } : {}),
+      ...(t.commitmentId ? { commitmentId: t.commitmentId } : {}),
+      ...(t.merchant ? { merchant: t.merchant } : {}),
+      ...(t.note ? { note: t.note } : {}),
+      occurredAt: t.occurredAt.toISOString(),
+      createdAt: t.createdAt.toISOString(),
+    })),
     smartDefaults: {
       lastAccountId: settings.lastAccountId,
       ...(settings.lastTransferToAccountId
         ? { lastTransferToAccountId: settings.lastTransferToAccountId }
         : {}),
       recentMerchants: settings.recentMerchants,
-      knownTags: settings.knownTags,
       monthlyBudgetMinor: cipher.decrypt(settings.monthlyBudgetMinor, {
         userId,
         table: 'user_settings',
@@ -242,23 +189,13 @@ export async function loadUserSyncStateInTx(
         column: 'monthly_budget_minor',
       }),
     },
-    categoryBudgets: budgetRows.map((b) => ({
-      id: b.id,
-      categoryId: b.categoryId,
-      periodMonth: b.periodMonth,
-      assignedMinor: cipher.decrypt(b.assignedMinor, {
-        userId,
-        table: 'category_budgets',
-        rowId: b.id,
-        column: 'assigned_minor',
-      }),
-      rolloverEnabled: b.rolloverEnabled,
-      ...(b.notes ? { notes: b.notes } : {}),
-    })),
     recurringCommitments: commitmentRows.map((rc) => ({
       id: rc.id,
       name: rc.name,
-      kind: rc.kind,
+      kind: normalizeCommitmentKind(
+        rc.kind,
+        accountTypeMap.get(rc.accountId) as 'BANK' | 'E_WALLET' | 'CASH' | 'CREDIT_CARD' | undefined,
+      ),
       amountMinor: cipher.decrypt(rc.amountMinor, {
         userId,
         table: 'recurring_commitments',
@@ -287,78 +224,6 @@ export async function loadUserSyncStateInTx(
         : {}),
       ...(rc.notes ? { notes: rc.notes } : {}),
     })),
-    sinkingFunds: fundRows.map((sf) => ({
-      id: sf.id,
-      name: sf.name,
-      icon: sf.icon,
-      color: sf.color,
-      targetAmountMinor: cipher.decrypt(sf.targetAmountMinor, {
-        userId,
-        table: 'sinking_funds',
-        rowId: sf.id,
-        column: 'target_amount_minor',
-      }),
-      currentSavedMinor: cipher.decrypt(sf.currentSavedMinor, {
-        userId,
-        table: 'sinking_funds',
-        rowId: sf.id,
-        column: 'current_saved_minor',
-      }),
-      targetDate: sf.targetDate,
-      accountId: sf.accountId,
-      monthlyContributionMinor: cipher.decrypt(sf.monthlyContributionMinor, {
-        userId,
-        table: 'sinking_funds',
-        rowId: sf.id,
-        column: 'monthly_contribution_minor',
-      }),
-      isCompleted: sf.isCompleted,
-      ...(sf.notes ? { notes: sf.notes } : {}),
-    })),
-    quickPresets: presetRows.map((qp) => ({
-      id: qp.id,
-      label: qp.label,
-      icon: qp.icon,
-      type: qp.type,
-      amountMinor: cipher.decrypt(qp.amountMinor, {
-        userId,
-        table: 'quick_presets',
-        rowId: qp.id,
-        column: 'amount_minor',
-      }),
-      accountId: qp.accountId,
-      ...(qp.toAccountId ? { toAccountId: qp.toAccountId } : {}),
-      ...(qp.categoryId ? { categoryId: qp.categoryId } : {}),
-      ...(qp.merchant ? { merchant: qp.merchant } : {}),
-      tags: qp.tags,
-      defaultOrder: qp.defaultOrder,
-    })),
-    reconciliations: reconciliationRows.map((rec) => ({
-      id: rec.id,
-      accountId: rec.accountId,
-      appBalanceMinor: cipher.decrypt(rec.appBalanceMinor, {
-        userId,
-        table: 'balance_reconciliations',
-        rowId: rec.id,
-        column: 'app_balance_minor',
-      }),
-      actualBalanceMinor: cipher.decrypt(rec.actualBalanceMinor, {
-        userId,
-        table: 'balance_reconciliations',
-        rowId: rec.id,
-        column: 'actual_balance_minor',
-      }),
-      discrepancyMinor: cipher.decrypt(rec.discrepancyMinor, {
-        userId,
-        table: 'balance_reconciliations',
-        rowId: rec.id,
-        column: 'discrepancy_minor',
-      }),
-      reconciledAt: rec.reconciledAt.toISOString(),
-      ...(rec.adjustmentTransactionId
-        ? { adjustmentTransactionId: rec.adjustmentTransactionId }
-        : {}),
-    })),
     incomeSources: incomeSourceRows.map((src) => ({
       id: src.id,
       name: src.name,
@@ -382,6 +247,11 @@ export async function loadUserSyncStateInTx(
       accountId: src.accountId,
       categoryId: src.categoryId,
       paySchedule: src.paySchedule,
+      ...(src.payDays ? { payDays: src.payDays } : {}),
+      ...(src.weekday !== null ? { weekday: src.weekday } : {}),
+      ...(src.weekdayOrdinals ? { weekdayOrdinals: src.weekdayOrdinals } : {}),
+      ...(src.monthlyPayDay !== null ? { monthlyPayDay: src.monthlyPayDay } : {}),
+      ...(src.anchorDate ? { anchorDate: src.anchorDate } : {}),
       ...(src.payDaysLabel ? { payDaysLabel: src.payDaysLabel } : {}),
       color: src.color,
       isActive: src.isActive,
@@ -413,7 +283,6 @@ export async function saveUserSyncStateInTx(
       lastTransferToAccountId:
         state.smartDefaults.lastTransferToAccountId ?? null,
       recentMerchants: state.smartDefaults.recentMerchants,
-      knownTags: state.smartDefaults.knownTags,
       monthlyBudgetMinor: encryptedMonthlyBudgetMinor,
     })
     .onConflictDoUpdate({
@@ -423,26 +292,16 @@ export async function saveUserSyncStateInTx(
         lastTransferToAccountId:
           state.smartDefaults.lastTransferToAccountId ?? null,
         recentMerchants: state.smartDefaults.recentMerchants,
-        knownTags: state.smartDefaults.knownTags,
         monthlyBudgetMinor: encryptedMonthlyBudgetMinor,
       },
     });
 
-  await tx
-    .delete(transactionSplits)
-    .where(eq(transactionSplits.userId, userId));
   await tx.delete(transactions).where(eq(transactions.userId, userId));
   await tx.delete(accounts).where(eq(accounts.userId, userId));
   await tx.delete(categories).where(eq(categories.userId, userId));
-  await tx.delete(categoryBudgets).where(eq(categoryBudgets.userId, userId));
   await tx
     .delete(recurringCommitments)
     .where(eq(recurringCommitments.userId, userId));
-  await tx.delete(sinkingFunds).where(eq(sinkingFunds.userId, userId));
-  await tx.delete(quickPresets).where(eq(quickPresets.userId, userId));
-  await tx
-    .delete(balanceReconciliations)
-    .where(eq(balanceReconciliations.userId, userId));
   await tx.delete(incomeSources).where(eq(incomeSources.userId, userId));
 
   if (state.accounts.length > 0) {
@@ -461,6 +320,8 @@ export async function saveUserSyncStateInTx(
           rowId: a.id,
           column: 'balance_minor',
         }),
+        statementDay: a.statementDay ?? null,
+        dueDay: a.dueDay ?? null,
         sortOrder: index,
       })),
       200,
@@ -504,59 +365,15 @@ export async function saveUserSyncStateInTx(
       toAccountId: t.toAccountId ?? null,
       categoryId: t.categoryId ?? null,
       incomeSourceId: t.incomeSourceId ?? null,
+      commitmentId: t.commitmentId ?? null,
       merchant: t.merchant ?? null,
-      tags: t.tags,
       note: t.note ?? null,
-      receiptUri: t.receiptUri ?? null,
       occurredAt: new Date(t.occurredAt),
       createdAt: new Date(t.createdAt),
       sortOrder: index,
     }));
     for (const chunk of chunkArray(txValues, 200)) {
       await tx.insert(transactions).values(chunk);
-    }
-
-    const splitValues = state.transactions.flatMap((t) =>
-      (t.splits ?? []).map((split, splitIndex) => ({
-        userId,
-        transactionId: t.id,
-        id: split.id,
-        categoryId: split.categoryId,
-        amountMinor: cipher.encrypt(split.amountMinor, {
-          userId,
-          table: 'transaction_splits',
-          rowId: `${t.id}:${split.id}`,
-          column: 'amount_minor',
-        }),
-        note: split.note ?? null,
-        sortOrder: splitIndex,
-      })),
-    );
-    for (const chunk of chunkArray(splitValues, 200)) {
-      await tx.insert(transactionSplits).values(chunk);
-    }
-  }
-
-  if (state.categoryBudgets.length > 0) {
-    for (const chunk of chunkArray(
-      state.categoryBudgets.map((b, index) => ({
-        userId,
-        id: b.id,
-        categoryId: b.categoryId,
-        periodMonth: b.periodMonth,
-        assignedMinor: cipher.encrypt(b.assignedMinor, {
-          userId,
-          table: 'category_budgets',
-          rowId: b.id,
-          column: 'assigned_minor',
-        }),
-        rolloverEnabled: b.rolloverEnabled,
-        notes: b.notes ?? null,
-        sortOrder: index,
-      })),
-      200,
-    )) {
-      await tx.insert(categoryBudgets).values(chunk);
     }
   }
 
@@ -596,106 +413,6 @@ export async function saveUserSyncStateInTx(
     }
   }
 
-  if (state.sinkingFunds.length > 0) {
-    for (const chunk of chunkArray(
-      state.sinkingFunds.map((sf, index) => ({
-        userId,
-        id: sf.id,
-        name: sf.name,
-        icon: sf.icon,
-        color: sf.color,
-        targetAmountMinor: cipher.encrypt(sf.targetAmountMinor, {
-          userId,
-          table: 'sinking_funds',
-          rowId: sf.id,
-          column: 'target_amount_minor',
-        }),
-        currentSavedMinor: cipher.encrypt(sf.currentSavedMinor, {
-          userId,
-          table: 'sinking_funds',
-          rowId: sf.id,
-          column: 'current_saved_minor',
-        }),
-        targetDate: sf.targetDate,
-        accountId: sf.accountId,
-        monthlyContributionMinor: cipher.encrypt(sf.monthlyContributionMinor, {
-          userId,
-          table: 'sinking_funds',
-          rowId: sf.id,
-          column: 'monthly_contribution_minor',
-        }),
-        isCompleted: sf.isCompleted,
-        notes: sf.notes ?? null,
-        sortOrder: index,
-      })),
-      200,
-    )) {
-      await tx.insert(sinkingFunds).values(chunk);
-    }
-  }
-
-  if (state.quickPresets.length > 0) {
-    for (const chunk of chunkArray(
-      state.quickPresets.map((qp, index) => ({
-        userId,
-        id: qp.id,
-        label: qp.label,
-        icon: qp.icon,
-        type: qp.type,
-        amountMinor: cipher.encrypt(qp.amountMinor, {
-          userId,
-          table: 'quick_presets',
-          rowId: qp.id,
-          column: 'amount_minor',
-        }),
-        accountId: qp.accountId,
-        toAccountId: qp.toAccountId ?? null,
-        categoryId: qp.categoryId ?? null,
-        merchant: qp.merchant ?? null,
-        tags: qp.tags,
-        defaultOrder: qp.defaultOrder,
-        sortOrder: index,
-      })),
-      200,
-    )) {
-      await tx.insert(quickPresets).values(chunk);
-    }
-  }
-
-  if (state.reconciliations.length > 0) {
-    for (const chunk of chunkArray(
-      state.reconciliations.map((rec, index) => ({
-        userId,
-        id: rec.id,
-        accountId: rec.accountId,
-        appBalanceMinor: cipher.encrypt(rec.appBalanceMinor, {
-          userId,
-          table: 'balance_reconciliations',
-          rowId: rec.id,
-          column: 'app_balance_minor',
-        }),
-        actualBalanceMinor: cipher.encrypt(rec.actualBalanceMinor, {
-          userId,
-          table: 'balance_reconciliations',
-          rowId: rec.id,
-          column: 'actual_balance_minor',
-        }),
-        discrepancyMinor: cipher.encrypt(rec.discrepancyMinor, {
-          userId,
-          table: 'balance_reconciliations',
-          rowId: rec.id,
-          column: 'discrepancy_minor',
-        }),
-        reconciledAt: new Date(rec.reconciledAt),
-        adjustmentTransactionId: rec.adjustmentTransactionId ?? null,
-        sortOrder: index,
-      })),
-      200,
-    )) {
-      await tx.insert(balanceReconciliations).values(chunk);
-    }
-  }
-
   if (state.incomeSources.length > 0) {
     for (const chunk of chunkArray(
       state.incomeSources.map((src, index) => ({
@@ -721,6 +438,11 @@ export async function saveUserSyncStateInTx(
         accountId: src.accountId,
         categoryId: src.categoryId,
         paySchedule: src.paySchedule,
+        payDays: src.payDays ?? null,
+        weekday: src.weekday ?? null,
+        weekdayOrdinals: src.weekdayOrdinals ?? null,
+        monthlyPayDay: src.monthlyPayDay ?? null,
+        anchorDate: src.anchorDate ?? null,
         payDaysLabel: src.payDaysLabel ?? null,
         color: src.color,
         isActive: src.isActive,

@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   apiErrorResponseSchema,
-  applyReconciliationRequestSchema,
   asyncJobRecordSchema,
   createDestructiveConfirmation,
-  formatConfirmationToken,
   healthResponseSchema,
   listTransactionsQuerySchema,
   updateAccountRequestSchema,
@@ -77,20 +75,8 @@ describe('shared API contracts', () => {
     expect(query.offset).toBe(0);
 
     expect(() => updateAccountRequestSchema.parse({})).toThrow();
-    expect(updateAccountRequestSchema.parse({ name: 'Checking' }).name).toBe(
+    expect(updateAccountRequestSchema.parse({ name: 'Checking', dueDay: 15 }).name).toBe(
       'Checking',
     );
-
-    const reconcile = applyReconciliationRequestSchema.parse({
-      accountId: 'account-bank',
-      actualBalanceMinor: 250000,
-      createAdjustment: true,
-      confirmAction: true,
-      confirmationToken: formatConfirmationToken(
-        'reconcile-account',
-        'account-bank',
-      ),
-    });
-    expect(reconcile.confirmAction).toBe(true);
   });
 });

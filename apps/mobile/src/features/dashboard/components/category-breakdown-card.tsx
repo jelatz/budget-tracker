@@ -1,156 +1,142 @@
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { DEFAULT_CURRENCY, formatMinorUnits, type CategorySpendItem } from '@repo/contracts';
+import {
+  DEFAULT_CURRENCY,
+  formatMinorUnits,
+  type CategorySpendItem,
+} from '@repo/contracts';
+
+import { AppIcon } from '@/common/components/app-icon';
 import { ThemedText } from '@/common/components/themed-text';
+import { TABULAR_NUMS_STYLE } from '@/common/constants/theme';
+import { useTheme } from '@/common/hooks/use-theme';
 
 export interface CategoryBreakdownCardProps {
-  items: readonly CategorySpendItem[];
-  totalExpenseMinor: number;
+  todayExpenseMinor: number;
+  monthExpenseMinor: number;
+  categories: readonly CategorySpendItem[];
   currency?: string;
-  onHeaderPress?: () => void;
-  onCategoryPress?: (item: CategorySpendItem) => void;
+  onSelectCategory?: (categoryId: string) => void;
+  onViewAllSpending: () => void;
 }
 
 export function CategoryBreakdownCard({
-  items,
-  totalExpenseMinor,
+  todayExpenseMinor,
+  monthExpenseMinor,
+  categories,
   currency = DEFAULT_CURRENCY,
-  onHeaderPress,
-  onCategoryPress,
+  onSelectCategory,
+  onViewAllSpending,
 }: CategoryBreakdownCardProps) {
+  const theme = useTheme();
+  const topCategories = categories.slice(0, 4);
+
   return (
-    <View className="rounded-2xl p-5 bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark">
-      {/* Card Header (Sibling Link) */}
-      <Pressable
-        onPress={onHeaderPress}
-        disabled={!onHeaderPress}
-        accessibilityRole="link"
-        accessibilityLabel="Spending by Category. View all recorded expenses"
-        className="min-h-[44px] mb-3 active:opacity-75"
-      >
-        <View className="flex-row items-center justify-between gap-2 mb-1">
-          <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
-            Spending by Category
+    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-3.5">
+      <View className="flex-row items-center justify-between gap-2">
+        <View className="flex-row items-center gap-2">
+          <AppIcon name="expenses" size={16} color={theme.primary} />
+          <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark">
+            Day-to-Day Spending
+          </ThemedText>
+        </View>
+
+        <Pressable
+          onPress={onViewAllSpending}
+          accessibilityRole="button"
+          accessibilityLabel="View full spending ledger"
+          className="min-h-[44px] px-2 justify-center"
+        >
+          <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+            Full Ledger
+          </ThemedText>
+        </Pressable>
+      </View>
+
+      {/* Today vs This Month Pair */}
+      <View className="flex-row gap-2.5">
+        <View className="flex-1 p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+          <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+            Spent Today
           </ThemedText>
           <ThemedText
             numeric
-            className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+            style={TABULAR_NUMS_STYLE}
+            className="text-lg font-extrabold text-ledger-ink dark:text-ledger-ink-dark mt-0.5"
           >
-            {`Total: ${formatMinorUnits(totalExpenseMinor, currency)}`}
+            {formatMinorUnits(todayExpenseMinor, currency)}
           </ThemedText>
         </View>
-        <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-          Includes split transaction allocations
-        </ThemedText>
-      </Pressable>
 
-      {/* Empty State vs Breakdown Content */}
-      {items.length === 0 ? (
-        <Pressable
-          onPress={onHeaderPress}
-          disabled={!onHeaderPress}
-          accessibilityRole="link"
-          accessibilityLabel="No expenses recorded. Open Expenses"
-          className="min-h-[44px] items-center justify-center py-6 px-4 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-dashed border-ledger-border-strong dark:border-ledger-border-strong-dark active:opacity-80"
-        >
-          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
-            No expenses recorded in this period. Tap to view Expenses.
+        <View className="flex-1 p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+          <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+            Spent This Month
           </ThemedText>
-        </Pressable>
+          <ThemedText
+            numeric
+            style={TABULAR_NUMS_STYLE}
+            className="text-lg font-extrabold text-ledger-terracotta dark:text-ledger-terracotta-dark mt-0.5"
+          >
+            {formatMinorUnits(monthExpenseMinor, currency)}
+          </ThemedText>
+        </View>
+      </View>
+
+      {/* Top Categories */}
+      {topCategories.length === 0 ? (
+        <View className="p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+          <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
+            No expenses logged this month yet. Tap + below to record your first spend.
+          </ThemedText>
+        </View>
       ) : (
-        <>
-          {/* Multi-segment stacked horizontal summary bar */}
-          <View className="h-2.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark overflow-hidden flex-row my-3">
-            {items.map((item, index) => {
-              const flexWeight =
-                item.amountMinor > 0 ? item.amountMinor : (item.percentage || 1);
-              return (
+        <View className="gap-2">
+          {topCategories.map((cat) => (
+            <Pressable
+              key={cat.categoryId}
+              onPress={() => onSelectCategory?.(cat.categoryId)}
+              accessibilityRole="button"
+              accessibilityLabel={`${cat.name}: ${formatMinorUnits(
+                cat.amountMinor,
+                currency,
+              )}`}
+              className="min-h-[44px] justify-center gap-1 active:opacity-80"
+            >
+              <View className="flex-row items-center justify-between gap-2">
+                <View className="flex-row items-center gap-2 flex-1 min-w-0">
+                  <View
+                    className="w-2.5 h-2.5 rounded-full"
+                    style={{ backgroundColor: cat.color }}
+                  />
+                  <ThemedText
+                    className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark"
+                    numberOfLines={1}
+                  >
+                    {cat.name}
+                  </ThemedText>
+                </View>
+
+                <ThemedText
+                  numeric
+                  style={TABULAR_NUMS_STYLE}
+                  className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                >
+                  {formatMinorUnits(cat.amountMinor, currency)} ({cat.percentage}%)
+                </ThemedText>
+              </View>
+
+              <View className="h-1.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark overflow-hidden">
                 <View
-                  key={`stacked-${item.categoryId}-${index}`}
-                  className="h-full"
+                  className="h-full rounded-full"
                   style={{
-                    flex: flexWeight,
-                    backgroundColor: item.color,
-                    marginRight: index < items.length - 1 ? 2 : 0,
+                    width: `${Math.min(100, Math.max(4, cat.percentage))}%`,
+                    backgroundColor: cat.color,
                   }}
                 />
-              );
-            })}
-          </View>
-
-          {/* List of category spend rows (Sibling Links) */}
-          <View className="gap-2.5 mt-1">
-            {items.map((item) => {
-              const itemCountText = `${item.transactionCount} ${
-                item.transactionCount === 1 ? 'item' : 'items'
-              }`;
-              const fillWidth = `${Math.max(4, Math.min(100, item.percentage))}%` as const;
-
-              return (
-                <Pressable
-                  key={item.categoryId}
-                  className="min-h-[44px] py-1.5 active:opacity-75"
-                  disabled={!onCategoryPress}
-                  onPress={() => onCategoryPress?.(item)}
-                  accessibilityRole="link"
-                  accessibilityLabel={`${item.name}, ${formatMinorUnits(
-                    item.amountMinor,
-                    currency,
-                  )}, ${item.percentage} percent, ${itemCountText}`}
-                >
-                  <View className="flex-row items-center justify-between mb-1.5">
-                    <View className="flex-row items-center flex-1 mr-2 min-w-0">
-                      <View
-                        className="w-3 h-3 rounded-full mr-2.5 shrink-0"
-                        style={{ backgroundColor: item.color }}
-                      />
-                      <ThemedText
-                        className="text-sm font-semibold text-ledger-ink dark:text-ledger-ink-dark flex-shrink mr-2"
-                        numberOfLines={1}
-                      >
-                        {item.name}
-                      </ThemedText>
-                      <View className="px-2 py-0.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark shrink-0">
-                        <ThemedText
-                          numeric
-                          className="text-[11px] font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                        >
-                          {itemCountText}
-                        </ThemedText>
-                      </View>
-                    </View>
-
-                    <View className="items-end flex-shrink-0">
-                      <ThemedText
-                        numeric
-                        className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                      >
-                        {formatMinorUnits(item.amountMinor, currency)}
-                      </ThemedText>
-                      <ThemedText
-                        numeric
-                        className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5"
-                      >
-                        {`${item.percentage}%`}
-                      </ThemedText>
-                    </View>
-                  </View>
-
-                  {/* Horizontal progress track */}
-                  <View className="h-1.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark overflow-hidden">
-                    <View
-                      className="h-full rounded-full"
-                      style={{
-                        width: fillWidth,
-                        backgroundColor: item.color,
-                      }}
-                    />
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </>
+              </View>
+            </Pressable>
+          ))}
+        </View>
       )}
     </View>
   );

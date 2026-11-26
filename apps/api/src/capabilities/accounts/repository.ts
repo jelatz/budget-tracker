@@ -51,6 +51,8 @@ function mapAccountRow(
       rowId: row.id,
       column: 'balance_minor',
     }),
+    ...(row.statementDay !== null ? { statementDay: row.statementDay } : {}),
+    ...(row.dueDay !== null ? { dueDay: row.dueDay } : {}),
   });
 }
 
@@ -154,6 +156,8 @@ export function createPgAccountsRepository(
             rowId: account.id,
             column: 'balance_minor',
           }),
+          statementDay: account.statementDay ?? null,
+          dueDay: account.dueDay ?? null,
           sortOrder: nextSortOrder,
         });
 
@@ -196,6 +200,8 @@ export function createPgAccountsRepository(
             accountType: patch.accountType ?? existing.accountType,
             icon: patch.icon ?? existing.icon,
             color: patch.color ?? existing.color,
+            statementDay: patch.statementDay ?? existing.statementDay,
+            dueDay: patch.dueDay ?? existing.dueDay,
           })
           .where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)))
           .returning();

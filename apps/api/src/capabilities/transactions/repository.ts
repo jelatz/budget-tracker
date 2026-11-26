@@ -3,7 +3,6 @@ import {
   transactionSchema,
   type ListTransactionsQuery,
   type Transaction,
-  type TransactionSplit,
 } from '@repo/contracts';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
@@ -13,10 +12,8 @@ import {
 import type { AppDatabase } from '../../core/db/client';
 import {
   accounts,
-  balanceReconciliations,
   categories,
   transactions,
-  transactionSplits,
   users,
 } from '../../core/db/schema';
 import { AppError } from '../../core/errors';
@@ -78,26 +75,8 @@ function computeAccountDeltas(
   return deltas;
 }
 
-function mapSplitRow(
-  row: typeof transactionSplits.$inferSelect,
-  cipher: MoneyCipher,
-): TransactionSplit {
-  return {
-    id: row.id,
-    categoryId: row.categoryId,
-    amountMinor: cipher.decrypt(row.amountMinor, {
-      userId: row.userId,
-      table: 'transaction_splits',
-      rowId: `${row.transactionId}:${row.id}`,
-      column: 'amount_minor',
-    }),
-    ...(row.note ? { note: row.note } : {}),
-  };
-}
-
 function mapTransactionRow(
   row: typeof transactions.$inferSelect,
-  splits: TransactionSplit[],
   cipher: MoneyCipher,
 ): Transaction {
   return transactionSchema.parse({
@@ -114,11 +93,9 @@ function mapTransactionRow(
     ...(row.toAccountId ? { toAccountId: row.toAccountId } : {}),
     ...(row.categoryId ? { categoryId: row.categoryId } : {}),
     ...(row.incomeSourceId ? { incomeSourceId: row.incomeSourceId } : {}),
-    ...(splits.length > 0 ? { splits } : {}),
+    ...(row.commitmentId ? { commitmentId: row.commitmentId } : {}),
     ...(row.merchant ? { merchant: row.merchant } : {}),
-    tags: Array.isArray(row.tags) ? row.tags : [],
     ...(row.note ? { note: row.note } : {}),
-    ...(row.receiptUri ? { receiptUri: row.receiptUri } : {}),
     occurredAt: row.occurredAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
   });
@@ -163,38 +140,15 @@ export function createPgTransactionsRepository(
         throw new AppError('UNAUTHORIZED', 'Account not found.');
       }
 
-      const txIds = txRows.map((row) => row.id);
-      const splitsByTxId = new Map<string, TransactionSplit[]>();
-      if (txIds.length > 0) {
-        const splitRows = await db
-          .select()
-          .from(transactionSplits)
-          .where(
-            and(
-              eq(transactionSplits.userId, userId),
-              inArray(transactionSplits.transactionId, txIds),
-            ),
-          )
-          .orderBy(asc(transactionSplits.sortOrder));
-
-        for (const s of splitRows) {
-          const list = splitsByTxId.get(s.transactionId) ?? [];
-          list.push(mapSplitRow(s, cipher));
-          splitsByTxId.set(s.transactionId, list);
-        }
-      }
-
       return {
-        transactions: txRows.map((row) =>
-          mapTransactionRow(row, splitsByTxId.get(row.id) ?? [], cipher),
-        ),
+        transactions: txRows.map((row) => mapTransactionRow(row, cipher)),
         total: Number(countRows[0]?.count ?? 0),
         revision: Number(userRow.stateRevision),
       };
     },
 
     async getTransactionById(userId, transactionId) {
-      const [userRows, txRows, splitRows] = await Promise.all([
+      const [userRows, txRows] = await Promise.all([
         db
           .select({ stateRevision: users.stateRevision })
           .from(users)
@@ -210,16 +164,6 @@ export function createPgTransactionsRepository(
             ),
           )
           .limit(1),
-        db
-          .select()
-          .from(transactionSplits)
-          .where(
-            and(
-              eq(transactionSplits.userId, userId),
-              eq(transactionSplits.transactionId, transactionId),
-            ),
-          )
-          .orderBy(asc(transactionSplits.sortOrder)),
       ]);
 
       const userRow = userRows[0];
@@ -231,12 +175,8 @@ export function createPgTransactionsRepository(
         return null;
       }
 
-      const splits: TransactionSplit[] = splitRows.map((s) =>
-        mapSplitRow(s, cipher),
-      );
-
       return {
-        transaction: mapTransactionRow(row, splits, cipher),
+        transaction: mapTransactionRow(row, cipher),
         revision: Number(userRow.stateRevision),
       };
     },
@@ -295,33 +235,13 @@ export function createPgTransactionsRepository(
           toAccountId: txData.toAccountId ?? null,
           categoryId: txData.categoryId ?? null,
           incomeSourceId: txData.incomeSourceId ?? null,
+          commitmentId: txData.commitmentId ?? null,
           merchant: txData.merchant ?? null,
-          tags: txData.tags,
           note: txData.note ?? null,
-          receiptUri: txData.receiptUri ?? null,
           occurredAt: new Date(txData.occurredAt),
           createdAt: new Date(txData.createdAt),
           sortOrder: 0,
         });
-
-        if (txData.splits && txData.splits.length > 0) {
-          await tx.insert(transactionSplits).values(
-            txData.splits.map((split, index) => ({
-              userId,
-              transactionId: txData.id,
-              id: split.id,
-              categoryId: split.categoryId,
-              amountMinor: cipher.encrypt(split.amountMinor, {
-                userId,
-                table: 'transaction_splits',
-                rowId: `${txData.id}:${split.id}`,
-                column: 'amount_minor',
-              }),
-              note: split.note ?? null,
-              sortOrder: index,
-            })),
-          );
-        }
 
         const deltas = computeAccountDeltas(txData, 1);
         for (const [accountId, delta] of deltas.entries()) {
@@ -385,22 +305,7 @@ export function createPgTransactionsRepository(
           return null;
         }
 
-        const existingSplitRows = await tx
-          .select()
-          .from(transactionSplits)
-          .where(
-            and(
-              eq(transactionSplits.userId, userId),
-              eq(transactionSplits.transactionId, transactionId),
-            ),
-          )
-          .orderBy(asc(transactionSplits.sortOrder));
-
-        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) =>
-          mapSplitRow(s, cipher),
-        );
-
-        const existingTx = mapTransactionRow(existingRow, existingSplits, cipher);
+        const existingTx = mapTransactionRow(existingRow, cipher);
         const updatedTx = transactionSchema.parse({
           ...nextData,
           id: existingRow.id,
@@ -463,10 +368,9 @@ export function createPgTransactionsRepository(
             toAccountId: updatedTx.toAccountId ?? null,
             categoryId: updatedTx.categoryId ?? null,
             incomeSourceId: updatedTx.incomeSourceId ?? null,
+            commitmentId: updatedTx.commitmentId ?? null,
             merchant: updatedTx.merchant ?? null,
-            tags: updatedTx.tags,
             note: updatedTx.note ?? null,
-            receiptUri: updatedTx.receiptUri ?? null,
             occurredAt: new Date(updatedTx.occurredAt),
           })
           .where(
@@ -475,34 +379,6 @@ export function createPgTransactionsRepository(
               eq(transactions.id, transactionId),
             ),
           );
-
-        await tx
-          .delete(transactionSplits)
-          .where(
-            and(
-              eq(transactionSplits.userId, userId),
-              eq(transactionSplits.transactionId, transactionId),
-            ),
-          );
-
-        if (updatedTx.splits && updatedTx.splits.length > 0) {
-          await tx.insert(transactionSplits).values(
-            updatedTx.splits.map((split, index) => ({
-              userId,
-              transactionId,
-              id: split.id,
-              categoryId: split.categoryId,
-              amountMinor: cipher.encrypt(split.amountMinor, {
-                userId,
-                table: 'transaction_splits',
-                rowId: `${transactionId}:${split.id}`,
-                column: 'amount_minor',
-              }),
-              note: split.note ?? null,
-              sortOrder: index,
-            })),
-          );
-        }
 
         for (const [accId, delta] of combinedDeltas.entries()) {
           const acc = accountMap.get(accId);
@@ -565,22 +441,7 @@ export function createPgTransactionsRepository(
           return null;
         }
 
-        const existingSplitRows = await tx
-          .select()
-          .from(transactionSplits)
-          .where(
-            and(
-              eq(transactionSplits.userId, userId),
-              eq(transactionSplits.transactionId, transactionId),
-            ),
-          )
-          .orderBy(asc(transactionSplits.sortOrder));
-
-        const existingSplits: TransactionSplit[] = existingSplitRows.map((s) =>
-          mapSplitRow(s, cipher),
-        );
-
-        const existingTx = mapTransactionRow(existingRow, existingSplits, cipher);
+        const existingTx = mapTransactionRow(existingRow, cipher);
         const reverseDeltas = computeAccountDeltas(existingTx, -1);
         const affectedAccountIds = Array.from(reverseDeltas.keys());
 
@@ -678,10 +539,6 @@ export function createPgTransactionsRepository(
           .update(categories)
           .set({ usageCount: 0 })
           .where(eq(categories.userId, userId));
-
-        await tx
-          .delete(balanceReconciliations)
-          .where(eq(balanceReconciliations.userId, userId));
 
         const nextRevision = Number(userRow.stateRevision) + 1;
         await tx

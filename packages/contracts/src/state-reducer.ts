@@ -1,17 +1,12 @@
-import { DEFAULT_CURRENCY, MAX_SAFE_MONEY_MINOR } from './money';
-import { categoryBudgetSchema } from './category-budget.schema';
+import { MAX_SAFE_MONEY_MINOR } from './money';
 import { incomeSourceSchema } from './income-plan.schema';
-import { quickPresetSchema } from './presets.schema';
-import {
-  balanceReconciliationSchema,
-  computeReconciliationDelta,
-} from './reconciliation.schema';
 import {
   advanceNextDueDate,
   isCommitmentPaidOff,
+  normalizeCommitmentKind,
   recurringCommitmentSchema,
+  type RecurringCommitment,
 } from './recurring.schema';
-import { sinkingFundSchema } from './sinking-funds.schema';
 import {
   accountSchema,
   categorySchema,
@@ -41,20 +36,6 @@ function truncateText(text: string, maxLen: number): string {
   return trimmed.length > maxLen ? trimmed.slice(0, maxLen) : trimmed;
 }
 
-function deduplicateTransactionSplits(tx: Transaction): Transaction {
-  if (!tx.splits || tx.splits.length === 0) {
-    return tx;
-  }
-  const seen = new Map<string, (typeof tx.splits)[number]>();
-  for (const split of tx.splits) {
-    seen.set(split.id, split);
-  }
-  return {
-    ...tx,
-    splits: Array.from(seen.values()),
-  };
-}
-
 /**
  * Builds a clean zero-balance starter dataset for newly registered accounts.
  */
@@ -74,14 +55,9 @@ export function createInitialSyncDataState(_referenceDate = new Date()): SyncDat
       lastAccountId: firstAccountId,
       lastTransferToAccountId: savingsAccountId,
       recentMerchants: [],
-      knownTags: [],
       monthlyBudgetMinor: 250000,
     },
-    categoryBudgets: [],
     recurringCommitments: [],
-    sinkingFunds: [],
-    quickPresets: [],
-    reconciliations: [],
     incomeSources: [],
   };
 }
@@ -124,18 +100,6 @@ function applyTransactionToAccounts(
   });
 }
 
-function getTransactionCategoryIds(tx: Transaction): Set<string> {
-  const ids = new Set<string>();
-  if (tx.splits && tx.splits.length > 0) {
-    for (const split of tx.splits) {
-      ids.add(split.categoryId);
-    }
-  } else if (tx.categoryId) {
-    ids.add(tx.categoryId);
-  }
-  return ids;
-}
-
 function updateSmartDefaultsForTransaction(
   smartDefaults: SmartDefaults,
   tx: Transaction,
@@ -150,21 +114,6 @@ function updateSmartDefaultsForTransaction(
     ].slice(0, 12);
   }
 
-  const knownTags = [...smartDefaults.knownTags];
-  if (tx.tags && tx.tags.length > 0) {
-    const normalizedNewTags = tx.tags
-      .map((tag) => tag.trim().replace(/^#+/, ''))
-      .filter((tag) => tag.length > 0);
-
-    const existingLower = new Set(knownTags.map((t) => t.toLowerCase()));
-    for (const tag of normalizedNewTags) {
-      if (!existingLower.has(tag.toLowerCase())) {
-        knownTags.push(tag);
-        existingLower.add(tag.toLowerCase());
-      }
-    }
-  }
-
   return {
     ...smartDefaults,
     lastAccountId: tx.accountId,
@@ -172,7 +121,6 @@ function updateSmartDefaultsForTransaction(
       ? { lastTransferToAccountId: tx.toAccountId }
       : {}),
     recentMerchants,
-    knownTags,
   };
 }
 
@@ -203,21 +151,17 @@ function addTransactionToState(
     return state;
   }
 
-  const tx = transactionSchema.parse(deduplicateTransactionSplits(rawTx));
+  const tx = transactionSchema.parse(rawTx);
   if (!isTransactionAccountCompatible(state.accounts, tx)) {
     return state;
   }
   const nextAccounts = applyTransactionToAccounts(state.accounts, tx, 1);
 
-  const categoryIdsToIncrement = getTransactionCategoryIds(tx);
-  const nextCategories =
-    categoryIdsToIncrement.size > 0
-      ? state.categories.map((c) =>
-          categoryIdsToIncrement.has(c.id)
-            ? { ...c, usageCount: c.usageCount + 1 }
-            : c,
-        )
-      : state.categories;
+  const nextCategories = tx.categoryId
+    ? state.categories.map((c) =>
+        c.id === tx.categoryId ? { ...c, usageCount: c.usageCount + 1 } : c,
+      )
+    : state.categories;
 
   const nextSmartDefaults =
     options?.updateSmartDefaults !== false
@@ -243,15 +187,13 @@ function deleteTransactionFromState(
   }
 
   const nextAccounts = applyTransactionToAccounts(state.accounts, tx, -1);
-  const categoryIdsToDecrement = getTransactionCategoryIds(tx);
-  const nextCategories =
-    categoryIdsToDecrement.size > 0
-      ? state.categories.map((c) =>
-          categoryIdsToDecrement.has(c.id)
-            ? { ...c, usageCount: Math.max(0, c.usageCount - 1) }
-            : c,
-        )
-      : state.categories;
+  const nextCategories = tx.categoryId
+    ? state.categories.map((c) =>
+        c.id === tx.categoryId
+          ? { ...c, usageCount: Math.max(0, c.usageCount - 1) }
+          : c,
+      )
+    : state.categories;
 
   return {
     ...state,
@@ -286,23 +228,69 @@ function mergeById<T extends { id: string }>(
   return Array.from(map.values());
 }
 
+function advanceCommitmentOnPay(
+  commitment: RecurringCommitment,
+  periodMonth: string,
+  txId: string,
+  accountType?: Account['accountType'],
+): RecurringCommitment {
+  const resolvedKind = normalizeCommitmentKind(commitment.kind, accountType);
+  const hasTerms =
+    resolvedKind === 'LOAN' ||
+    resolvedKind === 'CREDIT_CARD_INSTALLMENT' ||
+    (typeof commitment.totalInstallments === 'number' &&
+      commitment.totalInstallments > 0);
+
+  const nextPaidInstallments = hasTerms
+    ? commitment.paidInstallments + 1
+    : commitment.paidInstallments;
+  const reachedPayoff =
+    typeof commitment.totalInstallments === 'number' &&
+    commitment.totalInstallments > 0 &&
+    nextPaidInstallments >= commitment.totalInstallments;
+
+  const hasNextDueDate = Boolean(commitment.nextDueDate);
+  const nextDueDate =
+    hasNextDueDate && !reachedPayoff && commitment.nextDueDate
+      ? advanceNextDueDate(
+          commitment.nextDueDate,
+          commitment.frequency,
+          commitment.dueDay,
+        )
+      : commitment.nextDueDate;
+
+  return recurringCommitmentSchema.parse({
+    ...commitment,
+    kind: resolvedKind,
+    lastPaidPeriod: periodMonth,
+    lastPaidTransactionId: txId,
+    paidInstallments: nextPaidInstallments,
+    isActive: reachedPayoff ? false : commitment.isActive,
+    ...(hasNextDueDate
+      ? {
+          previousNextDueDate: reachedPayoff ? undefined : commitment.nextDueDate,
+          nextDueDate,
+        }
+      : {}),
+  });
+}
+
 export interface AccountLinkedRecordsSummary {
   transactions: Transaction[];
   expenseCount: number;
   incomeCount: number;
   transferCount: number;
   recurringCommitments: SyncDataState['recurringCommitments'];
-  sinkingFunds: SyncDataState['sinkingFunds'];
   incomeSources: SyncDataState['incomeSources'];
   totalCount: number;
   isLinked: boolean;
 }
 
 /**
- * Finds all transactions, recurring commitments, sinking funds, and income sources linked to an account.
+ * Finds all transactions, recurring commitments/debts, and income sources linked to an account.
  */
 export function getAccountLinkedRecords(
-  state: Pick<SyncDataState, 'transactions' | 'recurringCommitments' | 'sinkingFunds'> & {
+  state: Pick<SyncDataState, 'transactions' | 'recurringCommitments'> & {
     incomeSources?: SyncDataState['incomeSources'];
   },
   accountId: string,
@@ -325,15 +313,11 @@ export function getAccountLinkedRecords(
   const recurringCommitments = state.recurringCommitments.filter(
     (rc) => rc.accountId === accountId,
   );
-  const sinkingFunds = state.sinkingFunds.filter((sf) => sf.accountId === accountId);
   const incomeSources = (state.incomeSources ?? []).filter(
     (src) => src.accountId === accountId,
   );
   const totalCount =
-    transactions.length +
-    recurringCommitments.length +
-    sinkingFunds.length +
-    incomeSources.length;
+    transactions.length + recurringCommitments.length + incomeSources.length;
 
   return {
     transactions,
@@ -341,7 +325,6 @@ export function getAccountLinkedRecords(
     incomeCount,
     transferCount,
     recurringCommitments,
-    sinkingFunds,
     incomeSources,
     totalCount,
     isLinked: totalCount > 0,
@@ -393,15 +376,7 @@ export function formatAccountLinkedErrorMessage(
     const count = summary.recurringCommitments.length;
     const namesPreview = formatLinkedNamesPreview(summary.recurringCommitments);
     parts.push(
-      `${count} ${count === 1 ? 'recurring bill' : 'recurring bills'} (${namesPreview})`,
-    );
-  }
-
-  if (summary.sinkingFunds.length > 0) {
-    const count = summary.sinkingFunds.length;
-    const namesPreview = formatLinkedNamesPreview(summary.sinkingFunds);
-    parts.push(
-      `${count} ${count === 1 ? 'sinking fund' : 'sinking funds'} (${namesPreview})`,
+      `${count} ${count === 1 ? 'debt or bill' : 'debts and bills'} (${namesPreview})`,
     );
   }
 
@@ -409,7 +384,7 @@ export function formatAccountLinkedErrorMessage(
     const count = summary.incomeSources.length;
     const namesPreview = formatLinkedNamesPreview(summary.incomeSources);
     parts.push(
-      `${count} ${count === 1 ? 'income source' : 'income sources'} (${namesPreview})`,
+      `${count} ${count === 1 ? 'payday source' : 'payday sources'} (${namesPreview})`,
     );
   }
 
@@ -419,7 +394,6 @@ export function formatAccountLinkedErrorMessage(
 
 /**
  * Pure, replay-safe state transition for a single sync mutation.
- * Safe when mutations from multiple devices replay concurrently.
  */
 export function applySyncMutation(
   state: SyncDataState,
@@ -446,6 +420,23 @@ export function applySyncMutation(
       const updated = accountSchema.parse({
         ...mutation.account,
         balanceMinor: existing.balanceMinor,
+      });
+      return {
+        ...state,
+        accounts: state.accounts.map((a) =>
+          a.id === updated.id ? updated : a,
+        ),
+      };
+    }
+
+    case 'account.setBalance': {
+      const existing = state.accounts.find((a) => a.id === mutation.accountId);
+      if (!existing) {
+        return state;
+      }
+      const updated = accountSchema.parse({
+        ...existing,
+        balanceMinor: clampMinor(mutation.balanceMinor),
       });
       return {
         ...state,
@@ -520,16 +511,15 @@ export function applySyncMutation(
         if (existingIds.has(rawTx.id)) {
           continue;
         }
-        const tx = transactionSchema.parse(deduplicateTransactionSplits(rawTx));
+        const tx = transactionSchema.parse(rawTx);
         if (!isTransactionAccountCompatible(nextAccounts, tx)) {
           continue;
         }
         existingIds.add(tx.id);
         nextAccounts = applyTransactionToAccounts(nextAccounts, tx, 1);
-        const categoryIdsToIncrement = getTransactionCategoryIds(tx);
-        if (categoryIdsToIncrement.size > 0) {
+        if (tx.categoryId) {
           nextCategories = nextCategories.map((c) =>
-            categoryIdsToIncrement.has(c.id)
+            c.id === tx.categoryId
               ? { ...c, usageCount: c.usageCount + 1 }
               : c,
           );
@@ -558,12 +548,10 @@ export function applySyncMutation(
       }
 
       const existingTx = state.transactions[existingIndex];
-      const updatedTx = transactionSchema.parse(
-        deduplicateTransactionSplits({
-          ...mutation.input,
-          createdAt: existingTx.createdAt,
-        } as Transaction),
-      );
+      const updatedTx = transactionSchema.parse({
+        ...mutation.input,
+        createdAt: existingTx.createdAt,
+      } as Transaction);
       if (!isTransactionAccountCompatible(state.accounts, updatedTx)) {
         return state;
       }
@@ -579,14 +567,14 @@ export function applySyncMutation(
         1,
       );
 
-      const oldCategoryIds = getTransactionCategoryIds(existingTx);
-      const newCategoryIds = getTransactionCategoryIds(updatedTx);
+      const oldCategoryId = existingTx.categoryId;
+      const newCategoryId = updatedTx.categoryId;
       const nextCategories =
-        oldCategoryIds.size > 0 || newCategoryIds.size > 0
+        oldCategoryId !== newCategoryId
           ? state.categories.map((c) => {
               const delta =
-                (newCategoryIds.has(c.id) ? 1 : 0) -
-                (oldCategoryIds.has(c.id) ? 1 : 0);
+                (newCategoryId === c.id ? 1 : 0) -
+                (oldCategoryId === c.id ? 1 : 0);
               if (delta === 0) {
                 return c;
               }
@@ -623,7 +611,6 @@ export function applySyncMutation(
         transactions: [],
         accounts: state.accounts.map((a) => ({ ...a, balanceMinor: 0 })),
         categories: state.categories.map((c) => ({ ...c, usageCount: 0 })),
-        reconciliations: [],
       };
     }
 
@@ -634,67 +621,6 @@ export function applySyncMutation(
           ...state.smartDefaults,
           monthlyBudgetMinor: mutation.monthlyBudgetMinor,
         }),
-      };
-    }
-
-    case 'categoryBudget.upsert': {
-      const saved = categoryBudgetSchema.parse(mutation.budget);
-      return {
-        ...state,
-        categoryBudgets: upsertById(state.categoryBudgets, saved),
-      };
-    }
-
-    case 'categoryBudget.delete': {
-      return {
-        ...state,
-        categoryBudgets: state.categoryBudgets.filter((b) => b.id !== mutation.id),
-      };
-    }
-
-    case 'categoryBudget.copyMonth': {
-      if (mutation.fromPeriodMonth === mutation.toPeriodMonth) {
-        return state;
-      }
-      const sourceBudgets = state.categoryBudgets.filter(
-        (b) => b.periodMonth === mutation.fromPeriodMonth,
-      );
-      if (sourceBudgets.length === 0) {
-        return state;
-      }
-      const existingCategoryIds = new Set(
-        state.categoryBudgets
-          .filter((b) => b.periodMonth === mutation.toPeriodMonth)
-          .map((b) => b.categoryId),
-      );
-      let nextBudgets = state.categoryBudgets;
-      let changed = false;
-      for (const sourceBudget of sourceBudgets) {
-        if (existingCategoryIds.has(sourceBudget.categoryId)) {
-          continue;
-        }
-        const newId = `${mutation.idPrefix}-${sourceBudget.categoryId}`;
-        if (nextBudgets.some((b) => b.id === newId)) {
-          continue;
-        }
-        const copied = categoryBudgetSchema.parse({
-          id: newId,
-          categoryId: sourceBudget.categoryId,
-          periodMonth: mutation.toPeriodMonth,
-          assignedMinor: sourceBudget.assignedMinor,
-          rolloverEnabled: sourceBudget.rolloverEnabled,
-          ...(sourceBudget.notes ? { notes: sourceBudget.notes } : {}),
-        });
-        nextBudgets = [...nextBudgets, copied];
-        existingCategoryIds.add(sourceBudget.categoryId);
-        changed = true;
-      }
-      if (!changed) {
-        return state;
-      }
-      return {
-        ...state,
-        categoryBudgets: nextBudgets,
       };
     }
 
@@ -737,7 +663,6 @@ export function applySyncMutation(
         incomeSourceId: source.id,
         merchant: truncateText(source.name, 80) || 'Salary',
         ...(mutation.note ? { note: truncateText(mutation.note, 280) } : {}),
-        tags: ['salary'],
         occurredAt: mutation.occurredAt,
         createdAt: mutation.occurredAt,
       });
@@ -791,69 +716,42 @@ export function applySyncMutation(
         return state;
       }
       const currency = targetAccount.currency;
-
-      const isInstallment = commitment.kind === 'INSTALLMENT';
-      const hasTerms =
-        isInstallment ||
-        (typeof commitment.totalInstallments === 'number' &&
-          commitment.totalInstallments > 0);
+      const resolvedKind = normalizeCommitmentKind(
+        commitment.kind,
+        targetAccount.accountType,
+      );
+      const paidAmountMinor = mutation.actualAmountMinor ?? commitment.amountMinor;
 
       const paidIso = validDate.toISOString();
       const rawNote =
         commitment.notes ??
-        (isInstallment
-          ? 'Loan installment payment'
-          : 'Scheduled recurring payment');
+        (resolvedKind === 'LOAN'
+          ? 'Loan payment'
+          : resolvedKind === 'CREDIT_CARD_INSTALLMENT'
+            ? 'Credit card installment'
+            : 'Monthly bill payment');
 
       const tx = transactionSchema.parse({
         id: mutation.transactionId,
         type: 'EXPENSE',
-        amountMinor: commitment.amountMinor,
+        amountMinor: paidAmountMinor,
         currency,
         accountId: targetAccountId,
         categoryId: commitment.categoryId,
+        commitmentId: commitment.id,
         merchant: truncateText(commitment.name, 80) || 'Scheduled Payment',
         note: truncateText(rawNote, 280),
-        tags: isInstallment ? ['loan', 'recurring'] : ['recurring'],
         occurredAt: paidIso,
         createdAt: paidIso,
       });
 
       const stateAfterTx = addTransactionToState(state, tx);
-
-      const nextPaidInstallments = hasTerms
-        ? commitment.paidInstallments + 1
-        : commitment.paidInstallments;
-      const reachedPayoff =
-        typeof commitment.totalInstallments === 'number' &&
-        commitment.totalInstallments > 0 &&
-        nextPaidInstallments >= commitment.totalInstallments;
-
-      const hasNextDueDate = Boolean(commitment.nextDueDate);
-      const nextDueDate =
-        hasNextDueDate && !reachedPayoff && commitment.nextDueDate
-          ? advanceNextDueDate(
-              commitment.nextDueDate,
-              commitment.frequency,
-              commitment.dueDay,
-            )
-          : commitment.nextDueDate;
-
-      const updatedCommitment = recurringCommitmentSchema.parse({
-        ...commitment,
-        lastPaidPeriod: periodMonth,
-        lastPaidTransactionId: tx.id,
-        paidInstallments: nextPaidInstallments,
-        isActive: reachedPayoff ? false : commitment.isActive,
-        ...(hasNextDueDate
-          ? {
-              previousNextDueDate: reachedPayoff
-                ? undefined
-                : commitment.nextDueDate,
-              nextDueDate,
-            }
-          : {}),
-      });
+      const updatedCommitment = advanceCommitmentOnPay(
+        commitment,
+        periodMonth,
+        tx.id,
+        targetAccount.accountType,
+      );
 
       return {
         ...stateAfterTx,
@@ -878,8 +776,11 @@ export function applySyncMutation(
         ? deleteTransactionFromState(state, commitment.lastPaidTransactionId)
         : state;
 
+      const account = state.accounts.find((a) => a.id === commitment.accountId);
+      const resolvedKind = normalizeCommitmentKind(commitment.kind, account?.accountType);
       const hasTerms =
-        commitment.kind === 'INSTALLMENT' ||
+        resolvedKind === 'LOAN' ||
+        resolvedKind === 'CREDIT_CARD_INSTALLMENT' ||
         (typeof commitment.totalInstallments === 'number' &&
           commitment.totalInstallments > 0);
       const nextPaidInstallments = hasTerms
@@ -888,6 +789,7 @@ export function applySyncMutation(
 
       const updatedCommitment = recurringCommitmentSchema.parse({
         ...commitment,
+        kind: resolvedKind,
         lastPaidPeriod: undefined,
         lastPaidTransactionId: undefined,
         paidInstallments: nextPaidInstallments,
@@ -904,174 +806,110 @@ export function applySyncMutation(
       };
     }
 
-    case 'sinkingFund.upsert': {
-      const saved = sinkingFundSchema.parse(mutation.fund);
-      return {
-        ...state,
-        sinkingFunds: upsertById(state.sinkingFunds, saved),
-      };
-    }
-
-    case 'sinkingFund.delete': {
-      return {
-        ...state,
-        sinkingFunds: state.sinkingFunds.filter((sf) => sf.id !== mutation.id),
-      };
-    }
-
-    case 'sinkingFund.contribute': {
-      const fund = state.sinkingFunds.find((sf) => sf.id === mutation.fundId);
-      if (!fund) {
-        return state;
-      }
-      if (state.transactions.some((tx) => tx.id === mutation.transactionId)) {
-        return state;
-      }
-
-      const sourceAccount = state.accounts.find(
-        (a) => a.id === mutation.sourceAccountId,
+    case 'creditCard.payBill': {
+      const cardAccount = state.accounts.find(
+        (a) => a.id === mutation.creditCardAccountId,
       );
-      if (!sourceAccount) {
-        return state;
-      }
-      const isTransfer = mutation.sourceAccountId !== fund.accountId;
-      if (isTransfer) {
-        const destAccount = state.accounts.find((a) => a.id === fund.accountId);
-        if (!destAccount || destAccount.currency !== sourceAccount.currency) {
-          return state;
-        }
-      }
-      const sourceCurrency = sourceAccount.currency;
-
-      const merchant = truncateText(fund.name, 80) || 'Sinking Fund';
-      const note = truncateText(`Contribution to ${fund.name}`, 280);
-
-      const tx = isTransfer
-        ? transactionSchema.parse({
-            id: mutation.transactionId,
-            type: 'TRANSFER',
-            amountMinor: mutation.amountMinor,
-            currency: sourceCurrency,
-            accountId: mutation.sourceAccountId,
-            toAccountId: fund.accountId,
-            merchant,
-            note,
-            tags: ['sinking-fund'],
-            occurredAt: mutation.occurredAt,
-            createdAt: mutation.occurredAt,
-          })
-        : transactionSchema.parse({
-            id: mutation.transactionId,
-            type: 'EXPENSE',
-            amountMinor: mutation.amountMinor,
-            currency: sourceCurrency,
-            accountId: mutation.sourceAccountId,
-            categoryId: 'cat-home',
-            merchant,
-            note,
-            tags: ['sinking-fund'],
-            occurredAt: mutation.occurredAt,
-            createdAt: mutation.occurredAt,
-          });
-
-      const stateAfterTx = addTransactionToState(state, tx);
-      if (stateAfterTx === state) {
-        return state;
-      }
-      const newSavedMinor = clampMinor(fund.currentSavedMinor + mutation.amountMinor);
-      const updatedFund = sinkingFundSchema.parse({
-        ...fund,
-        currentSavedMinor: newSavedMinor,
-        isCompleted: newSavedMinor >= fund.targetAmountMinor,
-      });
-
-      return {
-        ...stateAfterTx,
-        sinkingFunds: stateAfterTx.sinkingFunds.map((sf) =>
-          sf.id === fund.id ? updatedFund : sf,
-        ),
-      };
-    }
-
-    case 'quickPreset.upsert': {
-      const saved = quickPresetSchema.parse(mutation.preset);
-      return {
-        ...state,
-        quickPresets: upsertById(state.quickPresets, saved),
-      };
-    }
-
-    case 'quickPreset.delete': {
-      return {
-        ...state,
-        quickPresets: state.quickPresets.filter((qp) => qp.id !== mutation.id),
-      };
-    }
-
-    case 'reconciliation.apply': {
+      const paymentAccount = state.accounts.find(
+        (a) => a.id === mutation.paymentAccountId,
+      );
       if (
-        state.reconciliations.some((r) => r.id === mutation.reconciliationId)
+        !cardAccount ||
+        !paymentAccount ||
+        cardAccount.accountType !== 'CREDIT_CARD' ||
+        cardAccount.id === paymentAccount.id ||
+        cardAccount.currency !== paymentAccount.currency
       ) {
         return state;
       }
-      const account = state.accounts.find((a) => a.id === mutation.accountId);
-      if (!account) {
+
+      if (state.transactions.some((tx) => tx.id === mutation.transferTransactionId)) {
         return state;
       }
 
-      const delta = computeReconciliationDelta(
-        account.balanceMinor,
-        mutation.actualBalanceMinor,
-      );
+      const paidDate = new Date(mutation.paidAtIso);
+      const validDate = Number.isNaN(paidDate.getTime())
+        ? new Date(mutation.clientTimestamp)
+        : paidDate;
+      const paidIso = validDate.toISOString();
+      const periodMonth =
+        mutation.periodMonth ?? formatUtcPeriodMonth(validDate);
 
       let workingState = state;
-      let adjustmentTransactionId: string | undefined;
 
-      if (mutation.createAdjustment && delta.needsAdjustment) {
-        const derivedTxId =
-          mutation.adjustmentTransactionId ?? `${mutation.reconciliationId}-adj`;
-        const adjustmentTx = transactionSchema.parse({
-          id: derivedTxId,
-          type: delta.adjustmentType === 'INCOME' ? 'INCOME' : 'EXPENSE',
-          amountMinor: Math.min(delta.adjustmentAmountMinor, MAX_SAFE_MONEY_MINOR),
-          currency: account.currency ?? DEFAULT_CURRENCY,
-          accountId: mutation.accountId,
-          categoryId:
-            delta.adjustmentType === 'INCOME' ? 'cat-other-income' : 'cat-dues',
-          merchant: 'Balance Adjustment',
-          note: truncateText(mutation.notes || 'Reconciliation adjustment', 280),
-          tags: ['reconciliation'],
-          occurredAt: mutation.reconciledAt,
-          createdAt: mutation.reconciledAt,
-        });
-        workingState = addTransactionToState(workingState, adjustmentTx);
-        adjustmentTransactionId = adjustmentTx.id;
-      }
-
-      const reconciledAccounts = workingState.accounts.map((a) =>
-        a.id === mutation.accountId
-          ? accountSchema.parse({
-              ...a,
-              balanceMinor: mutation.actualBalanceMinor,
-            })
-          : a,
+      const dueInstallments = workingState.recurringCommitments.filter(
+        (rc) =>
+          rc.accountId === cardAccount.id &&
+          normalizeCommitmentKind(rc.kind, cardAccount.accountType) ===
+            'CREDIT_CARD_INSTALLMENT' &&
+          rc.isActive &&
+          !isCommitmentPaidOff(rc) &&
+          rc.lastPaidPeriod !== periodMonth &&
+          rc.currency === cardAccount.currency,
       );
 
-      const reconciliation = balanceReconciliationSchema.parse({
-        id: mutation.reconciliationId,
-        accountId: mutation.accountId,
-        appBalanceMinor: account.balanceMinor,
-        actualBalanceMinor: mutation.actualBalanceMinor,
-        discrepancyMinor: delta.discrepancyMinor,
-        reconciledAt: mutation.reconciledAt,
-        ...(adjustmentTransactionId ? { adjustmentTransactionId } : {}),
-      });
+      for (const inst of dueInstallments) {
+        const instTxId = `${mutation.installmentTxPrefix}-${inst.id}`;
+        if (workingState.transactions.some((tx) => tx.id === instTxId)) {
+          continue;
+        }
+        const instTx = transactionSchema.parse({
+          id: instTxId,
+          type: 'EXPENSE',
+          amountMinor: inst.amountMinor,
+          currency: cardAccount.currency,
+          accountId: cardAccount.id,
+          categoryId: inst.categoryId,
+          commitmentId: inst.id,
+          merchant: truncateText(inst.name, 80) || 'Card Installment',
+          note: truncateText(inst.notes ?? 'Credit card installment', 280),
+          occurredAt: paidIso,
+          createdAt: paidIso,
+        });
+        workingState = addTransactionToState(workingState, instTx, {
+          updateSmartDefaults: false,
+        });
+        const updatedInst = advanceCommitmentOnPay(
+          inst,
+          periodMonth,
+          instTx.id,
+          cardAccount.accountType,
+        );
+        workingState = {
+          ...workingState,
+          recurringCommitments: workingState.recurringCommitments.map((rc) =>
+            rc.id === inst.id ? updatedInst : rc,
+          ),
+        };
+      }
 
-      return {
-        ...workingState,
-        accounts: reconciledAccounts,
-        reconciliations: [...workingState.reconciliations, reconciliation],
-      };
+      const refreshedCard = workingState.accounts.find(
+        (a) => a.id === cardAccount.id,
+      );
+      const owedMinor = refreshedCard
+        ? Math.max(0, -refreshedCard.balanceMinor)
+        : 0;
+      const transferAmountMinor = mutation.amountOverrideMinor ?? owedMinor;
+
+      if (transferAmountMinor > 0) {
+        const transferTx = transactionSchema.parse({
+          id: mutation.transferTransactionId,
+          type: 'TRANSFER',
+          amountMinor: transferAmountMinor,
+          currency: cardAccount.currency,
+          accountId: paymentAccount.id,
+          toAccountId: cardAccount.id,
+          merchant: truncateText(`${cardAccount.name} Bill Payment`, 80),
+          note: 'Paid credit card bill in full',
+          occurredAt: paidIso,
+          createdAt: paidIso,
+        });
+        workingState = addTransactionToState(workingState, transferTx, {
+          updateSmartDefaults: false,
+        });
+      }
+
+      return workingState;
     }
 
     case 'state.resetDemo': {
@@ -1096,37 +934,20 @@ export function applySyncMutation(
             categorySchema.parse(c),
           ),
           transactions: mergeById([], envelope.data.transactions).map((t) =>
-            transactionSchema.parse(deduplicateTransactionSplits(t)),
-          ),
-          categoryBudgets: mergeById([], envelope.data.categoryBudgets).map((b) =>
-            categoryBudgetSchema.parse(b),
+            transactionSchema.parse(t),
           ),
           recurringCommitments: mergeById(
             [],
             envelope.data.recurringCommitments,
           ).map((rc) => recurringCommitmentSchema.parse(rc)),
-          sinkingFunds: mergeById([], envelope.data.sinkingFunds).map((sf) =>
-            sinkingFundSchema.parse(sf),
-          ),
-          quickPresets: mergeById([], envelope.data.quickPresets).map((qp) =>
-            quickPresetSchema.parse(qp),
-          ),
           incomeSources: mergeById([], envelope.data.incomeSources ?? []).map((src) =>
             incomeSourceSchema.parse(src),
           ),
           smartDefaults: envelope.data.smartDefaults
             ? smartDefaultsSchema.parse(envelope.data.smartDefaults)
             : state.smartDefaults,
-          reconciliations: state.reconciliations,
         };
       }
-
-      const mergedKnownTags = Array.from(
-        new Set([
-          ...state.smartDefaults.knownTags,
-          ...(envelope.data.smartDefaults?.knownTags ?? []),
-        ]),
-      );
 
       const mergedMerchants = Array.from(
         new Set([
@@ -1145,36 +966,22 @@ export function applySyncMutation(
         transactions: mergeById(
           state.transactions,
           envelope.data.transactions,
-        ).map((t) => transactionSchema.parse(deduplicateTransactionSplits(t))),
-        categoryBudgets: mergeById(
-          state.categoryBudgets,
-          envelope.data.categoryBudgets,
-        ).map((b) => categoryBudgetSchema.parse(b)),
+        ).map((t) => transactionSchema.parse(t)),
         recurringCommitments: mergeById(
           state.recurringCommitments,
           envelope.data.recurringCommitments,
         ).map((rc) => recurringCommitmentSchema.parse(rc)),
-        sinkingFunds: mergeById(
-          state.sinkingFunds,
-          envelope.data.sinkingFunds,
-        ).map((sf) => sinkingFundSchema.parse(sf)),
-        quickPresets: mergeById(
-          state.quickPresets,
-          envelope.data.quickPresets,
-        ).map((qp) => quickPresetSchema.parse(qp)),
         incomeSources: mergeById(
           state.incomeSources,
           envelope.data.incomeSources ?? [],
         ).map((src) => incomeSourceSchema.parse(src)),
         smartDefaults: smartDefaultsSchema.parse({
           ...state.smartDefaults,
-          knownTags: mergedKnownTags,
           recentMerchants: mergedMerchants,
           monthlyBudgetMinor:
             envelope.data.smartDefaults?.monthlyBudgetMinor ??
             state.smartDefaults.monthlyBudgetMinor,
         }),
-        reconciliations: state.reconciliations,
       };
     }
   }

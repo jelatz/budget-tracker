@@ -72,6 +72,8 @@ export const accountSchema = z.object({
   color: z.string().min(1),
   currency: currencyCodeSchema,
   balanceMinor: amountMinorSchema,
+  statementDay: z.number().int().min(1).max(31).optional(),
+  dueDay: z.number().int().min(1).max(31).optional(),
 });
 export type Account = z.infer<typeof accountSchema>;
 
@@ -80,9 +82,11 @@ export const upsertAccountInputSchema = z.object({
   name: z.string().trim().min(1, 'Account name is required').max(40),
   accountType: accountTypeSchema.default('BANK'),
   icon: z.string().min(1).default('🏦'),
-  color: z.string().min(1).default('#208AEF'),
+  color: z.string().min(1).default('#1B4332'),
   currency: currencyCodeSchema.default(DEFAULT_CURRENCY),
   balanceMinor: amountMinorSchema.default(0),
+  statementDay: z.number().int().min(1).max(31).optional(),
+  dueDay: z.number().int().min(1).max(31).optional(),
 });
 export type UpsertAccountInput = z.infer<typeof upsertAccountInputSchema>;
 
@@ -102,17 +106,9 @@ export const createCategoryInputSchema = z.object({
   name: z.string().trim().min(1).max(40),
   type: categoryTypeSchema,
   icon: z.string().min(1).default('🏷️'),
-  color: z.string().min(1).default('#208AEF'),
+  color: z.string().min(1).default('#1B4332'),
 });
 export type CreateCategoryInput = z.infer<typeof createCategoryInputSchema>;
-
-export const transactionSplitSchema = z.object({
-  id: z.string().min(1),
-  categoryId: z.string().min(1),
-  amountMinor: positiveAmountMinorSchema,
-  note: z.string().max(120).optional(),
-});
-export type TransactionSplit = z.infer<typeof transactionSplitSchema>;
 
 export const baseCreateTransactionInputSchema = z.object({
   type: transactionTypeSchema,
@@ -122,11 +118,9 @@ export const baseCreateTransactionInputSchema = z.object({
   toAccountId: z.string().min(1).optional(),
   categoryId: z.string().min(1).optional(),
   incomeSourceId: z.string().min(1).optional(),
-  splits: z.array(transactionSplitSchema).max(50).optional(),
+  commitmentId: z.string().min(1).optional(),
   merchant: z.string().trim().max(80).optional(),
-  tags: z.array(z.string().trim().min(1).max(32)).max(20).default([]),
   note: z.string().trim().max(280).optional(),
-  receiptUri: z.string().trim().min(1).optional(),
   occurredAt: z.string().datetime(),
 });
 
@@ -138,7 +132,6 @@ function refineTransactionRules(
     toAccountId?: string;
     categoryId?: string;
     incomeSourceId?: string;
-    splits?: TransactionSplit[];
   },
   ctx: z.RefinementCtx,
 ) {
@@ -165,14 +158,6 @@ function refineTransactionRules(
       });
     }
 
-    if (val.splits && val.splits.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'Transfers cannot have splits',
-        path: ['splits'],
-      });
-    }
-
     if (val.categoryId) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -181,30 +166,12 @@ function refineTransactionRules(
       });
     }
   } else if (val.type === 'EXPENSE' || val.type === 'INCOME') {
-    if (val.splits && val.splits.length > 0) {
-      if (val.splits.length < 2) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Splits must contain at least 2 categories',
-          path: ['splits'],
-        });
-      }
-      const splitTotal = val.splits.reduce((acc, split) => acc + split.amountMinor, 0);
-      if (splitTotal !== val.amountMinor) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Split amounts must equal total transaction amount',
-          path: ['splits'],
-        });
-      }
-    } else {
-      if (!val.categoryId) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Category is required',
-          path: ['categoryId'],
-        });
-      }
+    if (!val.categoryId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Category is required',
+        path: ['categoryId'],
+      });
     }
   }
 }
@@ -253,7 +220,6 @@ export const smartDefaultsSchema = z.object({
   lastAccountId: z.string().min(1),
   lastTransferToAccountId: z.string().min(1).optional(),
   recentMerchants: z.array(z.string().max(80)).max(50).default([]),
-  knownTags: z.array(z.string().max(32)).max(200).default([]),
   monthlyBudgetMinor: positiveAmountMinorSchema.default(250000),
 });
 export type SmartDefaults = z.infer<typeof smartDefaultsSchema>;
@@ -264,7 +230,7 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     name: 'Main Bank',
     accountType: 'BANK',
     icon: '🏦',
-    color: '#208AEF',
+    color: '#1B4332',
     currency: DEFAULT_CURRENCY,
     balanceMinor: 0,
   },
@@ -273,16 +239,17 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     name: 'Credit Card',
     accountType: 'CREDIT_CARD',
     icon: '💳',
-    color: '#8B5CF6',
+    color: '#2C5F6E',
     currency: DEFAULT_CURRENCY,
     balanceMinor: 0,
+    dueDay: 15,
   },
   {
     id: 'account-cash',
     name: 'Cash',
     accountType: 'CASH',
     icon: '💵',
-    color: '#10B981',
+    color: '#A16207',
     currency: DEFAULT_CURRENCY,
     balanceMinor: 0,
   },
@@ -291,7 +258,7 @@ export const DEFAULT_ACCOUNTS: Account[] = [
     name: 'Savings',
     accountType: 'BANK',
     icon: '🐷',
-    color: '#F59E0B',
+    color: '#1E6F4E',
     currency: DEFAULT_CURRENCY,
     balanceMinor: 0,
   },
@@ -487,15 +454,6 @@ export function normalizeLegacyCategoryId(categoryId: string): string {
   return LEGACY_EXPENSE_CATEGORY_MAP[categoryId] ?? categoryId;
 }
 
-export const DEFAULT_TAGS: string[] = [
-  'vacation',
-  'reimbursable',
-  'work',
-  'shared',
-  'recurring',
-  'tax-deductible',
-];
-
 /**
  * Filters categories by type and sorts them primarily by usageCount descending,
  * breaking ties by defaultOrder ascending.
@@ -516,8 +474,7 @@ export function rankCategoriesByFrequency(
 }
 
 /**
- * Creates 6 realistic starter transactions relative to `now`,
- * validated against `transactionSchema`.
+ * Creates starter transactions relative to `now`, validated against `transactionSchema`.
  */
 export function createDefaultTransactions(now = new Date()): Transaction[] {
   const baseTime = now.getTime();
@@ -536,9 +493,8 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
       currency: DEFAULT_CURRENCY,
       accountId: 'account-bank',
       categoryId: 'cat-salary',
-      merchant: 'Acme Corp Payroll',
-      tags: ['work'],
-      note: 'Monthly salary deposit',
+      merchant: 'Primary Payroll',
+      note: 'Salary deposit',
       occurredAt: tx1OccurredAt,
       createdAt: tx1OccurredAt,
     },
@@ -548,23 +504,9 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
       amountMinor: 12000,
       currency: DEFAULT_CURRENCY,
       accountId: 'account-card',
-      splits: [
-        {
-          id: 'split-seed-1',
-          categoryId: 'cat-daily-living',
-          amountMinor: 8500,
-          note: 'Weekly produce & pantry',
-        },
-        {
-          id: 'split-seed-2',
-          categoryId: 'cat-home',
-          amountMinor: 3500,
-          note: 'Cleaning supplies',
-        },
-      ],
-      merchant: 'Whole Foods',
-      tags: ['shared'],
-      note: 'Weekly grocery & household run',
+      categoryId: 'cat-daily-living',
+      merchant: 'Supermarket',
+      note: 'Weekly grocery run',
       occurredAt: tx2OccurredAt,
       createdAt: tx2OccurredAt,
     },
@@ -575,10 +517,8 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
       currency: DEFAULT_CURRENCY,
       accountId: 'account-card',
       categoryId: 'cat-transportation',
-      merchant: 'Delta Airlines',
-      tags: ['vacation', 'reimbursable'],
-      note: 'Flight booking',
-      receiptUri: 'local://receipt-seed-delta.jpg',
+      merchant: 'Fuel & Toll',
+      note: 'Commute fill-up',
       occurredAt: tx3OccurredAt,
       createdAt: tx3OccurredAt,
     },
@@ -589,8 +529,7 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
       currency: DEFAULT_CURRENCY,
       accountId: 'account-cash',
       categoryId: 'cat-daily-living',
-      merchant: 'Starbucks',
-      tags: ['work'],
+      merchant: 'Coffee Shop',
       occurredAt: tx4OccurredAt,
       createdAt: tx4OccurredAt,
     },
@@ -601,9 +540,8 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
       currency: DEFAULT_CURRENCY,
       accountId: 'account-bank',
       categoryId: 'cat-dues',
-      merchant: 'City Power & Light',
-      tags: ['recurring', 'shared'],
-      note: 'Electric utility bill',
+      merchant: 'Electric Utility',
+      note: 'Monthly electricity bill',
       occurredAt: tx5OccurredAt,
       createdAt: tx5OccurredAt,
     },
@@ -614,8 +552,7 @@ export function createDefaultTransactions(now = new Date()): Transaction[] {
       currency: DEFAULT_CURRENCY,
       accountId: 'account-bank',
       toAccountId: 'account-savings',
-      tags: ['recurring'],
-      note: 'Automated savings transfer',
+      note: 'Savings transfer',
       occurredAt: tx6OccurredAt,
       createdAt: tx6OccurredAt,
     },

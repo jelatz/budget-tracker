@@ -1,13 +1,9 @@
 import { z } from 'zod';
 import { destructiveConfirmationSchema } from './confirmation';
 import { amountMinorSchema, positiveAmountMinorSchema } from './money';
-import { categoryBudgetSchema, periodMonthSchema } from './category-budget.schema';
 import { incomeSourceSchema } from './income-plan.schema';
 import { backupEnvelopeSchema } from './portability.schema';
-import { quickPresetSchema } from './presets.schema';
-import { balanceReconciliationSchema } from './reconciliation.schema';
-import { recurringCommitmentSchema } from './recurring.schema';
-import { sinkingFundSchema } from './sinking-funds.schema';
+import { periodMonthSchema, recurringCommitmentSchema } from './recurring.schema';
 import {
   accountSchema,
   categorySchema,
@@ -21,11 +17,7 @@ export const syncDataStateSchema = z.object({
   categories: z.array(categorySchema),
   transactions: z.array(transactionSchema),
   smartDefaults: smartDefaultsSchema,
-  categoryBudgets: z.array(categoryBudgetSchema),
   recurringCommitments: z.array(recurringCommitmentSchema),
-  sinkingFunds: z.array(sinkingFundSchema),
-  quickPresets: z.array(quickPresetSchema),
-  reconciliations: z.array(balanceReconciliationSchema),
   incomeSources: z.array(incomeSourceSchema).default([]),
 });
 export type SyncDataState = z.infer<typeof syncDataStateSchema>;
@@ -45,6 +37,12 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
     ...baseMutationFields,
     type: z.literal('account.updateMetadata'),
     account: accountSchema.omit({ balanceMinor: true }),
+  }),
+  z.object({
+    ...baseMutationFields,
+    type: z.literal('account.setBalance'),
+    accountId: z.string().min(1),
+    balanceMinor: amountMinorSchema,
   }),
   z.object({
     ...baseMutationFields,
@@ -89,23 +87,6 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...baseMutationFields,
-    type: z.literal('categoryBudget.upsert'),
-    budget: categoryBudgetSchema,
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('categoryBudget.delete'),
-    id: z.string().min(1),
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('categoryBudget.copyMonth'),
-    fromPeriodMonth: periodMonthSchema,
-    toPeriodMonth: periodMonthSchema,
-    idPrefix: z.string().min(1).max(60),
-  }),
-  z.object({
-    ...baseMutationFields,
     type: z.literal('incomeSource.upsert'),
     source: incomeSourceSchema,
   }),
@@ -142,6 +123,7 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
     paidAtIso: z.string().datetime(),
     periodMonth: periodMonthSchema.optional(),
     accountId: z.string().min(1).optional(),
+    actualAmountMinor: positiveAmountMinorSchema.optional(),
   }),
   z.object({
     ...baseMutationFields,
@@ -150,44 +132,14 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     ...baseMutationFields,
-    type: z.literal('sinkingFund.upsert'),
-    fund: sinkingFundSchema,
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('sinkingFund.delete'),
-    id: z.string().min(1),
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('sinkingFund.contribute'),
-    fundId: z.string().min(1),
-    transactionId: z.string().min(1),
-    amountMinor: positiveAmountMinorSchema,
-    sourceAccountId: z.string().min(1),
-    occurredAt: z.string().datetime(),
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('quickPreset.upsert'),
-    preset: quickPresetSchema,
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('quickPreset.delete'),
-    id: z.string().min(1),
-  }),
-  z.object({
-    ...baseMutationFields,
-    type: z.literal('reconciliation.apply'),
-    reconciliationId: z.string().min(1),
-    accountId: z.string().min(1),
-    actualBalanceMinor: amountMinorSchema,
-    createAdjustment: z.boolean(),
-    notes: z.string().trim().max(280).optional(),
-    adjustmentTransactionId: z.string().min(1).optional(),
-    reconciledAt: z.string().datetime(),
-    confirmation: destructiveConfirmationSchema.optional(),
+    type: z.literal('creditCard.payBill'),
+    creditCardAccountId: z.string().min(1),
+    paymentAccountId: z.string().min(1),
+    transferTransactionId: z.string().min(1),
+    installmentTxPrefix: z.string().min(1).max(80),
+    paidAtIso: z.string().datetime(),
+    periodMonth: periodMonthSchema.optional(),
+    amountOverrideMinor: positiveAmountMinorSchema.optional(),
   }),
   z.object({
     ...baseMutationFields,

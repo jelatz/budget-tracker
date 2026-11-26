@@ -2,21 +2,16 @@ import {
   accountResponseSchema,
   accountsListResponseSchema,
   apiErrorResponseSchema,
-  applyReconciliationResponseSchema,
   clearTransactionsResponseSchema,
   createDestructiveConfirmation,
   deleteAccountResponseSchema,
   deleteTransactionResponseSchema,
   healthResponseSchema,
-  reconciliationResponseSchema,
-  reconciliationsListResponseSchema,
   transactionResponseSchema,
   transactionsListResponseSchema,
   type AccountResponse,
   type AccountsListResponse,
   type AppErrorCode,
-  type ApplyReconciliationInput,
-  type ApplyReconciliationResponse,
   type ClearTransactionsResponse,
   type CreateAccountRequest,
   type CreateTransactionRequest,
@@ -25,8 +20,6 @@ import {
   type HealthResponse,
   type ListTransactionsQuery,
   type PatchTransactionRequest,
-  type ReconciliationResponse,
-  type ReconciliationsListResponse,
   type TransactionResponse,
   type TransactionsListResponse,
   type UpdateAccountRequest,
@@ -326,34 +319,6 @@ export const apiClient = {
         body: JSON.stringify(
           createDestructiveConfirmation('clear-transactions', 'all'),
         ),
-      }),
-  },
-
-  reconcile: {
-    list: (): Promise<ReconciliationsListResponse> =>
-      apiFetch('/v1/reconcile', reconciliationsListResponseSchema, {
-        method: 'GET',
-      }),
-
-    getById: (id: string): Promise<ReconciliationResponse> =>
-      apiFetch(
-        `/v1/reconcile/${encodeURIComponent(id)}`,
-        reconciliationResponseSchema,
-        { method: 'GET' },
-      ),
-
-    apply: (
-      input: ApplyReconciliationInput,
-    ): Promise<ApplyReconciliationResponse> =>
-      apiFetch('/v1/reconcile', applyReconciliationResponseSchema, {
-        method: 'POST',
-        body: JSON.stringify({
-          ...input,
-          ...createDestructiveConfirmation(
-            'reconcile-account',
-            input.accountId,
-          ),
-        }),
       }),
   },
 };
