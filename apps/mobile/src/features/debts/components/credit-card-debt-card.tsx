@@ -120,88 +120,89 @@ export function CreditCardDebtCard({
 
   return (
     <>
-      <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-3.5">
-        {/* Card Header */}
-        <View className="flex-row items-start justify-between gap-3">
-          <View className="flex-1 min-w-0 gap-1">
-            <View className="flex-row items-center gap-2">
-              <AppIcon name="creditCard" size={16} color={theme.info} />
-              <ThemedText
-                className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                numberOfLines={1}
-              >
-                {account.name}
+      <View className="flex-1 justify-between rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-3.5">
+        <View className="gap-3.5">
+          {/* Card Header */}
+          <View className="flex-row items-start justify-between gap-3">
+            <View className="flex-1 min-w-0 gap-1">
+              <View className="flex-row items-center gap-2">
+                <AppIcon name="creditCard" size={16} color={theme.info} />
+                <ThemedText
+                  className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  numberOfLines={1}
+                >
+                  {account.name}
+                </ThemedText>
+              </View>
+              <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                {summary.dueDate
+                  ? `Due ${formatCalendarDateShort(summary.dueDate)}`
+                  : 'Due date not set'}
+                {summary.isDueBeforeNextPayday ? ' · Due before next payday' : ''}
               </ThemedText>
             </View>
-            <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-              {summary.dueDate
-                ? `Due ${formatCalendarDateShort(summary.dueDate)}`
-                : 'Due date not set'}
-              {summary.isDueBeforeNextPayday ? ' · Due before next payday' : ''}
-            </ThemedText>
-          </View>
 
-          <View className="items-end shrink-0">
-            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-              Upcoming Bill
-            </ThemedText>
-            <ThemedText
-              numeric
-              style={TABULAR_NUMS_STYLE}
-              className={`text-xl font-extrabold ${
-                summary.upcomingBillMinor > 0
-                  ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
-                  : 'text-ledger-pine dark:text-ledger-pine-dark'
-              }`}
-            >
-              {formatMinorUnits(summary.upcomingBillMinor, currency)}
-            </ThemedText>
-          </View>
-        </View>
-
-        {/* Breakdown Pill Box: Swipes + Installments = Full Bill */}
-        <View className="p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1.5">
-          <View className="flex-row items-center justify-between">
-            <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-              Day-to-day swipes owed
-            </ThemedText>
-            <ThemedText
-              numeric
-              style={TABULAR_NUMS_STYLE}
-              className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
-            >
-              {formatMinorUnits(summary.swipesOwedMinor, currency)}
-            </ThemedText>
-          </View>
-
-          <View className="flex-row items-center justify-between">
-            <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-              Monthly installment slices due ({summary.unpaidInstallmentsThisPeriod.length})
-            </ThemedText>
-            <ThemedText
-              numeric
-              style={TABULAR_NUMS_STYLE}
-              className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
-            >
-              {formatMinorUnits(summary.installmentsDueThisPeriodMinor, currency)}
-            </ThemedText>
-          </View>
-
-          {summary.futureInstallmentsRemainingMinor > 0 ? (
-            <View className="flex-row items-center justify-between pt-1.5 border-t border-ledger-border dark:border-ledger-border-dark">
-              <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                Future installment months remaining
+            <View className="items-end shrink-0">
+              <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                Upcoming Bill
               </ThemedText>
               <ThemedText
                 numeric
                 style={TABULAR_NUMS_STYLE}
-                className="text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                className={`text-xl font-extrabold ${
+                  summary.upcomingBillMinor > 0
+                    ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                    : 'text-ledger-pine dark:text-ledger-pine-dark'
+                }`}
               >
-                {formatMinorUnits(summary.futureInstallmentsRemainingMinor, currency)}
+                {formatMinorUnits(summary.upcomingBillMinor, currency)}
               </ThemedText>
             </View>
-          ) : null}
-        </View>
+          </View>
+
+          {/* Breakdown Pill Box: Swipes + Installments = Full Bill */}
+          <View className="p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1.5">
+            <View className="flex-row items-center justify-between gap-2">
+              <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                Day-to-day swipes owed
+              </ThemedText>
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+              >
+                {formatMinorUnits(summary.swipesOwedMinor, currency)}
+              </ThemedText>
+            </View>
+
+            <View className="flex-row items-center justify-between gap-2">
+              <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                Monthly installment slices due ({summary.unpaidInstallmentsThisPeriod.length})
+              </ThemedText>
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+              >
+                {formatMinorUnits(summary.installmentsDueThisPeriodMinor, currency)}
+              </ThemedText>
+            </View>
+
+            {summary.futureInstallmentsRemainingMinor > 0 ? (
+              <View className="flex-row items-center justify-between gap-2 pt-1.5 border-t border-ledger-border dark:border-ledger-border-dark">
+                <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                  Future installment months remaining
+                </ThemedText>
+                <ThemedText
+                  numeric
+                  style={TABULAR_NUMS_STYLE}
+                  className="shrink-0 text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                >
+                  {formatMinorUnits(summary.futureInstallmentsRemainingMinor, currency)}
+                </ThemedText>
+              </View>
+            ) : null}
+          </View>
 
         {/* Active Card Installments List */}
         {summary.installments.length > 0 ? (
@@ -301,6 +302,7 @@ export function CreditCardDebtCard({
             })}
           </View>
         ) : null}
+        </View>
 
         {/* Card Action Footer */}
         <View className="flex-row flex-wrap gap-2 pt-1">

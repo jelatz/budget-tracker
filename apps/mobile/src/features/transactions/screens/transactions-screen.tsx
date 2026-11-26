@@ -99,6 +99,17 @@ function getTypeLabel(type: TransactionType): string {
   return 'Expense';
 }
 
+function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
+  if (columns <= 1) {
+    return items.map((item) => [item]);
+  }
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += columns) {
+    rows.push(items.slice(i, i + columns));
+  }
+  return rows;
+}
+
 export interface TransactionsScreenProps {
   initialAccountId?: string;
   initialType?: TransactionType;
@@ -309,6 +320,12 @@ export function TransactionsScreen({
     accountLookup,
     categoryLookup,
   ]);
+
+  const entryGridColumns = windowWidth >= 1024 ? 3 : windowWidth >= 640 ? 2 : 1;
+  const entryRows = useMemo(
+    () => chunkIntoRows(filteredTransactions, entryGridColumns),
+    [filteredTransactions, entryGridColumns],
+  );
 
   const handleOpenAdd = () => {
     setConfirmingDeleteId(null);
@@ -772,21 +789,38 @@ export function TransactionsScreen({
             </View>
           ) : (
             <View className="gap-3">
-              {filteredTransactions.map((tx) => (
-                <TransactionItemCard
-                  key={tx.id}
-                  transaction={tx}
-                  categoryLookup={categoryLookup}
-                  accountLookup={accountLookup}
-                  isConfirmingDelete={confirmingDeleteId === tx.id}
-                  isDeleting={
-                    deleteTransactionMutation.isPending && confirmingDeleteId === tx.id
-                  }
-                  onEdit={() => handleOpenEdit(tx)}
-                  onRequestDelete={() => setConfirmingDeleteId(tx.id)}
-                  onCancelDelete={() => setConfirmingDeleteId(null)}
-                  onConfirmDelete={() => handleConfirmDelete(tx.id)}
-                />
+              {entryRows.map((row, rowIndex) => (
+                <View
+                  key={`entry-row-${rowIndex}`}
+                  className="flex-row items-stretch gap-3"
+                >
+                  {row.map((tx) => (
+                    <View key={tx.id} className="flex-1 min-w-0">
+                      <TransactionItemCard
+                        transaction={tx}
+                        categoryLookup={categoryLookup}
+                        accountLookup={accountLookup}
+                        isConfirmingDelete={confirmingDeleteId === tx.id}
+                        isDeleting={
+                          deleteTransactionMutation.isPending &&
+                          confirmingDeleteId === tx.id
+                        }
+                        onEdit={() => handleOpenEdit(tx)}
+                        onRequestDelete={() => setConfirmingDeleteId(tx.id)}
+                        onCancelDelete={() => setConfirmingDeleteId(null)}
+                        onConfirmDelete={() => handleConfirmDelete(tx.id)}
+                      />
+                    </View>
+                  ))}
+                  {Array.from({ length: entryGridColumns - row.length }).map(
+                    (_, spacerIndex) => (
+                      <View
+                        key={`entry-spacer-${rowIndex}-${spacerIndex}`}
+                        className="flex-1 min-w-0"
+                      />
+                    ),
+                  )}
+                </View>
               ))}
             </View>
           )}
@@ -871,11 +905,11 @@ function TransactionItemCard({
     : `${categoryName} · ${fromAccount?.name ?? 'Account'} · ${formatTxDate(tx.occurredAt)}`;
 
   return (
-    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-2">
-      <View className="flex-row items-start justify-between gap-3">
-        <View className="flex-1 min-w-0 gap-0.5">
+    <View className="flex-1 justify-between rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-3">
+      <View className="gap-1.5">
+        <View className="flex-row items-start justify-between gap-2.5">
           <ThemedText
-            className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+            className="flex-1 min-w-0 text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
             numberOfLines={1}
           >
             {title}
@@ -883,97 +917,94 @@ function TransactionItemCard({
 
           <ThemedText
             numeric
-            className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+            style={TABULAR_NUMS_STYLE}
+            className={`shrink-0 text-base font-extrabold tracking-tight ${amountColorClass}`}
             numberOfLines={1}
           >
-            {metadataLine}
+            {formattedAmount}
           </ThemedText>
         </View>
 
         <ThemedText
           numeric
-          style={TABULAR_NUMS_STYLE}
-          className={`text-base font-extrabold tracking-tight ${amountColorClass}`}
-        >
-          {formattedAmount}
-        </ThemedText>
-      </View>
-
-      {tx.note ? (
-        <ThemedText
-          className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+          className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
           numberOfLines={2}
         >
-          {tx.note}
+          {metadataLine}
         </ThemedText>
-      ) : null}
 
-      {/* Action Row: Edit & Inline Two-Step Delete */}
-      <View className="border-t border-ledger-border dark:border-ledger-border-dark pt-2.5 flex-row justify-between items-center gap-2">
+        {tx.note ? (
+          <ThemedText
+            className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+            numberOfLines={2}
+          >
+            {tx.note}
+          </ThemedText>
+        ) : null}
+
         {tx.commitmentId ? (
-          <View className="px-2.5 py-0.5 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark">
+          <View className="self-start mt-0.5 px-2.5 py-0.5 rounded-full bg-ledger-teal-soft dark:bg-ledger-teal-dark-soft border border-ledger-border dark:border-ledger-border-dark">
             <ThemedText className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark">
               Obligation Payment
             </ThemedText>
           </View>
-        ) : (
-          <View />
-        )}
+        ) : null}
+      </View>
 
-        <View className="flex-row items-center gap-2">
-          <Pressable
-            onPress={onEdit}
-            disabled={isDeleting}
-            accessibilityRole="button"
-            accessibilityLabel={`Edit entry ${title}`}
-            className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-          >
-            <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
-              Edit
-            </ThemedText>
-          </Pressable>
+      {/* Action Row: Edit & Inline Two-Step Delete */}
+      <View className="border-t border-ledger-border dark:border-ledger-border-dark pt-2.5 flex-row flex-wrap items-center justify-end gap-2">
+        <Pressable
+          onPress={onEdit}
+          disabled={isDeleting}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit entry ${title}`}
+          className="min-h-[44px] min-w-[44px] px-3.5 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+        >
+          <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+            Edit
+          </ThemedText>
+        </Pressable>
 
-          {isConfirmingDelete ? (
-            <>
-              <Pressable
-                onPress={onCancelDelete}
-                disabled={isDeleting}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel delete"
-                className="min-h-[44px] px-3.5 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
-              >
-                <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
-                  Cancel
-                </ThemedText>
-              </Pressable>
-
-              <Pressable
-                onPress={onConfirmDelete}
-                disabled={isDeleting}
-                accessibilityRole="button"
-                accessibilityLabel="Confirm delete"
-                className={`min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85 ${
-                  isDeleting ? 'opacity-60' : ''
-                }`}
-              >
-                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
-                  {isDeleting ? 'Deleting...' : 'Confirm'}
-                </ThemedText>
-              </Pressable>
-            </>
-          ) : (
+        {isConfirmingDelete ? (
+          <>
             <Pressable
-              onPress={onRequestDelete}
+              onPress={onCancelDelete}
+              disabled={isDeleting}
               accessibilityRole="button"
-              accessibilityLabel={`Delete entry ${title}`}
-              className="min-h-[44px] px-4 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+              accessibilityLabel="Cancel delete"
+              className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
             >
-              <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
-                Delete
+              <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                Cancel
               </ThemedText>
             </Pressable>
-          )}
-        </View>
+
+            <Pressable
+              onPress={onConfirmDelete}
+              disabled={isDeleting}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm delete"
+              className={`min-h-[44px] min-w-[44px] px-3.5 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85 ${
+                isDeleting ? 'opacity-60' : ''
+              }`}
+            >
+              <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                {isDeleting ? 'Deleting...' : 'Confirm'}
+              </ThemedText>
+            </Pressable>
+          </>
+        ) : (
+          <Pressable
+            onPress={onRequestDelete}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete entry ${title}`}
+            className="min-h-[44px] min-w-[44px] px-3.5 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+          >
+            <ThemedText className="text-xs font-bold text-ledger-terracotta dark:text-ledger-terracotta-dark">
+              Delete
+            </ThemedText>
+          </Pressable>
+        )}
       </View>
     </View>
   );

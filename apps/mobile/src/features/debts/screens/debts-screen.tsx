@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -51,6 +51,17 @@ const TAB_OPTIONS: readonly { key: DebtsRouteTab; label: string }[] = [
   { key: 'BILLS', label: 'Home & Bills' },
 ];
 
+function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
+  if (columns <= 1) {
+    return items.map((item) => [item]);
+  }
+  const rows: T[][] = [];
+  for (let i = 0; i < items.length; i += columns) {
+    rows.push(items.slice(i, i + columns));
+  }
+  return rows;
+}
+
 export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
   const { isAuthenticated } = useRequireAuth();
   const theme = useTheme();
@@ -80,6 +91,20 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
   useEffect(() => {
     setActiveTab(initialTab);
   }, [initialTab]);
+
+  const debtGridColumns = isWide ? 2 : 1;
+  const creditCardRows = useMemo(
+    () => chunkIntoRows(overview.creditCards, debtGridColumns),
+    [overview.creditCards, debtGridColumns],
+  );
+  const loanRows = useMemo(
+    () => chunkIntoRows(overview.loans, debtGridColumns),
+    [overview.loans, debtGridColumns],
+  );
+  const billRows = useMemo(
+    () => chunkIntoRows(overview.bills, debtGridColumns),
+    [overview.bills, debtGridColumns],
+  );
 
   if (!isAuthenticated) {
     return null;
@@ -323,21 +348,37 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                     </View>
                   ) : (
                     <View className="gap-3">
-                      {overview.creditCards.map((summary) => (
-                        <CreditCardDebtCard
-                          key={summary.account.id}
-                          summary={summary}
-                          liquidAccounts={liquidAccounts}
-                          onAddInstallment={(cardId) =>
-                            handleOpenAdd('CREDIT_CARD_INSTALLMENT', cardId)
-                          }
-                          onEditInstallment={(inst) => {
-                            setEditingCommitment(inst);
-                            setFormVisible(true);
-                          }}
-                          onDeleteInstallment={handleDeleteObligation}
-                          onBillPaid={showSuccess}
-                        />
+                      {creditCardRows.map((row, rowIndex) => (
+                        <View
+                          key={`card-row-${rowIndex}`}
+                          className="flex-row items-stretch gap-3"
+                        >
+                          {row.map((summary) => (
+                            <View key={summary.account.id} className="flex-1 min-w-0">
+                              <CreditCardDebtCard
+                                summary={summary}
+                                liquidAccounts={liquidAccounts}
+                                onAddInstallment={(cardId) =>
+                                  handleOpenAdd('CREDIT_CARD_INSTALLMENT', cardId)
+                                }
+                                onEditInstallment={(inst) => {
+                                  setEditingCommitment(inst);
+                                  setFormVisible(true);
+                                }}
+                                onDeleteInstallment={handleDeleteObligation}
+                                onBillPaid={showSuccess}
+                              />
+                            </View>
+                          ))}
+                          {Array.from({ length: debtGridColumns - row.length }).map(
+                            (_, spacerIndex) => (
+                              <View
+                                key={`card-spacer-${rowIndex}-${spacerIndex}`}
+                                className="flex-1 min-w-0"
+                              />
+                            ),
+                          )}
+                        </View>
                       ))}
                     </View>
                   )}
@@ -372,20 +413,36 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                     </View>
                   ) : (
                     <View className="gap-3">
-                      {overview.loans.map((loan) => (
-                        <ObligationCard
-                          key={loan.id}
-                          commitment={loan}
-                          account={accountLookup.get(loan.accountId)}
-                          nextPaydayDate={nextPaydayDate}
-                          isDeleting={deleteMutation.isPending}
-                          onPay={() => setPayingCommitment(loan)}
-                          onEdit={() => {
-                            setEditingCommitment(loan);
-                            setFormVisible(true);
-                          }}
-                          onDelete={() => handleDeleteObligation(loan.id)}
-                        />
+                      {loanRows.map((row, rowIndex) => (
+                        <View
+                          key={`loan-row-${rowIndex}`}
+                          className="flex-row items-stretch gap-3"
+                        >
+                          {row.map((loan) => (
+                            <View key={loan.id} className="flex-1 min-w-0">
+                              <ObligationCard
+                                commitment={loan}
+                                account={accountLookup.get(loan.accountId)}
+                                nextPaydayDate={nextPaydayDate}
+                                isDeleting={deleteMutation.isPending}
+                                onPay={() => setPayingCommitment(loan)}
+                                onEdit={() => {
+                                  setEditingCommitment(loan);
+                                  setFormVisible(true);
+                                }}
+                                onDelete={() => handleDeleteObligation(loan.id)}
+                              />
+                            </View>
+                          ))}
+                          {Array.from({ length: debtGridColumns - row.length }).map(
+                            (_, spacerIndex) => (
+                              <View
+                                key={`loan-spacer-${rowIndex}-${spacerIndex}`}
+                                className="flex-1 min-w-0"
+                              />
+                            ),
+                          )}
+                        </View>
                       ))}
                     </View>
                   )}
@@ -420,20 +477,36 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                     </View>
                   ) : (
                     <View className="gap-3">
-                      {overview.bills.map((bill) => (
-                        <ObligationCard
-                          key={bill.id}
-                          commitment={bill}
-                          account={accountLookup.get(bill.accountId)}
-                          nextPaydayDate={nextPaydayDate}
-                          isDeleting={deleteMutation.isPending}
-                          onPay={() => setPayingCommitment(bill)}
-                          onEdit={() => {
-                            setEditingCommitment(bill);
-                            setFormVisible(true);
-                          }}
-                          onDelete={() => handleDeleteObligation(bill.id)}
-                        />
+                      {billRows.map((row, rowIndex) => (
+                        <View
+                          key={`bill-row-${rowIndex}`}
+                          className="flex-row items-stretch gap-3"
+                        >
+                          {row.map((bill) => (
+                            <View key={bill.id} className="flex-1 min-w-0">
+                              <ObligationCard
+                                commitment={bill}
+                                account={accountLookup.get(bill.accountId)}
+                                nextPaydayDate={nextPaydayDate}
+                                isDeleting={deleteMutation.isPending}
+                                onPay={() => setPayingCommitment(bill)}
+                                onEdit={() => {
+                                  setEditingCommitment(bill);
+                                  setFormVisible(true);
+                                }}
+                                onDelete={() => handleDeleteObligation(bill.id)}
+                              />
+                            </View>
+                          ))}
+                          {Array.from({ length: debtGridColumns - row.length }).map(
+                            (_, spacerIndex) => (
+                              <View
+                                key={`bill-spacer-${rowIndex}-${spacerIndex}`}
+                                className="flex-1 min-w-0"
+                              />
+                            ),
+                          )}
+                        </View>
                       ))}
                     </View>
                   )}

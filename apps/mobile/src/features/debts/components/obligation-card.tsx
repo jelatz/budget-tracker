@@ -77,8 +77,9 @@ export function ObligationCard({
   }
 
   return (
-    <View className="rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-3">
-      {/* Header Row */}
+    <View className="flex-1 justify-between rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark p-4 gap-3">
+      <View className="gap-3">
+        {/* Header Row */}
       <View className="flex-row items-start justify-between gap-3">
         <View className="flex-1 min-w-0 gap-1">
           <View className="flex-row items-center gap-2 flex-wrap">
@@ -127,17 +128,17 @@ export function ObligationCard({
       {/* Loan Payoff Bar */}
       {progress ? (
         <View className="gap-1.5">
-          <View className="flex-row items-center justify-between">
+          <View className="flex-row items-center justify-between gap-2">
             <ThemedText
               numeric
-              className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+              className="flex-1 min-w-0 text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
             >
               {progress.paidCount} of {progress.totalCount} months paid
             </ThemedText>
             <ThemedText
               numeric
               style={TABULAR_NUMS_STYLE}
-              className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+              className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
             >
               {formatMinorUnits(progress.remainingBalanceMinor, commitment.currency)}{' '}
               left
@@ -151,6 +152,7 @@ export function ObligationCard({
           </View>
         </View>
       ) : null}
+      </View>
 
       {/* Status + Actions Row */}
       <View className="flex-row flex-wrap items-center justify-between gap-2 pt-2 border-t border-ledger-border dark:border-ledger-border-dark">
@@ -169,7 +171,7 @@ export function ObligationCard({
               onPress={onPay}
               accessibilityRole="button"
               accessibilityLabel={`Pay ${commitment.name}`}
-              className="min-h-[44px] px-3.5 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 items-center justify-center active:opacity-90"
+              className="min-h-[44px] min-w-[44px] px-3.5 py-2 rounded-xl bg-brand-500 dark:bg-brand-400 items-center justify-center active:opacity-90"
             >
               <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
                 Pay Now
@@ -183,7 +185,7 @@ export function ObligationCard({
                 onPress={onEdit}
                 accessibilityRole="button"
                 accessibilityLabel={`Edit ${commitment.name}`}
-                className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
                 <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                   Edit
@@ -194,7 +196,7 @@ export function ObligationCard({
                 onPress={() => setConfirmDelete(true)}
                 accessibilityRole="button"
                 accessibilityLabel={`Delete ${commitment.name}`}
-                className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
                 <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                   Delete
@@ -208,7 +210,7 @@ export function ObligationCard({
                 disabled={isDeleting}
                 accessibilityRole="button"
                 accessibilityLabel="Cancel delete"
-                className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
               >
                 <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                   Cancel
@@ -222,7 +224,7 @@ export function ObligationCard({
                 disabled={isDeleting}
                 accessibilityRole="button"
                 accessibilityLabel="Confirm delete"
-                className="min-h-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta dark:bg-ledger-terracotta-dark items-center justify-center active:opacity-85"
               >
                 <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                   Confirm
