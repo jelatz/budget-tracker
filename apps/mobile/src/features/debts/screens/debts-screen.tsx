@@ -51,6 +51,8 @@ export interface DebtsScreenProps {
   initialTab?: DebtsRouteTab;
 }
 
+type DebtSectionKey = 'CREDIT_CARDS' | 'LOANS' | 'BILLS';
+
 const TAB_OPTIONS: readonly { key: DebtsRouteTab; label: string }[] = [
   { key: 'ALL', label: 'All' },
   { key: 'CREDIT_CARDS', label: 'Credit Cards' },
@@ -142,6 +144,13 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
 
   const [activeTab, setActiveTab] = useState<DebtsRouteTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
+  const [collapsedSections, setCollapsedSections] = useState<
+    Record<DebtSectionKey, boolean>
+  >({
+    CREDIT_CARDS: false,
+    LOANS: false,
+    BILLS: false,
+  });
   const [formVisible, setFormVisible] = useState(false);
   const [editingCommitment, setEditingCommitment] =
     useState<RecurringCommitment | null>(null);
@@ -266,6 +275,33 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
     } catch (error: unknown) {
       showError(getUserErrorMessage(error, 'Could not undo credit card payment.'));
     }
+  };
+
+  const toggleSection = (section: DebtSectionKey) => {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
+
+  const handleSelectTab = (tab: DebtsRouteTab) => {
+    setActiveTab(tab);
+    if (tab !== 'ALL') {
+      setCollapsedSections((prev) =>
+        prev[tab] ? { ...prev, [tab]: false } : prev,
+      );
+    }
+  };
+
+  const handleSearchChange = (nextQuery: string) => {
+    if (searchQuery.trim().length === 0 && nextQuery.trim().length > 0) {
+      setCollapsedSections({
+        CREDIT_CARDS: false,
+        LOANS: false,
+        BILLS: false,
+      });
+    }
+    setSearchQuery(nextQuery);
   };
 
   const showCards = activeTab === 'ALL' || activeTab === 'CREDIT_CARDS';
@@ -401,7 +437,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               <AppIcon name="search" size={16} color={theme.textMuted} />
               <TextInput
                 value={searchQuery}
-                onChangeText={setSearchQuery}
+                onChangeText={handleSearchChange}
                 placeholder="Search card, installment, loan, bill, or account..."
                 placeholderTextColor={theme.textMuted}
                 accessibilityLabel="Search debts and bills"
@@ -435,7 +471,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               return (
                 <Pressable
                   key={tab.key}
-                  onPress={() => setActiveTab(tab.key)}
+                  onPress={() => handleSelectTab(tab.key)}
                   accessibilityRole="tab"
                   accessibilityLabel={tab.label}
                   accessibilityState={{ selected: isSelected }}
@@ -539,7 +575,24 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               {renderCardsSection ? (
                 <View className="gap-3.5">
                   <View className="flex-row items-center justify-between gap-3 pb-2.5 border-b border-ledger-border-strong dark:border-ledger-border-strong-dark">
-                    <View className="flex-1 min-w-0 flex-row items-center gap-2">
+                    <Pressable
+                      onPress={() => toggleSection('CREDIT_CARDS')}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${
+                        collapsedSections.CREDIT_CARDS ? 'Expand' : 'Collapse'
+                      } Credit Cards section`}
+                      accessibilityState={{ expanded: !collapsedSections.CREDIT_CARDS }}
+                      className="flex-1 min-w-0 min-h-[44px] flex-row items-center gap-2 active:opacity-75"
+                    >
+                      <AppIcon
+                        name={
+                          collapsedSections.CREDIT_CARDS
+                            ? 'chevronRight'
+                            : 'chevronDown'
+                        }
+                        size={16}
+                        color={theme.textSecondary}
+                      />
                       <AppIcon name="creditCard" size={18} color={theme.primary} />
                       <ThemedText
                         accessibilityRole="header"
@@ -547,7 +600,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                       >
                         Credit Cards
                       </ThemedText>
-                    </View>
+                    </Pressable>
                     <View className="shrink-0 px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
                       <ThemedText
                         numeric
@@ -559,7 +612,8 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                     </View>
                   </View>
 
-                  {filteredCreditCards.length === 0 ? (
+                  {!collapsedSections.CREDIT_CARDS ? (
+                    filteredCreditCards.length === 0 ? (
                     <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-2.5">
                       <AppIcon name="creditCard" size={24} color={theme.textMuted} />
                       <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
@@ -622,7 +676,8 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                         </View>
                       ))}
                     </View>
-                  )}
+                  )
+                  ) : null}
                 </View>
               ) : null}
 
@@ -630,7 +685,22 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               {renderLoansSection ? (
                 <View className="gap-3.5">
                   <View className="flex-row items-center justify-between gap-3 pb-2.5 border-b border-ledger-border-strong dark:border-ledger-border-strong-dark">
-                    <View className="flex-1 min-w-0 flex-row items-center gap-2">
+                    <Pressable
+                      onPress={() => toggleSection('LOANS')}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${
+                        collapsedSections.LOANS ? 'Expand' : 'Collapse'
+                      } Loans & Fixed Payoffs section`}
+                      accessibilityState={{ expanded: !collapsedSections.LOANS }}
+                      className="flex-1 min-w-0 min-h-[44px] flex-row items-center gap-2 active:opacity-75"
+                    >
+                      <AppIcon
+                        name={
+                          collapsedSections.LOANS ? 'chevronRight' : 'chevronDown'
+                        }
+                        size={16}
+                        color={theme.textSecondary}
+                      />
                       <AppIcon name="loan" size={18} color={theme.info} />
                       <ThemedText
                         accessibilityRole="header"
@@ -646,7 +716,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                           {filteredLoans.length}
                         </ThemedText>
                       </View>
-                    </View>
+                    </Pressable>
                     <Pressable
                       onPress={() => handleOpenAdd('LOAN')}
                       accessibilityRole="button"
@@ -659,7 +729,8 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                     </Pressable>
                   </View>
 
-                  {filteredLoans.length === 0 ? (
+                  {!collapsedSections.LOANS ? (
+                    filteredLoans.length === 0 ? (
                     <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-2">
                       <AppIcon name="loan" size={22} color={theme.textMuted} />
                       <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
@@ -710,7 +781,8 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                         </View>
                       ))}
                     </View>
-                  )}
+                  )
+                  ) : null}
                 </View>
               ) : null}
 
@@ -718,28 +790,45 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               {renderBillsSection ? (
                 <View className="gap-3.5">
                   <View className="flex-row items-center justify-between gap-3 pb-2.5 border-b border-ledger-border-strong dark:border-ledger-border-strong-dark">
-                    <View className="flex-1 min-w-0">
-                      <View className="flex-row items-center gap-2">
-                        <AppIcon name="calendar" size={18} color={theme.textSecondary} />
-                        <ThemedText
-                          accessibilityRole="header"
-                          className="text-base sm:text-lg font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark flex-shrink"
-                        >
-                          Home &amp; Utilities
-                        </ThemedText>
-                        <View className="shrink-0 px-2 py-0.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                    <Pressable
+                      onPress={() => toggleSection('BILLS')}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${
+                        collapsedSections.BILLS ? 'Expand' : 'Collapse'
+                      } Home & Utilities section`}
+                      accessibilityState={{ expanded: !collapsedSections.BILLS }}
+                      className="flex-1 min-w-0 min-h-[44px] flex-row items-center gap-2 active:opacity-75"
+                    >
+                      <AppIcon
+                        name={
+                          collapsedSections.BILLS ? 'chevronRight' : 'chevronDown'
+                        }
+                        size={16}
+                        color={theme.textSecondary}
+                      />
+                      <View className="flex-1 min-w-0">
+                        <View className="flex-row items-center gap-2">
+                          <AppIcon name="calendar" size={18} color={theme.textSecondary} />
                           <ThemedText
-                            numeric
-                            className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                            accessibilityRole="header"
+                            className="text-base sm:text-lg font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark flex-shrink"
                           >
-                            {filteredBills.length}
+                            Home &amp; Utilities
                           </ThemedText>
+                          <View className="shrink-0 px-2 py-0.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                            <ThemedText
+                              numeric
+                              className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                            >
+                              {filteredBills.length}
+                            </ThemedText>
+                          </View>
                         </View>
+                        <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
+                          Editable monthly bill amounts
+                        </ThemedText>
                       </View>
-                      <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
-                        Editable monthly bill amounts
-                      </ThemedText>
-                    </View>
+                    </Pressable>
                     <Pressable
                       onPress={() => handleOpenAdd('BILL')}
                       accessibilityRole="button"
@@ -752,7 +841,8 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                     </Pressable>
                   </View>
 
-                  {filteredBills.length === 0 ? (
+                  {!collapsedSections.BILLS ? (
+                    filteredBills.length === 0 ? (
                     <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-2">
                       <AppIcon name="calendar" size={22} color={theme.textMuted} />
                       <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
@@ -803,7 +893,8 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                         </View>
                       ))}
                     </View>
-                  )}
+                  )
+                  ) : null}
                 </View>
               ) : null}
             </View>
