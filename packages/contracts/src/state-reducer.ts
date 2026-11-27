@@ -1,11 +1,17 @@
 import { MAX_SAFE_MONEY_MINOR } from './money';
 import { incomeSourceSchema } from './income-plan.schema';
 import {
-  advanceNextDueDate,
+  advanceNextDueDateByCycles,
+  computeCreditCardBillSummary,
+  computeInstallmentProgress,
+  formatPeriodMonthShort,
   isCommitmentPaidOff,
   normalizeCommitmentKind,
   recurringCommitmentSchema,
-  rewindNextDueDate,
+  resolveEffectiveCommitmentCycles,
+  resolveTargetPeriodForCommitmentPay,
+  resolveTargetPeriodForCreditCardAdvance,
+  rewindNextDueDateByCycles,
   type RecurringCommitment,
 } from './recurring.schema';
 import {
@@ -187,7 +193,23 @@ function deleteTransactionFromState(
     return state;
   }
 
-  const nextAccounts = applyTransactionToAccounts(state.accounts, tx, -1);
+  const nextAccounts = applyTransactionToAccounts(state.accounts, tx, -1).map(
+    (account) => {
+      if (account.lastPaymentTransactionId !== transactionId) {
+        return account;
+      }
+      const nextRaw: Record<string, unknown> = { ...account };
+      if (account.previousPaidThroughPeriod === undefined) {
+        delete nextRaw.paidThroughPeriod;
+      } else {
+        nextRaw.paidThroughPeriod = account.previousPaidThroughPeriod;
+      }
+      delete nextRaw.previousPaidThroughPeriod;
+      delete nextRaw.lastPaymentTransactionId;
+      delete nextRaw.lastPaymentInstallmentTxPrefix;
+      return accountSchema.parse(nextRaw);
+    },
+  );
   const nextCategories = tx.categoryId
     ? state.categories.map((c) =>
         c.id === tx.categoryId
@@ -201,6 +223,70 @@ function deleteTransactionFromState(
     accounts: nextAccounts,
     categories: nextCategories,
     transactions: state.transactions.filter((t) => t.id !== transactionId),
+  };
+}
+
+function revertCommitmentOnUnpay(
+  state: SyncDataState,
+  commitment: RecurringCommitment,
+): SyncDataState {
+  if (!commitment.lastPaidPeriod && !commitment.lastPaidTransactionId) {
+    return state;
+  }
+
+  const stateAfterDelete = commitment.lastPaidTransactionId
+    ? deleteTransactionFromState(state, commitment.lastPaidTransactionId)
+    : state;
+
+  const account = state.accounts.find((a) => a.id === commitment.accountId);
+  const resolvedKind = normalizeCommitmentKind(
+    commitment.kind,
+    account?.accountType,
+  );
+  const hasTerms =
+    resolvedKind === 'LOAN' ||
+    resolvedKind === 'CREDIT_CARD_INSTALLMENT' ||
+    (typeof commitment.totalInstallments === 'number' &&
+      commitment.totalInstallments > 0);
+  const cyclesToRevert = commitment.lastPaidCycles ?? 1;
+  const nextPaidInstallments = hasTerms
+    ? Math.max(0, commitment.paidInstallments - cyclesToRevert)
+    : commitment.paidInstallments;
+
+  let restoredNextDueDate = commitment.nextDueDate;
+  if (commitment.previousNextDueDate) {
+    restoredNextDueDate = commitment.previousNextDueDate;
+  } else if (
+    commitment.nextDueDate &&
+    commitment.lastPaidPeriod &&
+    commitment.nextDueDate.slice(0, 7) > commitment.lastPaidPeriod
+  ) {
+    restoredNextDueDate = rewindNextDueDateByCycles(
+      commitment.nextDueDate,
+      commitment.frequency,
+      cyclesToRevert,
+      commitment.dueDay,
+    );
+  }
+
+  const updatedCommitment = recurringCommitmentSchema.parse({
+    ...commitment,
+    kind: resolvedKind,
+    lastPaidPeriod: commitment.previousLastPaidPeriod,
+    previousLastPaidPeriod: undefined,
+    lastPaidCycles: undefined,
+    lastPaidTransactionId: undefined,
+    paidInstallments: nextPaidInstallments,
+    isActive: hasTerms ? true : commitment.isActive,
+    nextDueDate: restoredNextDueDate,
+    previousNextDueDate: undefined,
+  });
+
+  return {
+    ...stateAfterDelete,
+    recurringCommitments: stateAfterDelete.recurringCommitments.map((rc) =>
+      rc.id === commitment.id ? updatedCommitment : rc,
+    ),
   };
 }
 
@@ -234,6 +320,7 @@ function advanceCommitmentOnPay(
   periodMonth: string,
   txId: string,
   accountType?: Account['accountType'],
+  cyclesCount = 1,
 ): RecurringCommitment {
   const resolvedKind = normalizeCommitmentKind(commitment.kind, accountType);
   const hasTerms =
@@ -242,20 +329,35 @@ function advanceCommitmentOnPay(
     (typeof commitment.totalInstallments === 'number' &&
       commitment.totalInstallments > 0);
 
+  const effectiveCycles = resolveEffectiveCommitmentCycles(
+    commitment,
+    cyclesCount,
+  );
+  if (effectiveCycles <= 0) {
+    return commitment;
+  }
+
   const nextPaidInstallments = hasTerms
-    ? commitment.paidInstallments + 1
+    ? commitment.paidInstallments + effectiveCycles
     : commitment.paidInstallments;
   const reachedPayoff =
     typeof commitment.totalInstallments === 'number' &&
     commitment.totalInstallments > 0 &&
     nextPaidInstallments >= commitment.totalInstallments;
 
+  const targetPeriodMonth = resolveTargetPeriodForCommitmentPay(
+    commitment,
+    periodMonth,
+    effectiveCycles,
+  );
+
   const hasNextDueDate = Boolean(commitment.nextDueDate);
   const nextDueDate =
     hasNextDueDate && !reachedPayoff && commitment.nextDueDate
-      ? advanceNextDueDate(
+      ? advanceNextDueDateByCycles(
           commitment.nextDueDate,
           commitment.frequency,
+          effectiveCycles,
           commitment.dueDay,
         )
       : commitment.nextDueDate;
@@ -263,7 +365,9 @@ function advanceCommitmentOnPay(
   return recurringCommitmentSchema.parse({
     ...commitment,
     kind: resolvedKind,
-    lastPaidPeriod: periodMonth,
+    previousLastPaidPeriod: commitment.lastPaidPeriod,
+    lastPaidPeriod: targetPeriodMonth,
+    lastPaidCycles: effectiveCycles,
     lastPaidTransactionId: txId,
     paidInstallments: nextPaidInstallments,
     isActive: reachedPayoff ? false : commitment.isActive,
@@ -405,7 +509,29 @@ export function applySyncMutation(
       const saved = accountSchema.parse(mutation.account);
       const existing = state.accounts.find((a) => a.id === saved.id);
       const nextAccount = existing
-        ? { ...saved, balanceMinor: existing.balanceMinor }
+        ? {
+            ...saved,
+            balanceMinor: existing.balanceMinor,
+            ...(saved.paidThroughPeriod === undefined &&
+            existing.paidThroughPeriod !== undefined
+              ? { paidThroughPeriod: existing.paidThroughPeriod }
+              : {}),
+            ...(saved.previousPaidThroughPeriod === undefined &&
+            existing.previousPaidThroughPeriod !== undefined
+              ? { previousPaidThroughPeriod: existing.previousPaidThroughPeriod }
+              : {}),
+            ...(saved.lastPaymentTransactionId === undefined &&
+            existing.lastPaymentTransactionId !== undefined
+              ? { lastPaymentTransactionId: existing.lastPaymentTransactionId }
+              : {}),
+            ...(saved.lastPaymentInstallmentTxPrefix === undefined &&
+            existing.lastPaymentInstallmentTxPrefix !== undefined
+              ? {
+                  lastPaymentInstallmentTxPrefix:
+                    existing.lastPaymentInstallmentTxPrefix,
+                }
+              : {}),
+          }
         : saved;
       return {
         ...state,
@@ -421,6 +547,25 @@ export function applySyncMutation(
       const updated = accountSchema.parse({
         ...mutation.account,
         balanceMinor: existing.balanceMinor,
+        ...(mutation.account.paidThroughPeriod === undefined &&
+        existing.paidThroughPeriod !== undefined
+          ? { paidThroughPeriod: existing.paidThroughPeriod }
+          : {}),
+        ...(mutation.account.previousPaidThroughPeriod === undefined &&
+        existing.previousPaidThroughPeriod !== undefined
+          ? { previousPaidThroughPeriod: existing.previousPaidThroughPeriod }
+          : {}),
+        ...(mutation.account.lastPaymentTransactionId === undefined &&
+        existing.lastPaymentTransactionId !== undefined
+          ? { lastPaymentTransactionId: existing.lastPaymentTransactionId }
+          : {}),
+        ...(mutation.account.lastPaymentInstallmentTxPrefix === undefined &&
+        existing.lastPaymentInstallmentTxPrefix !== undefined
+          ? {
+              lastPaymentInstallmentTxPrefix:
+                existing.lastPaymentInstallmentTxPrefix,
+            }
+          : {}),
       });
       return {
         ...state,
@@ -703,11 +848,27 @@ export function applySyncMutation(
       const periodMonth =
         mutation.periodMonth ?? formatUtcPeriodMonth(validDate);
 
-      if (commitment.lastPaidPeriod === periodMonth) {
+      const requestedCycles = mutation.cyclesCount ?? 1;
+      const isAdvance =
+        mutation.isAdvancePayment === true || requestedCycles > 1;
+
+      if (
+        !isAdvance &&
+        commitment.lastPaidPeriod &&
+        commitment.lastPaidPeriod >= periodMonth
+      ) {
         return state;
       }
 
       if (state.transactions.some((tx) => tx.id === mutation.transactionId)) {
+        return state;
+      }
+
+      const effectiveCycles = resolveEffectiveCommitmentCycles(
+        commitment,
+        requestedCycles,
+      );
+      if (effectiveCycles <= 0) {
         return state;
       }
 
@@ -721,16 +882,27 @@ export function applySyncMutation(
         commitment.kind,
         targetAccount.accountType,
       );
-      const paidAmountMinor = mutation.actualAmountMinor ?? commitment.amountMinor;
+      const paidAmountMinor =
+        mutation.actualAmountMinor ??
+        clampMinor(commitment.amountMinor * effectiveCycles);
+
+      const targetPeriod = resolveTargetPeriodForCommitmentPay(
+        commitment,
+        periodMonth,
+        effectiveCycles,
+      );
 
       const paidIso = validDate.toISOString();
-      const rawNote =
-        commitment.notes ??
-        (resolvedKind === 'LOAN'
-          ? 'Loan payment'
-          : resolvedKind === 'CREDIT_CARD_INSTALLMENT'
-            ? 'Credit card installment'
-            : 'Monthly bill payment');
+      const rawNote = isAdvance
+        ? `Advance payment (${effectiveCycles} ${
+            effectiveCycles === 1 ? 'cycle' : 'cycles'
+          } · thru ${formatPeriodMonthShort(targetPeriod)})`
+        : (commitment.notes ??
+          (resolvedKind === 'LOAN'
+            ? 'Loan payment'
+            : resolvedKind === 'CREDIT_CARD_INSTALLMENT'
+              ? 'Credit card installment'
+              : 'Monthly bill payment'));
 
       const tx = transactionSchema.parse({
         id: mutation.transactionId,
@@ -752,6 +924,7 @@ export function applySyncMutation(
         periodMonth,
         tx.id,
         targetAccount.accountType,
+        effectiveCycles,
       );
 
       return {
@@ -766,60 +939,10 @@ export function applySyncMutation(
       const commitment = state.recurringCommitments.find(
         (rc) => rc.id === mutation.commitmentId,
       );
-      if (
-        !commitment ||
-        (!commitment.lastPaidPeriod && !commitment.lastPaidTransactionId)
-      ) {
+      if (!commitment) {
         return state;
       }
-
-      const stateAfterDelete = commitment.lastPaidTransactionId
-        ? deleteTransactionFromState(state, commitment.lastPaidTransactionId)
-        : state;
-
-      const account = state.accounts.find((a) => a.id === commitment.accountId);
-      const resolvedKind = normalizeCommitmentKind(commitment.kind, account?.accountType);
-      const hasTerms =
-        resolvedKind === 'LOAN' ||
-        resolvedKind === 'CREDIT_CARD_INSTALLMENT' ||
-        (typeof commitment.totalInstallments === 'number' &&
-          commitment.totalInstallments > 0);
-      const nextPaidInstallments = hasTerms
-        ? Math.max(0, commitment.paidInstallments - 1)
-        : commitment.paidInstallments;
-
-      let restoredNextDueDate = commitment.nextDueDate;
-      if (commitment.previousNextDueDate) {
-        restoredNextDueDate = commitment.previousNextDueDate;
-      } else if (
-        commitment.nextDueDate &&
-        commitment.lastPaidPeriod &&
-        commitment.nextDueDate.slice(0, 7) > commitment.lastPaidPeriod
-      ) {
-        restoredNextDueDate = rewindNextDueDate(
-          commitment.nextDueDate,
-          commitment.frequency,
-          commitment.dueDay,
-        );
-      }
-
-      const updatedCommitment = recurringCommitmentSchema.parse({
-        ...commitment,
-        kind: resolvedKind,
-        lastPaidPeriod: undefined,
-        lastPaidTransactionId: undefined,
-        paidInstallments: nextPaidInstallments,
-        isActive: hasTerms ? true : commitment.isActive,
-        nextDueDate: restoredNextDueDate,
-        previousNextDueDate: undefined,
-      });
-
-      return {
-        ...stateAfterDelete,
-        recurringCommitments: stateAfterDelete.recurringCommitments.map((rc) =>
-          rc.id === commitment.id ? updatedCommitment : rc,
-        ),
-      };
+      return revertCommitmentOnUnpay(state, commitment);
     }
 
     case 'creditCard.payBill': {
@@ -851,7 +974,18 @@ export function applySyncMutation(
       const periodMonth =
         mutation.periodMonth ?? formatUtcPeriodMonth(validDate);
 
+      const isAdvance =
+        typeof mutation.advanceMonths === 'number' &&
+        mutation.advanceMonths >= 1;
+      const monthsCount = isAdvance ? mutation.advanceMonths! : 1;
+
       let workingState = state;
+      const summaryBefore = computeCreditCardBillSummary({
+        account: cardAccount,
+        commitments: workingState.recurringCommitments,
+        transactions: workingState.transactions,
+        currentDate: validDate,
+      });
 
       const dueInstallments = workingState.recurringCommitments.filter(
         (rc) =>
@@ -860,25 +994,40 @@ export function applySyncMutation(
             'CREDIT_CARD_INSTALLMENT' &&
           rc.isActive &&
           !isCommitmentPaidOff(rc) &&
-          rc.lastPaidPeriod !== periodMonth &&
+          (isAdvance || !(rc.lastPaidPeriod && rc.lastPaidPeriod >= periodMonth)) &&
           rc.currency === cardAccount.currency,
       );
 
+      let processedAnyInstallment = false;
       for (const inst of dueInstallments) {
+        const effectiveCycles = resolveEffectiveCommitmentCycles(
+          inst,
+          monthsCount,
+        );
+        if (effectiveCycles <= 0) {
+          continue;
+        }
         const instTxId = `${mutation.installmentTxPrefix}-${inst.id}`;
         if (workingState.transactions.some((tx) => tx.id === instTxId)) {
           continue;
         }
+        processedAnyInstallment = true;
+        const instAmountMinor = clampMinor(inst.amountMinor * effectiveCycles);
         const instTx = transactionSchema.parse({
           id: instTxId,
           type: 'EXPENSE',
-          amountMinor: inst.amountMinor,
+          amountMinor: instAmountMinor,
           currency: cardAccount.currency,
           accountId: cardAccount.id,
           categoryId: inst.categoryId,
           commitmentId: inst.id,
           merchant: truncateText(inst.name, 80) || 'Card Installment',
-          note: truncateText(inst.notes ?? 'Credit card installment', 280),
+          note: truncateText(
+            effectiveCycles > 1
+              ? `Advance card installment (${effectiveCycles} cycles)`
+              : (inst.notes ?? 'Credit card installment'),
+            280,
+          ),
           occurredAt: paidIso,
           createdAt: paidIso,
         });
@@ -890,6 +1039,7 @@ export function applySyncMutation(
           periodMonth,
           instTx.id,
           cardAccount.accountType,
+          effectiveCycles,
         );
         workingState = {
           ...workingState,
@@ -907,7 +1057,33 @@ export function applySyncMutation(
         : 0;
       const transferAmountMinor = mutation.amountOverrideMinor ?? owedMinor;
 
+      const remainingInstallmentsBalance = workingState.recurringCommitments
+        .filter(
+          (rc) =>
+            rc.accountId === cardAccount.id &&
+            normalizeCommitmentKind(rc.kind, cardAccount.accountType) ===
+              'CREDIT_CARD_INSTALLMENT' &&
+            rc.isActive &&
+            !isCommitmentPaidOff(rc),
+        )
+        .reduce(
+          (sum, rc) => sum + computeInstallmentProgress(rc).remainingBalanceMinor,
+          0,
+        );
+
       if (transferAmountMinor > 0) {
+        const settlesAll =
+          transferAmountMinor >= owedMinor && remainingInstallmentsBalance === 0;
+        const transferNote = isAdvance
+          ? settlesAll
+            ? 'Paid credit card bill in full'
+            : `Advance credit card payment (${monthsCount} ${
+                monthsCount === 1 ? 'month' : 'months'
+              })`
+          : transferAmountMinor < owedMinor
+            ? 'Credit card paydown payment'
+            : 'Paid credit card bill in full';
+
         const transferTx = transactionSchema.parse({
           id: mutation.transferTransactionId,
           type: 'TRANSFER',
@@ -916,10 +1092,7 @@ export function applySyncMutation(
           accountId: paymentAccount.id,
           toAccountId: cardAccount.id,
           merchant: truncateText(`${cardAccount.name} Bill Payment`, 80),
-          note:
-            transferAmountMinor < owedMinor
-              ? 'Credit card paydown payment'
-              : 'Paid credit card bill in full',
+          note: transferNote,
           occurredAt: paidIso,
           createdAt: paidIso,
         });
@@ -928,7 +1101,128 @@ export function applySyncMutation(
         });
       }
 
+      const cardAfterTransfer = workingState.accounts.find(
+        (a) => a.id === cardAccount.id,
+      );
+      const remainingCardDebt =
+        (cardAfterTransfer ? Math.max(0, -cardAfterTransfer.balanceMinor) : 0) +
+        remainingInstallmentsBalance;
+
+      if (cardAfterTransfer) {
+        let nextPaidThroughPeriod = cardAfterTransfer.paidThroughPeriod;
+        if (remainingCardDebt === 0) {
+          nextPaidThroughPeriod = undefined;
+        } else if (isAdvance) {
+          nextPaidThroughPeriod = resolveTargetPeriodForCreditCardAdvance({
+            account: cardAccount,
+            upcomingBillMinor: summaryBefore.upcomingBillMinor,
+            isPaidForCurrentMonth: summaryBefore.isPaidForCurrentMonth,
+            basePeriodMonth: periodMonth,
+            advanceMonths: monthsCount,
+            referenceDate: validDate,
+          });
+        }
+
+        const didRecordPayment =
+          transferAmountMinor > 0 || processedAnyInstallment;
+
+        if (
+          didRecordPayment ||
+          nextPaidThroughPeriod !== cardAfterTransfer.paidThroughPeriod
+        ) {
+          workingState = {
+            ...workingState,
+            accounts: workingState.accounts.map((a) => {
+              if (a.id !== cardAccount.id) {
+                return a;
+              }
+              const nextAccountRaw: Record<string, unknown> = { ...a };
+              if (nextPaidThroughPeriod === undefined) {
+                delete nextAccountRaw.paidThroughPeriod;
+              } else {
+                nextAccountRaw.paidThroughPeriod = nextPaidThroughPeriod;
+              }
+              if (didRecordPayment) {
+                if (cardAccount.paidThroughPeriod === undefined) {
+                  delete nextAccountRaw.previousPaidThroughPeriod;
+                } else {
+                  nextAccountRaw.previousPaidThroughPeriod =
+                    cardAccount.paidThroughPeriod;
+                }
+                if (transferAmountMinor > 0) {
+                  nextAccountRaw.lastPaymentTransactionId =
+                    mutation.transferTransactionId;
+                } else {
+                  delete nextAccountRaw.lastPaymentTransactionId;
+                }
+                if (processedAnyInstallment) {
+                  nextAccountRaw.lastPaymentInstallmentTxPrefix =
+                    mutation.installmentTxPrefix;
+                } else {
+                  delete nextAccountRaw.lastPaymentInstallmentTxPrefix;
+                }
+              }
+              return accountSchema.parse(nextAccountRaw);
+            }),
+          };
+        }
+      }
+
       return workingState;
+    }
+
+    case 'creditCard.unpayBill': {
+      const cardAccount = state.accounts.find(
+        (a) => a.id === mutation.creditCardAccountId,
+      );
+      if (
+        !cardAccount ||
+        cardAccount.accountType !== 'CREDIT_CARD' ||
+        (!cardAccount.lastPaymentTransactionId &&
+          !cardAccount.lastPaymentInstallmentTxPrefix &&
+          !cardAccount.paidThroughPeriod)
+      ) {
+        return state;
+      }
+
+      let workingState = state;
+      if (cardAccount.lastPaymentTransactionId) {
+        workingState = deleteTransactionFromState(
+          workingState,
+          cardAccount.lastPaymentTransactionId,
+        );
+      }
+
+      if (cardAccount.lastPaymentInstallmentTxPrefix) {
+        const prefix = `${cardAccount.lastPaymentInstallmentTxPrefix}-`;
+        const matchingInstallments = workingState.recurringCommitments.filter(
+          (rc) =>
+            rc.accountId === cardAccount.id &&
+            rc.lastPaidTransactionId?.startsWith(prefix),
+        );
+        for (const inst of matchingInstallments) {
+          workingState = revertCommitmentOnUnpay(workingState, inst);
+        }
+      }
+
+      return {
+        ...workingState,
+        accounts: workingState.accounts.map((a) => {
+          if (a.id !== cardAccount.id) {
+            return a;
+          }
+          const nextRaw: Record<string, unknown> = { ...a };
+          if (cardAccount.previousPaidThroughPeriod === undefined) {
+            delete nextRaw.paidThroughPeriod;
+          } else {
+            nextRaw.paidThroughPeriod = cardAccount.previousPaidThroughPeriod;
+          }
+          delete nextRaw.previousPaidThroughPeriod;
+          delete nextRaw.lastPaymentTransactionId;
+          delete nextRaw.lastPaymentInstallmentTxPrefix;
+          return accountSchema.parse(nextRaw);
+        }),
+      };
     }
 
     case 'state.resetDemo': {

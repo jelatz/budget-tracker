@@ -61,6 +61,7 @@ export function isConflictingSyncMutation(
     case 'account.delete':
     case 'account.setBalance':
     case 'creditCard.payBill':
+    case 'creditCard.unpayBill':
       return true;
     case 'backup.import':
       return mutation.mode === 'overwrite';
@@ -173,6 +174,18 @@ export async function loadUserSyncStateInTx(
         ? { dueWeekdayOrdinal: a.dueWeekdayOrdinal }
         : {}),
       ...(a.dueStartDate !== null ? { dueStartDate: a.dueStartDate } : {}),
+      ...(a.paidThroughPeriod !== null
+        ? { paidThroughPeriod: a.paidThroughPeriod }
+        : {}),
+      ...(a.previousPaidThroughPeriod !== null
+        ? { previousPaidThroughPeriod: a.previousPaidThroughPeriod }
+        : {}),
+      ...(a.lastPaymentTransactionId !== null
+        ? { lastPaymentTransactionId: a.lastPaymentTransactionId }
+        : {}),
+      ...(a.lastPaymentInstallmentTxPrefix !== null
+        ? { lastPaymentInstallmentTxPrefix: a.lastPaymentInstallmentTxPrefix }
+        : {}),
     })),
     categories: categoryRows.map((c) => ({
       id: c.id,
@@ -247,6 +260,12 @@ export async function loadUserSyncStateInTx(
         : {}),
       paidInstallments: rc.paidInstallments,
       ...(rc.lastPaidPeriod ? { lastPaidPeriod: rc.lastPaidPeriod } : {}),
+      ...(rc.previousLastPaidPeriod
+        ? { previousLastPaidPeriod: rc.previousLastPaidPeriod }
+        : {}),
+      ...(rc.lastPaidCycles !== null
+        ? { lastPaidCycles: rc.lastPaidCycles }
+        : {}),
       ...(rc.lastPaidTransactionId
         ? { lastPaidTransactionId: rc.lastPaidTransactionId }
         : {}),
@@ -371,6 +390,10 @@ export async function saveUserSyncStateInTx(
         dueWeekday: a.dueWeekday ?? null,
         dueWeekdayOrdinal: a.dueWeekdayOrdinal ?? null,
         dueStartDate: a.dueStartDate ?? null,
+        paidThroughPeriod: a.paidThroughPeriod ?? null,
+        previousPaidThroughPeriod: a.previousPaidThroughPeriod ?? null,
+        lastPaymentTransactionId: a.lastPaymentTransactionId ?? null,
+        lastPaymentInstallmentTxPrefix: a.lastPaymentInstallmentTxPrefix ?? null,
         sortOrder: index,
       })),
       200,
@@ -452,6 +475,8 @@ export async function saveUserSyncStateInTx(
         totalInstallments: rc.totalInstallments ?? null,
         paidInstallments: rc.paidInstallments,
         lastPaidPeriod: rc.lastPaidPeriod ?? null,
+        previousLastPaidPeriod: rc.previousLastPaidPeriod ?? null,
+        lastPaidCycles: rc.lastPaidCycles ?? null,
         lastPaidTransactionId: rc.lastPaidTransactionId ?? null,
         notes: rc.notes ?? null,
         sortOrder: index,

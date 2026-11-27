@@ -84,6 +84,11 @@ const accountCalendarDateSchema = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be in YYYY-MM-DD format')
   .refine(isValidCalendarDateString, 'Must be a valid calendar date');
 
+const accountPeriodMonthSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Must be in YYYY-MM format');
+
 export const accountSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -99,6 +104,10 @@ export const accountSchema = z.object({
   dueWeekday: z.number().int().min(0).max(6).optional(),
   dueWeekdayOrdinal: z.number().int().min(1).max(4).optional(),
   dueStartDate: accountCalendarDateSchema.optional(),
+  paidThroughPeriod: accountPeriodMonthSchema.optional(),
+  previousPaidThroughPeriod: accountPeriodMonthSchema.optional(),
+  lastPaymentTransactionId: z.string().min(1).optional(),
+  lastPaymentInstallmentTxPrefix: z.string().min(1).max(80).optional(),
 });
 export type Account = z.infer<typeof accountSchema>;
 
@@ -117,6 +126,10 @@ export const upsertAccountInputSchema = z.object({
   dueWeekday: z.number().int().min(0).max(6).optional(),
   dueWeekdayOrdinal: z.number().int().min(1).max(4).optional(),
   dueStartDate: accountCalendarDateSchema.optional(),
+  paidThroughPeriod: accountPeriodMonthSchema.optional(),
+  previousPaidThroughPeriod: accountPeriodMonthSchema.optional(),
+  lastPaymentTransactionId: z.string().min(1).optional(),
+  lastPaymentInstallmentTxPrefix: z.string().min(1).max(80).optional(),
 });
 export type UpsertAccountInput = z.infer<typeof upsertAccountInputSchema>;
 

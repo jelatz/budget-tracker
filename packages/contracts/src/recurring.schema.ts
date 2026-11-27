@@ -149,6 +149,8 @@ export const recurringCommitmentSchema = z.object({
     .string()
     .regex(/^\d{4}-\d{2}$/, 'Must be in YYYY-MM format')
     .optional(),
+  previousLastPaidPeriod: periodMonthSchema.optional(),
+  lastPaidCycles: z.number().int().positive().max(120).optional(),
   lastPaidTransactionId: z.string().min(1).optional(),
   notes: z.string().trim().max(280).optional(),
 });
@@ -305,6 +307,204 @@ export function rewindNextDueDate(
   );
 }
 
+/**
+ * Advances a YYYY-MM period month string by the specified number of calendar months.
+ */
+export function advancePeriodMonth(periodMonth: string, months: number): string {
+  const match = periodMonth.trim().match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (!match) return periodMonth;
+  const year = Number.parseInt(match[1], 10);
+  const monthIndex0 = Number.parseInt(match[2], 10) - 1;
+  const target = new Date(year, monthIndex0 + Math.trunc(months), 1, 12, 0, 0, 0);
+  const nextYear = target.getFullYear();
+  const nextMonth = String(target.getMonth() + 1).padStart(2, '0');
+  return `${nextYear}-${nextMonth}`;
+}
+
+/**
+ * Formats a YYYY-MM period month string into a compact label (e.g. "Jan 2027").
+ */
+export function formatPeriodMonthShort(periodMonth: string): string {
+  const match = periodMonth.trim().match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (!match) return periodMonth;
+  const year = Number.parseInt(match[1], 10);
+  const monthIndex0 = Number.parseInt(match[2], 10) - 1;
+  const monthName = SHORT_MONTH_NAMES[monthIndex0] ?? 'Jan';
+  return `${monthName} ${year}`;
+}
+
+/**
+ * Returns the calendar month step for a commitment frequency (0 for weekly/biweekly).
+ */
+export function getCycleMonthStep(frequency: CommitmentFrequency): number {
+  switch (frequency) {
+    case 'MONTHLY':
+      return 1;
+    case 'QUARTERLY':
+      return 3;
+    case 'YEARLY':
+      return 12;
+    case 'WEEKLY':
+    case 'BIWEEKLY':
+      return 0;
+  }
+}
+
+/**
+ * Advances a YYYY-MM-DD due date by `cycles` billing cycles preserving `anchorDueDay`.
+ */
+export function advanceNextDueDateByCycles(
+  dateStr: string,
+  frequency: CommitmentFrequency,
+  cycles: number,
+  anchorDueDay?: number,
+): string {
+  let current = dateStr;
+  const count = Math.max(0, Math.trunc(cycles));
+  for (let i = 0; i < count; i += 1) {
+    current = advanceNextDueDate(current, frequency, anchorDueDay);
+  }
+  return current;
+}
+
+/**
+ * Rewinds a YYYY-MM-DD due date by `cycles` billing cycles preserving `anchorDueDay`.
+ */
+export function rewindNextDueDateByCycles(
+  dateStr: string,
+  frequency: CommitmentFrequency,
+  cycles: number,
+  anchorDueDay?: number,
+): string {
+  let current = dateStr;
+  const count = Math.max(0, Math.trunc(cycles));
+  for (let i = 0; i < count; i += 1) {
+    current = rewindNextDueDate(current, frequency, anchorDueDay);
+  }
+  return current;
+}
+
+/**
+ * Resolves the effective number of cycles to pay/advance (clamped to [1, 120] and remaining terms).
+ */
+export function resolveEffectiveCommitmentCycles(
+  commitment: RecurringCommitment,
+  requestedCycles = 1,
+): number {
+  const clamped = Math.max(1, Math.min(120, Math.trunc(requestedCycles)));
+  if (
+    typeof commitment.totalInstallments === 'number' &&
+    commitment.totalInstallments > 0
+  ) {
+    const remaining = Math.max(
+      0,
+      commitment.totalInstallments - commitment.paidInstallments,
+    );
+    return Math.min(clamped, remaining);
+  }
+  return clamped;
+}
+
+/**
+ * Resolves the target YYYY-MM paid-through period after paying `effectiveCycles` cycles.
+ */
+export function resolveTargetPeriodForCommitmentPay(
+  commitment: RecurringCommitment,
+  basePeriodMonth: string,
+  effectiveCycles: number,
+): string {
+  const cycles = Math.max(1, Math.trunc(effectiveCycles));
+  const monthStep = getCycleMonthStep(commitment.frequency);
+
+  if (commitment.lastPaidPeriod && commitment.lastPaidPeriod >= basePeriodMonth) {
+    if (monthStep > 0) {
+      return advancePeriodMonth(commitment.lastPaidPeriod, monthStep * cycles);
+    }
+    if (commitment.nextDueDate && parseCalendarDate(commitment.nextDueDate)) {
+      const nextPeriod = advanceNextDueDateByCycles(
+        commitment.nextDueDate,
+        commitment.frequency,
+        cycles - 1,
+        commitment.dueDay,
+      ).slice(0, 7);
+      return nextPeriod >= commitment.lastPaidPeriod
+        ? nextPeriod
+        : commitment.lastPaidPeriod;
+    }
+    return commitment.lastPaidPeriod;
+  }
+
+  if (
+    commitment.nextDueDate &&
+    parseCalendarDate(commitment.nextDueDate) &&
+    commitment.nextDueDate.slice(0, 7) > basePeriodMonth
+  ) {
+    const startPeriod = commitment.nextDueDate.slice(0, 7);
+    if (monthStep > 0) {
+      return advancePeriodMonth(startPeriod, monthStep * (cycles - 1));
+    }
+    return advanceNextDueDateByCycles(
+      commitment.nextDueDate,
+      commitment.frequency,
+      cycles - 1,
+      commitment.dueDay,
+    ).slice(0, 7);
+  }
+
+  if (monthStep > 0) {
+    return advancePeriodMonth(basePeriodMonth, monthStep * (cycles - 1));
+  }
+  if (commitment.nextDueDate && parseCalendarDate(commitment.nextDueDate)) {
+    const advancedPeriod = advanceNextDueDateByCycles(
+      commitment.nextDueDate,
+      commitment.frequency,
+      cycles - 1,
+      commitment.dueDay,
+    ).slice(0, 7);
+    return advancedPeriod > basePeriodMonth ? advancedPeriod : basePeriodMonth;
+  }
+  return basePeriodMonth;
+}
+
+/**
+ * Resolves the target YYYY-MM `paidThroughPeriod` for a credit card advance payment.
+ */
+export function resolveTargetPeriodForCreditCardAdvance(params: {
+  account: Pick<
+    Account,
+    'dueDay' | 'dueWeekday' | 'dueWeekdayOrdinal' | 'dueStartDate' | 'paidThroughPeriod'
+  >;
+  upcomingBillMinor: number;
+  isPaidForCurrentMonth: boolean;
+  basePeriodMonth: string;
+  advanceMonths: number;
+  referenceDate?: Date;
+}): string {
+  const referenceDate = params.referenceDate ?? new Date();
+  const dueDateBefore = resolveCreditCardDueDateForAccount(params.account, {
+    upcomingBillMinor: params.upcomingBillMinor,
+    isPaidForCurrentMonth: params.isPaidForCurrentMonth,
+    referenceDate,
+  });
+
+  let firstUnpaidPeriod: string;
+  if (
+    params.account.paidThroughPeriod &&
+    params.account.paidThroughPeriod >= params.basePeriodMonth
+  ) {
+    firstUnpaidPeriod = advancePeriodMonth(params.account.paidThroughPeriod, 1);
+  } else if (dueDateBefore && dueDateBefore.slice(0, 7) > params.basePeriodMonth) {
+    firstUnpaidPeriod = dueDateBefore.slice(0, 7);
+  } else {
+    firstUnpaidPeriod = params.basePeriodMonth;
+  }
+
+  return advancePeriodMonth(
+    firstUnpaidPeriod,
+    Math.max(1, Math.trunc(params.advanceMonths)) - 1,
+  );
+}
+
 export type NextDueDatePreset = 'TODAY' | 'NEXT_WEEK' | 'NEXT_MONTH';
 
 /**
@@ -363,6 +563,8 @@ export interface CommitmentDueInfo {
   state: CommitmentDueState;
   isPaidOff: boolean;
   isPaid: boolean;
+  isPaidAhead: boolean;
+  paidThroughPeriod: string | null;
   isDueThisMonth: boolean;
   isUpcomingInMonth: boolean;
   isOverdue: boolean;
@@ -381,13 +583,17 @@ export function getCommitmentDueStatus(
   const currentPeriod = todayStr.slice(0, 7);
   const currentDay = now.getDate();
   const isPaidOff = isCommitmentPaidOff(commitment);
-  const isPaid = commitment.lastPaidPeriod === currentPeriod;
+  const paidThroughPeriod = commitment.lastPaidPeriod ?? null;
+  const isPaid = Boolean(paidThroughPeriod && paidThroughPeriod >= currentPeriod);
+  const isPaidAhead = Boolean(paidThroughPeriod && paidThroughPeriod > currentPeriod);
 
   if (isPaidOff) {
     return {
       state: 'PAID_OFF',
       isPaidOff: true,
       isPaid,
+      isPaidAhead,
+      paidThroughPeriod,
       isDueThisMonth: false,
       isUpcomingInMonth: false,
       isOverdue: false,
@@ -400,6 +606,8 @@ export function getCommitmentDueStatus(
       state: 'PAID',
       isPaidOff: false,
       isPaid: true,
+      isPaidAhead,
+      paidThroughPeriod,
       isDueThisMonth: false,
       isUpcomingInMonth: false,
       isOverdue: false,
@@ -415,6 +623,8 @@ export function getCommitmentDueStatus(
         state: 'OVERDUE',
         isPaidOff: false,
         isPaid: false,
+        isPaidAhead: false,
+        paidThroughPeriod,
         isDueThisMonth: true,
         isUpcomingInMonth: false,
         isOverdue: true,
@@ -426,6 +636,8 @@ export function getCommitmentDueStatus(
         state: 'DUE_TODAY',
         isPaidOff: false,
         isPaid: false,
+        isPaidAhead: false,
+        paidThroughPeriod,
         isDueThisMonth: true,
         isUpcomingInMonth: true,
         isOverdue: false,
@@ -437,6 +649,8 @@ export function getCommitmentDueStatus(
         state: 'UPCOMING_THIS_MONTH',
         isPaidOff: false,
         isPaid: false,
+        isPaidAhead: false,
+        paidThroughPeriod,
         isDueThisMonth: true,
         isUpcomingInMonth: true,
         isOverdue: false,
@@ -447,6 +661,8 @@ export function getCommitmentDueStatus(
       state: 'FUTURE_MONTH',
       isPaidOff: false,
       isPaid: false,
+      isPaidAhead: false,
+      paidThroughPeriod,
       isDueThisMonth: false,
       isUpcomingInMonth: false,
       isOverdue: false,
@@ -459,6 +675,8 @@ export function getCommitmentDueStatus(
       state: 'CUSTOM_SCHEDULE',
       isPaidOff: false,
       isPaid: false,
+      isPaidAhead: false,
+      paidThroughPeriod,
       isDueThisMonth: true,
       isUpcomingInMonth: commitment.dueDay >= currentDay,
       isOverdue: false,
@@ -471,6 +689,8 @@ export function getCommitmentDueStatus(
       state: 'OVERDUE',
       isPaidOff: false,
       isPaid: false,
+      isPaidAhead: false,
+      paidThroughPeriod,
       isDueThisMonth: true,
       isUpcomingInMonth: false,
       isOverdue: true,
@@ -483,6 +703,8 @@ export function getCommitmentDueStatus(
       state: 'DUE_TODAY',
       isPaidOff: false,
       isPaid: false,
+      isPaidAhead: false,
+      paidThroughPeriod,
       isDueThisMonth: true,
       isUpcomingInMonth: true,
       isOverdue: false,
@@ -494,6 +716,8 @@ export function getCommitmentDueStatus(
     state: 'UPCOMING_THIS_MONTH',
     isPaidOff: false,
     isPaid: false,
+    isPaidAhead: false,
+    paidThroughPeriod,
     isDueThisMonth: true,
     isUpcomingInMonth: true,
     isOverdue: false,
@@ -502,7 +726,8 @@ export function getCommitmentDueStatus(
 }
 
 /**
- * Resolves the YYYY-MM-DD due date for a commitment within the reference month.
+ * Resolves the YYYY-MM-DD due date for a commitment within the reference month
+ * (rolling past paid periods when `nextDueDate` is unset).
  */
 export function resolveCommitmentDueDate(
   commitment: RecurringCommitment,
@@ -511,6 +736,21 @@ export function resolveCommitmentDueDate(
   const nextDue = commitment.nextDueDate?.trim();
   if (nextDue && parseCalendarDate(nextDue)) {
     return nextDue;
+  }
+  const currentPeriod = formatCalendarDateString(referenceDate).slice(0, 7);
+  if (commitment.lastPaidPeriod && commitment.lastPaidPeriod >= currentPeriod) {
+    const stepMonths = getCycleMonthStep(commitment.frequency) || 1;
+    const nextPeriod = advancePeriodMonth(commitment.lastPaidPeriod, stepMonths);
+    const [yearStr, monthStr] = nextPeriod.split('-');
+    const targetYear = Number.parseInt(yearStr ?? '', 10);
+    const targetMonthIndex0 = Number.parseInt(monthStr ?? '', 10) - 1;
+    if (Number.isInteger(targetYear) && Number.isInteger(targetMonthIndex0)) {
+      const daysInTargetMonth = new Date(targetYear, targetMonthIndex0 + 1, 0).getDate();
+      const day = Math.min(commitment.dueDay, daysInTargetMonth);
+      return formatCalendarDateString(
+        new Date(targetYear, targetMonthIndex0, day, 12, 0, 0, 0),
+      );
+    }
   }
   const daysInMonth = new Date(
     referenceDate.getFullYear(),
@@ -613,7 +853,10 @@ export function resolveCreditCardDueDate(
  * Nth-weekday (e.g. 4th Friday), optional first due date (`dueStartDate`), and paid-this-month rollover.
  */
 export function resolveCreditCardDueDateForAccount(
-  account: Pick<Account, 'dueDay' | 'dueWeekday' | 'dueWeekdayOrdinal' | 'dueStartDate'>,
+  account: Pick<
+    Account,
+    'dueDay' | 'dueWeekday' | 'dueWeekdayOrdinal' | 'dueStartDate' | 'paidThroughPeriod'
+  >,
   options: {
     upcomingBillMinor: number;
     isPaidForCurrentMonth?: boolean;
@@ -625,6 +868,10 @@ export function resolveCreditCardDueDateForAccount(
   const startStr =
     account.dueStartDate && parseCalendarDate(account.dueStartDate)
       ? account.dueStartDate.trim()
+      : null;
+  const paidThrough =
+    account.paidThroughPeriod && /^\d{4}-(0[1-9]|1[0-2])$/.test(account.paidThroughPeriod.trim())
+      ? account.paidThroughPeriod.trim()
       : null;
 
   const hasWeekdaySchedule =
@@ -661,13 +908,16 @@ export function resolveCreditCardDueDateForAccount(
     return null;
   };
 
-  for (let monthOffset = 0; monthOffset <= 12; monthOffset += 1) {
+  for (let monthOffset = 0; monthOffset <= 36; monthOffset += 1) {
     const targetMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1, 12, 0, 0, 0);
     const candidate = getDueDateInMonth(targetMonth.getFullYear(), targetMonth.getMonth());
     if (!candidate) {
       return null;
     }
     if (startStr && candidate < startStr) {
+      continue;
+    }
+    if (paidThrough && candidate.slice(0, 7) <= paidThrough) {
       continue;
     }
     if (monthOffset === 0) {
@@ -699,6 +949,8 @@ export interface CreditCardBillSummary {
   isPaydownPlan: boolean;
   monthlyPaymentTargetMinor: number | null;
   paidThisPeriodMinor: number;
+  paidThroughPeriod: string | null;
+  isPaidAhead: boolean;
   isPaidForCurrentMonth: boolean;
   remainingPaymentsCount: number | null;
   finalPaymentMinor: number | null;
@@ -734,7 +986,7 @@ export function computeCreditCardBillSummary(params: {
     (c) =>
       c.isActive &&
       !isCommitmentPaidOff(c) &&
-      c.lastPaidPeriod !== currentPeriod,
+      !(c.lastPaidPeriod && c.lastPaidPeriod >= currentPeriod),
   );
 
   const installmentsDueThisPeriodMinor = unpaidInstallmentsThisPeriod.reduce(
@@ -775,11 +1027,19 @@ export function computeCreditCardBillSummary(params: {
   const monthlyPaymentTargetMinor = isPaydownPlan
     ? params.account.monthlyPaymentTargetMinor!
     : null;
+  const paidThroughPeriod = params.account.paidThroughPeriod ?? null;
+  const isPaidThroughCurrentMonth = Boolean(
+    paidThroughPeriod && paidThroughPeriod >= currentPeriod,
+  );
+  const isPaidAhead = Boolean(
+    totalCardDebtMinor > 0 && paidThroughPeriod && paidThroughPeriod > currentPeriod,
+  );
   const isPaidForCurrentMonth = Boolean(
-    isPaydownPlan &&
-      monthlyPaymentTargetMinor &&
-      totalCardDebtMinor > 0 &&
-      paidThisPeriodMinor >= monthlyPaymentTargetMinor,
+    totalCardDebtMinor > 0 &&
+      (isPaidThroughCurrentMonth ||
+        (isPaydownPlan &&
+          monthlyPaymentTargetMinor &&
+          paidThisPeriodMinor >= monthlyPaymentTargetMinor)),
   );
 
   const scheduledCycleAmountMinor = isPaydownPlan
@@ -859,6 +1119,8 @@ export function computeCreditCardBillSummary(params: {
     isPaydownPlan,
     monthlyPaymentTargetMinor,
     paidThisPeriodMinor,
+    paidThroughPeriod,
+    isPaidAhead,
     isPaidForCurrentMonth,
     remainingPaymentsCount,
     finalPaymentMinor,
@@ -1071,7 +1333,7 @@ export function computeDebtOverview(params: {
       if (progress.totalCount > 0) {
         return sum + progress.remainingBalanceMinor;
       }
-      return sum + (l.lastPaidPeriod === currentPeriod ? 0 : l.amountMinor);
+      return sum + (l.lastPaidPeriod && l.lastPaidPeriod >= currentPeriod ? 0 : l.amountMinor);
     }, 0);
 
   const totalDebtRemainingMinor =
@@ -1096,7 +1358,11 @@ export function computeDebtOverview(params: {
   }
 
   for (const c of [...loans, ...bills]) {
-    if (!c.isActive || isCommitmentPaidOff(c) || c.lastPaidPeriod === currentPeriod) {
+    if (
+      !c.isActive ||
+      isCommitmentPaidOff(c) ||
+      (c.lastPaidPeriod && c.lastPaidPeriod >= currentPeriod)
+    ) {
       continue;
     }
     const status = getCommitmentDueStatus(c, now);

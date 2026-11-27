@@ -226,8 +226,21 @@ export function ObligationFormModal({
         isActive: editingCommitment?.isActive ?? true,
         ...(totalInstallments !== undefined ? { totalInstallments } : {}),
         paidInstallments,
+        ...(editingCommitment?.dueLabel ? { dueLabel: editingCommitment.dueLabel } : {}),
+        ...(editingCommitment?.nextDueDate
+          ? { nextDueDate: editingCommitment.nextDueDate }
+          : {}),
+        ...(editingCommitment?.previousNextDueDate
+          ? { previousNextDueDate: editingCommitment.previousNextDueDate }
+          : {}),
         ...(editingCommitment?.lastPaidPeriod
           ? { lastPaidPeriod: editingCommitment.lastPaidPeriod }
+          : {}),
+        ...(editingCommitment?.previousLastPaidPeriod
+          ? { previousLastPaidPeriod: editingCommitment.previousLastPaidPeriod }
+          : {}),
+        ...(editingCommitment?.lastPaidCycles !== undefined
+          ? { lastPaidCycles: editingCommitment.lastPaidCycles }
           : {}),
         ...(editingCommitment?.lastPaidTransactionId
           ? { lastPaidTransactionId: editingCommitment.lastPaidTransactionId }

@@ -44,6 +44,11 @@ export const updateAccountRequestSchema = z
       .trim()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be in YYYY-MM-DD format')
       .optional(),
+    paidThroughPeriod: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Must be in YYYY-MM format')
+      .optional(),
   })
   .refine(
     (val) =>
@@ -57,7 +62,8 @@ export const updateAccountRequestSchema = z
       val.dueDay !== undefined ||
       val.dueWeekday !== undefined ||
       val.dueWeekdayOrdinal !== undefined ||
-      val.dueStartDate !== undefined,
+      val.dueStartDate !== undefined ||
+      val.paidThroughPeriod !== undefined,
     { message: 'At least one account metadata field is required' },
   );
 export type UpdateAccountRequest = z.infer<typeof updateAccountRequestSchema>;

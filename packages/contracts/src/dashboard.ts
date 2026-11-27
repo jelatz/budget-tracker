@@ -309,7 +309,7 @@ export function summarizeMonthlyPayables(
   const remainingItems: MonthlyPayableItem[] = [];
 
   for (const c of commitments) {
-    if (c.lastPaidPeriod === period) {
+    if (c.lastPaidPeriod && c.lastPaidPeriod >= period) {
       paidMinor += c.amountMinor;
       paidCount += 1;
       continue;

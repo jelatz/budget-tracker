@@ -81,6 +81,18 @@ function mapAccountRow(
       ? { dueWeekdayOrdinal: row.dueWeekdayOrdinal }
       : {}),
     ...(row.dueStartDate !== null ? { dueStartDate: row.dueStartDate } : {}),
+    ...(row.paidThroughPeriod !== null
+      ? { paidThroughPeriod: row.paidThroughPeriod }
+      : {}),
+    ...(row.previousPaidThroughPeriod !== null
+      ? { previousPaidThroughPeriod: row.previousPaidThroughPeriod }
+      : {}),
+    ...(row.lastPaymentTransactionId !== null
+      ? { lastPaymentTransactionId: row.lastPaymentTransactionId }
+      : {}),
+    ...(row.lastPaymentInstallmentTxPrefix !== null
+      ? { lastPaymentInstallmentTxPrefix: row.lastPaymentInstallmentTxPrefix }
+      : {}),
   });
 }
 
@@ -207,6 +219,11 @@ export function createPgAccountsRepository(
           dueWeekday: account.dueWeekday ?? null,
           dueWeekdayOrdinal: account.dueWeekdayOrdinal ?? null,
           dueStartDate: account.dueStartDate ?? null,
+          paidThroughPeriod: account.paidThroughPeriod ?? null,
+          previousPaidThroughPeriod: account.previousPaidThroughPeriod ?? null,
+          lastPaymentTransactionId: account.lastPaymentTransactionId ?? null,
+          lastPaymentInstallmentTxPrefix:
+            account.lastPaymentInstallmentTxPrefix ?? null,
           sortOrder: nextSortOrder,
         });
 
@@ -273,6 +290,8 @@ export function createPgAccountsRepository(
             dueWeekdayOrdinal:
               patch.dueWeekdayOrdinal ?? existing.dueWeekdayOrdinal,
             dueStartDate: patch.dueStartDate ?? existing.dueStartDate,
+            paidThroughPeriod:
+              patch.paidThroughPeriod ?? existing.paidThroughPeriod,
           })
           .where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)))
           .returning();

@@ -36,6 +36,20 @@
       "when": 1795758217383,
       "tag": "0004_credit_card_limit_and_paydown",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795794645439,
+      "tag": "0005_advance_pay_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795795159283,
+      "tag": "0006_credit_card_undo_tracking",
+      "breakpoints": true
     }
   ]
 }

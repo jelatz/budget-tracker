@@ -457,24 +457,33 @@ export function createPgTransactionsRepository(
             );
           for (const acc of matchedAccounts) {
             const delta = reverseDeltas.get(acc.id) ?? 0;
-            if (delta !== 0) {
-              const currentBalance = cipher.decrypt(acc.balanceMinor, {
-                userId,
-                table: 'accounts',
-                rowId: acc.id,
-                column: 'balance_minor',
-              });
-              const nextBalance = clampMinor(currentBalance + delta);
+            const isCardLastPayment = acc.lastPaymentTransactionId === transactionId;
+            if (delta !== 0 || isCardLastPayment) {
+              const updateSet: Record<string, unknown> = {};
+              if (delta !== 0) {
+                const currentBalance = cipher.decrypt(acc.balanceMinor, {
+                  userId,
+                  table: 'accounts',
+                  rowId: acc.id,
+                  column: 'balance_minor',
+                });
+                const nextBalance = clampMinor(currentBalance + delta);
+                updateSet.balanceMinor = cipher.encrypt(nextBalance, {
+                  userId,
+                  table: 'accounts',
+                  rowId: acc.id,
+                  column: 'balance_minor',
+                });
+              }
+              if (isCardLastPayment) {
+                updateSet.paidThroughPeriod = acc.previousPaidThroughPeriod ?? null;
+                updateSet.previousPaidThroughPeriod = null;
+                updateSet.lastPaymentTransactionId = null;
+                updateSet.lastPaymentInstallmentTxPrefix = null;
+              }
               await tx
                 .update(accounts)
-                .set({
-                  balanceMinor: cipher.encrypt(nextBalance, {
-                    userId,
-                    table: 'accounts',
-                    rowId: acc.id,
-                    column: 'balance_minor',
-                  }),
-                })
+                .set(updateSet)
                 .where(and(eq(accounts.userId, userId), eq(accounts.id, acc.id)));
             }
           }

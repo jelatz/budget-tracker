@@ -297,6 +297,150 @@ describe('Sync State Reducer', () => {
     expect(rewindNextDueDate('2026-02-28', 'MONTHLY', 31)).toBe('2026-01-31');
   });
 
+  it('supports multi-cycle advance pay, payoff clamping, and multi-cycle undo on commitments', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+    const prepared = applySyncMutations(base, [
+      {
+        opId: 'op-bank-adv',
+        clientTimestamp: '2026-11-10T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-bank',
+        balanceMinor: 5_000_000,
+      },
+      {
+        opId: 'op-loan-adv',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'loan-adv',
+          name: 'Laptop Loan',
+          kind: 'LOAN',
+          amountMinor: 200_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          frequency: 'MONTHLY',
+          dueDay: 15,
+          nextDueDate: '2026-11-15',
+          isAutoPaid: false,
+          isActive: true,
+          totalInstallments: 6,
+          paidInstallments: 1,
+          lastPaidPeriod: '2026-10',
+        },
+      },
+      {
+        opId: 'op-bill-adv',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'bill-adv',
+          name: 'Association Dues',
+          kind: 'BILL',
+          amountMinor: 150_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-dues',
+          frequency: 'MONTHLY',
+          dueDay: 10,
+          nextDueDate: '2026-12-10',
+          isAutoPaid: false,
+          isActive: true,
+          paidInstallments: 0,
+          lastPaidPeriod: '2026-11',
+        },
+      },
+    ]);
+
+    // Pay 3 cycles at once on unpaid loan (Nov + Dec + Jan -> paid thru 2027-01, nextDueDate 2027-02-15)
+    // and advance pay 2 cycles on already-paid bill (Dec + Jan -> paid thru 2027-01, nextDueDate 2027-02-10)
+    const afterAdvance = applySyncMutations(prepared, [
+      {
+        opId: 'op-pay-loan-3',
+        clientTimestamp: '2026-11-10T12:05:00.000Z',
+        type: 'commitment.pay',
+        commitmentId: 'loan-adv',
+        transactionId: 'tx-loan-adv-3',
+        paidAtIso: '2026-11-10T12:05:00.000Z',
+        periodMonth: '2026-11',
+        cyclesCount: 3,
+        isAdvancePayment: true,
+      },
+      {
+        opId: 'op-pay-bill-2',
+        clientTimestamp: '2026-11-10T12:06:00.000Z',
+        type: 'commitment.pay',
+        commitmentId: 'bill-adv',
+        transactionId: 'tx-bill-adv-2',
+        paidAtIso: '2026-11-10T12:06:00.000Z',
+        periodMonth: '2026-11',
+        cyclesCount: 2,
+        isAdvancePayment: true,
+      },
+    ]);
+
+    const loanAfter = afterAdvance.recurringCommitments.find((c) => c.id === 'loan-adv')!;
+    expect(loanAfter.paidInstallments).toBe(4);
+    expect(loanAfter.lastPaidPeriod).toBe('2027-01');
+    expect(loanAfter.previousLastPaidPeriod).toBe('2026-10');
+    expect(loanAfter.lastPaidCycles).toBe(3);
+    expect(loanAfter.nextDueDate).toBe('2027-02-15');
+    expect(loanAfter.isActive).toBe(true);
+    expect(afterAdvance.transactions.find((t) => t.id === 'tx-loan-adv-3')!.amountMinor).toBe(
+      600_000,
+    );
+
+    const billAfter = afterAdvance.recurringCommitments.find((c) => c.id === 'bill-adv')!;
+    expect(billAfter.lastPaidPeriod).toBe('2027-01');
+    expect(billAfter.previousLastPaidPeriod).toBe('2026-11');
+    expect(billAfter.lastPaidCycles).toBe(2);
+    expect(billAfter.nextDueDate).toBe('2027-02-10');
+    expect(afterAdvance.transactions.find((t) => t.id === 'tx-bill-adv-2')!.amountMinor).toBe(
+      300_000,
+    );
+    expect(afterAdvance.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
+      4_100_000,
+    );
+
+    // Undo the 2-cycle advance pay on bill restores previousLastPaidPeriod ('2026-11') & nextDueDate ('2026-12-10')
+    const afterUndoBill = applySyncMutations(afterAdvance, [
+      {
+        opId: 'op-unpay-bill-adv',
+        clientTimestamp: '2026-11-10T12:07:00.000Z',
+        type: 'commitment.unpay',
+        commitmentId: 'bill-adv',
+      },
+    ]);
+    const billUndone = afterUndoBill.recurringCommitments.find((c) => c.id === 'bill-adv')!;
+    expect(billUndone.lastPaidPeriod).toBe('2026-11');
+    expect(billUndone.nextDueDate).toBe('2026-12-10');
+    expect(afterUndoBill.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
+      4_400_000,
+    );
+
+    // Paying more cycles than remaining clamps to remaining (2 left) and marks loan paid off
+    const afterPayoff = applySyncMutations(afterUndoBill, [
+      {
+        opId: 'op-payoff-loan',
+        clientTimestamp: '2026-11-10T12:08:00.000Z',
+        type: 'commitment.pay',
+        commitmentId: 'loan-adv',
+        transactionId: 'tx-loan-payoff',
+        paidAtIso: '2026-11-10T12:08:00.000Z',
+        periodMonth: '2026-11',
+        cyclesCount: 10,
+        isAdvancePayment: true,
+      },
+    ]);
+    const loanPaidOff = afterPayoff.recurringCommitments.find((c) => c.id === 'loan-adv')!;
+    expect(loanPaidOff.paidInstallments).toBe(6);
+    expect(loanPaidOff.isActive).toBe(false);
+    expect(loanPaidOff.lastPaidCycles).toBe(2);
+    expect(afterPayoff.transactions.find((t) => t.id === 'tx-loan-payoff')!.amountMinor).toBe(
+      400_000,
+    );
+  });
+
   it('supports backup overwrite and merge', () => {
     const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
     const customAccount = {

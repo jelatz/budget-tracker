@@ -115,7 +115,7 @@ export async function handleMcpRpcMessage(
               version: '1.0.0',
             },
             instructions:
-              'Budget Tracker MCP server. NEVER guess, invent, or assume missing required fields (type, amount, account, toAccount for TRANSFER, category for EXPENSE/INCOME, or obligation). If the user omits any required field or an account/category/obligation name is ambiguous, call get_budget_context if needed to list valid options and ask the user a brief clarifying question BEFORE calling log_transaction or pay_obligation.',
+              'Budget Tracker MCP server. NEVER guess, invent, or assume missing required fields (type, amount, account, toAccount for TRANSFER, category for EXPENSE/INCOME, obligation, or card/paymentAccount for pay_credit_card / unpay_credit_card). If the user omits any required field or an account/category/obligation name is ambiguous, call get_budget_context if needed to list valid options and ask the user a brief clarifying question BEFORE calling log_transaction, pay_obligation, pay_credit_card, or unpay_credit_card.',
           },
         };
       }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,13 +12,19 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
+  advanceNextDueDateByCycles,
+  formatCalendarDateShort,
   formatCalendarDateString,
   formatMinorUnits,
+  formatPeriodMonthShort,
   getAccountTypeLabel,
+  MAX_SAFE_MONEY_MINOR,
   minorUnitsToDecimalInput,
   normalizeDecimalInput,
   parseDateInputToIso,
   parseDecimalToMinorUnits,
+  resolveEffectiveCommitmentCycles,
+  resolveTargetPeriodForCommitmentPay,
   type Account,
   type RecurringCommitment,
 } from '@repo/contracts';
@@ -33,14 +39,18 @@ import { usePayRecurringCommitment } from '@/features/transactions/hooks/use-tra
 export interface PayObligationModalProps {
   visible: boolean;
   commitment: RecurringCommitment | null;
+  mode?: 'pay' | 'advance';
   accounts: readonly Account[];
   onClose: () => void;
   onPaid: (message: string) => void;
 }
 
+const CYCLE_PRESETS = [1, 2, 3, 6] as const;
+
 export function PayObligationModal({
   visible,
   commitment,
+  mode = 'pay',
   accounts,
   onClose,
   onPaid,
@@ -52,23 +62,36 @@ export function PayObligationModal({
 
   const payMutation = usePayRecurringCommitment();
 
+  const [cyclesCount, setCyclesCount] = useState(1);
   const [amountInput, setAmountInput] = useState('');
   const [dateInput, setDateInput] = useState(() =>
     formatCalendarDateString(new Date()),
   );
   const [accountId, setAccountId] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const initializedKeyRef = useRef<string | null>(null);
 
-  const payAccounts = accounts.filter((a) =>
-    commitment?.kind === 'CREDIT_CARD_INSTALLMENT'
-      ? a.id === commitment.accountId
-      : a.accountType !== 'CREDIT_CARD' || a.id === commitment?.accountId,
+  const payAccounts = useMemo(
+    () =>
+      accounts.filter((a) =>
+        commitment?.kind === 'CREDIT_CARD_INSTALLMENT'
+          ? a.id === commitment.accountId
+          : a.accountType !== 'CREDIT_CARD' || a.id === commitment?.accountId,
+      ),
+    [accounts, commitment],
   );
 
   useEffect(() => {
     if (!visible || !commitment) {
+      initializedKeyRef.current = null;
       return;
     }
+    const initKey = `${commitment.id}:${mode}`;
+    if (initializedKeyRef.current === initKey) {
+      return;
+    }
+    initializedKeyRef.current = initKey;
+    setCyclesCount(1);
     setAmountInput(minorUnitsToDecimalInput(commitment.amountMinor));
     setDateInput(formatCalendarDateString(new Date()));
     const fallbackAccount =
@@ -77,13 +100,69 @@ export function PayObligationModal({
       commitment.accountId;
     setAccountId(fallbackAccount);
     setErrorMsg(null);
-  }, [visible, commitment, payAccounts]);
+  }, [visible, commitment, mode, payAccounts]);
 
   if (!commitment) {
     return null;
   }
 
   const isVariableBill = commitment.kind === 'BILL';
+  const remainingTerms =
+    typeof commitment.totalInstallments === 'number' &&
+    commitment.totalInstallments > 0
+      ? Math.max(0, commitment.totalInstallments - commitment.paidInstallments)
+      : null;
+  const maxCycles = remainingTerms !== null ? Math.max(1, remainingTerms) : 120;
+  const effectiveCycles = Math.min(cyclesCount, maxCycles);
+  const isAdvanceMode = mode === 'advance' || effectiveCycles > 1;
+  const cyclePresets = CYCLE_PRESETS.filter((n) => n <= maxCycles);
+
+  const parsedDateIso = parseDateInputToIso(dateInput);
+  const basePeriod = formatCalendarDateString(
+    parsedDateIso ? new Date(parsedDateIso) : new Date(),
+  ).slice(0, 7);
+  const resolvedEffective = Math.max(
+    1,
+    resolveEffectiveCommitmentCycles(commitment, effectiveCycles),
+  );
+  const targetPeriod = resolveTargetPeriodForCommitmentPay(
+    commitment,
+    basePeriod,
+    resolvedEffective,
+  );
+  const willPayOff =
+    remainingTerms !== null && resolvedEffective >= remainingTerms;
+  const previewNextDue =
+    commitment.nextDueDate && !willPayOff
+      ? advanceNextDueDateByCycles(
+          commitment.nextDueDate,
+          commitment.frequency,
+          resolvedEffective,
+          commitment.dueDay,
+        )
+      : null;
+
+  const handleSelectCycles = (nextCount: number) => {
+    const clamped = Math.max(1, Math.min(maxCycles, Math.trunc(nextCount)));
+    setCyclesCount(clamped);
+    setAmountInput(
+      minorUnitsToDecimalInput(
+        Math.min(MAX_SAFE_MONEY_MINOR, commitment.amountMinor * clamped),
+      ),
+    );
+    if (errorMsg) setErrorMsg(null);
+  };
+
+  const parsedInputMinor = parseDecimalToMinorUnits(amountInput);
+  const expectedMultiMinor = Math.min(
+    MAX_SAFE_MONEY_MINOR,
+    commitment.amountMinor * effectiveCycles,
+  );
+  const showPerCycleEquivalent =
+    effectiveCycles > 1 &&
+    parsedInputMinor !== null &&
+    parsedInputMinor > 0 &&
+    parsedInputMinor !== expectedMultiMinor;
 
   const handleConfirm = async () => {
     const parsedMinor = parseDecimalToMinorUnits(amountInput);
@@ -98,20 +177,27 @@ export function PayObligationModal({
       return;
     }
 
+    const expectedDefaultMinor = commitment.amountMinor * effectiveCycles;
     setErrorMsg(null);
     try {
       await payMutation.mutateAsync({
         commitmentId: commitment.id,
         paidAtIso: paidIso,
         accountId: accountId || commitment.accountId,
+        cyclesCount: effectiveCycles,
+        isAdvancePayment: isAdvanceMode,
         actualAmountMinor:
-          parsedMinor !== commitment.amountMinor ? parsedMinor : undefined,
+          parsedMinor !== expectedDefaultMinor ? parsedMinor : undefined,
       });
       onPaid(
-        `Paid ${commitment.name} (${formatMinorUnits(
-          parsedMinor,
-          commitment.currency,
-        )}).`,
+        isAdvanceMode
+          ? `Advance paid ${commitment.name} (${effectiveCycles} ${
+              effectiveCycles === 1 ? 'cycle' : 'cycles'
+            } · ${formatMinorUnits(parsedMinor, commitment.currency)}).`
+          : `Paid ${commitment.name} (${formatMinorUnits(
+              parsedMinor,
+              commitment.currency,
+            )}).`,
       );
       onClose();
     } catch (error: unknown) {
@@ -167,10 +253,11 @@ export function PayObligationModal({
                     accessibilityRole="header"
                     className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark"
                   >
-                    Record Payment
+                    {mode === 'advance' ? 'Advance Pay' : 'Record Payment'}
                   </ThemedText>
                   <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
                     {commitment.name}
+                    {mode === 'advance' ? ' · Pay upcoming cycle(s) ahead' : ''}
                   </ThemedText>
                 </View>
 
@@ -196,9 +283,138 @@ export function PayObligationModal({
                 </View>
               ) : null}
 
+              {/* Cycles / Months Selector */}
+              <View className="gap-2">
+                <View className="flex-row items-center justify-between gap-2">
+                  <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                    {mode === 'advance'
+                      ? 'Cycles to Advance Pay'
+                      : 'Cycles / Months to Pay'}
+                  </ThemedText>
+                  {remainingTerms !== null ? (
+                    <ThemedText
+                      numeric
+                      className="text-[11px] font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                    >
+                      {remainingTerms} left
+                    </ThemedText>
+                  ) : null}
+                </View>
+
+                <View className="flex-row flex-wrap items-center gap-2">
+                  {cyclePresets.map((preset) => {
+                    const isSelected = effectiveCycles === preset;
+                    return (
+                      <Pressable
+                        key={preset}
+                        onPress={() => handleSelectCycles(preset)}
+                        disabled={payMutation.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Pay ${preset} ${preset === 1 ? 'month' : 'months'}`}
+                        accessibilityState={{ selected: isSelected }}
+                        className={`min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
+                          isSelected
+                            ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                        }`}
+                      >
+                        <ThemedText
+                          numeric
+                          className={`text-xs font-bold ${
+                            isSelected
+                              ? 'text-brand-500 dark:text-brand-400'
+                              : 'text-ledger-ink dark:text-ledger-ink-dark'
+                          }`}
+                        >
+                          {preset === 1 ? '1 mo' : `${preset} mos`}
+                        </ThemedText>
+                      </Pressable>
+                    );
+                  })}
+
+                  {remainingTerms !== null && remainingTerms > 1 ? (
+                    <Pressable
+                      onPress={() => handleSelectCycles(remainingTerms)}
+                      disabled={payMutation.isPending}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Pay off all ${remainingTerms} remaining months`}
+                      accessibilityState={{
+                        selected: effectiveCycles === remainingTerms,
+                      }}
+                      className={`min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
+                        effectiveCycles === remainingTerms
+                          ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                          : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark active:opacity-75'
+                      }`}
+                    >
+                      <ThemedText
+                        numeric
+                        className={`text-xs font-bold ${
+                          effectiveCycles === remainingTerms
+                            ? 'text-brand-500 dark:text-brand-400'
+                            : 'text-ledger-ink dark:text-ledger-ink-dark'
+                        }`}
+                      >
+                        Pay Off All ({remainingTerms})
+                      </ThemedText>
+                    </Pressable>
+                  ) : null}
+
+                  <View className="flex-row items-center gap-1 ml-auto">
+                    <Pressable
+                      onPress={() => handleSelectCycles(effectiveCycles - 1)}
+                      disabled={payMutation.isPending || effectiveCycles <= 1}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease cycles"
+                      className={`min-h-[44px] min-w-[44px] rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center ${
+                        effectiveCycles <= 1 ? 'opacity-40' : 'active:opacity-75'
+                      }`}
+                    >
+                      <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        -
+                      </ThemedText>
+                    </Pressable>
+                    <ThemedText
+                      numeric
+                      style={TABULAR_NUMS_STYLE}
+                      className="min-w-[28px] text-center text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                    >
+                      {effectiveCycles}
+                    </ThemedText>
+                    <Pressable
+                      onPress={() => handleSelectCycles(effectiveCycles + 1)}
+                      disabled={payMutation.isPending || effectiveCycles >= maxCycles}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase cycles"
+                      className={`min-h-[44px] min-w-[44px] rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center ${
+                        effectiveCycles >= maxCycles
+                          ? 'opacity-40'
+                          : 'active:opacity-75'
+                      }`}
+                    >
+                      <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                        +
+                      </ThemedText>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View className="px-3 py-2 rounded-xl bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border border-ledger-border dark:border-ledger-border-dark">
+                  <ThemedText className="text-xs font-semibold text-ledger-pine dark:text-ledger-pine-dark">
+                    {willPayOff && commitment.totalInstallments
+                      ? `Pays off all ${remainingTerms} remaining months (${commitment.totalInstallments}/${commitment.totalInstallments} paid)`
+                      : `Covers through ${formatPeriodMonthShort(targetPeriod)}${
+                          previewNextDue
+                            ? ` · Next due ${formatCalendarDateShort(previewNextDue)}`
+                            : ''
+                        }`}
+                  </ThemedText>
+                </View>
+              </View>
+
               <View className="gap-1.5">
                 <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                  {isVariableBill
+                  {isVariableBill && effectiveCycles === 1
                     ? `Actual Bill Amount (${commitment.currency})`
                     : `Payment Amount (${commitment.currency})`}
                 </ThemedText>
@@ -219,10 +435,22 @@ export function PayObligationModal({
                 />
                 {isVariableBill ? (
                   <ThemedText className="text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    Estimated baseline:{' '}
-                    {formatMinorUnits(commitment.amountMinor, commitment.currency)}.
-                    Changing this amount logs today&apos;s exact bill without changing
-                    your monthly estimate.
+                    {effectiveCycles === 1
+                      ? `Estimated baseline: ${formatMinorUnits(commitment.amountMinor, commitment.currency)}. Changing this amount logs today's exact bill without changing your monthly estimate.`
+                      : `Estimated total: ${formatMinorUnits(expectedMultiMinor, commitment.currency)} (${formatMinorUnits(commitment.amountMinor, commitment.currency)} × ${effectiveCycles} mos). Edit the total if your advance bill differs — your monthly estimate stays unchanged.`}
+                  </ThemedText>
+                ) : null}
+                {showPerCycleEquivalent && parsedInputMinor !== null ? (
+                  <ThemedText
+                    numeric
+                    className="text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                  >
+                    ≈{' '}
+                    {formatMinorUnits(
+                      Math.round(parsedInputMinor / effectiveCycles),
+                      commitment.currency,
+                    )}{' '}
+                    / cycle
                   </ThemedText>
                 ) : null}
               </View>
@@ -300,7 +528,9 @@ export function PayObligationModal({
                   onPress={handleConfirm}
                   disabled={payMutation.isPending}
                   accessibilityRole="button"
-                  accessibilityLabel="Confirm Payment"
+                  accessibilityLabel={
+                    isAdvanceMode ? 'Confirm Advance Payment' : 'Confirm Payment'
+                  }
                   className={`flex-1 min-h-[44px] py-2.5 rounded-xl bg-brand-500 active:bg-brand-600 dark:bg-brand-400 items-center justify-center ${
                     payMutation.isPending ? 'opacity-70' : ''
                   }`}
@@ -309,7 +539,9 @@ export function PayObligationModal({
                     <ActivityIndicator size="small" color={theme.onPrimary} />
                   ) : (
                     <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
-                      Confirm Payment
+                      {isAdvanceMode
+                        ? `Advance Pay (${effectiveCycles})`
+                        : 'Confirm Payment'}
                     </ThemedText>
                   )}
                 </Pressable>

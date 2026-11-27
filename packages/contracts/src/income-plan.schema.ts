@@ -436,7 +436,7 @@ function isCommitmentRelevantForPeriod(
   commitment: RecurringCommitment,
   periodMonth: string,
 ): boolean {
-  if (commitment.lastPaidPeriod === periodMonth) {
+  if (commitment.lastPaidPeriod && commitment.lastPaidPeriod >= periodMonth) {
     return true;
   }
   if (!commitment.isActive || isCommitmentPaidOff(commitment)) {

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceNextDueDate,
+  advancePeriodMonth,
   computeInstallmentProgress,
   computeSafeToSpend,
   formatCalendarDateShort,
+  formatPeriodMonthShort,
   getCommitmentDueStatus,
   getNextDueDatePreset,
   isCommitmentPaidOff,
   recurringCommitmentSchema,
+  resolveCommitmentDueDate,
   type RecurringCommitment,
 } from '../recurring.schema';
 
@@ -167,5 +170,25 @@ describe('recurring commitment terms & due labels', () => {
     expect(getNextDueDatePreset('TODAY', 31, jan31)).toBe('2026-01-31');
     expect(getNextDueDatePreset('NEXT_WEEK', 31, jan31)).toBe('2026-02-07');
     expect(getNextDueDatePreset('NEXT_MONTH', 31, jan31)).toBe('2026-02-28');
+  });
+
+  it('tracks paid-ahead periods and rolls forward resolved due dates', () => {
+    expect(advancePeriodMonth('2026-11', 2)).toBe('2027-01');
+    expect(formatPeriodMonthShort('2027-01')).toBe('Jan 2027');
+
+    const nov15 = new Date(2026, 10, 15, 12, 0, 0, 0);
+    const paidAhead: RecurringCommitment = {
+      ...BASE_COMMITMENT,
+      dueDay: 31,
+      lastPaidPeriod: '2027-01',
+    };
+
+    const status = getCommitmentDueStatus(paidAhead, nov15);
+    expect(status.state).toBe('PAID');
+    expect(status.isPaid).toBe(true);
+    expect(status.isPaidAhead).toBe(true);
+    expect(status.paidThroughPeriod).toBe('2027-01');
+    expect(status.isDueThisMonth).toBe(false);
+    expect(resolveCommitmentDueDate(paidAhead, nov15)).toBe('2027-02-28');
   });
 });

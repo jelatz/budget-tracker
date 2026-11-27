@@ -938,4 +938,229 @@ describe('Payday Calendar & Debts/Credit-Card Math', () => {
       'bill-paid',
     ]);
   });
+
+  it('supports credit card advance pay across paydown plans, due dates, Safe-to-Spend, and full payoff', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-27T12:00:00.000Z'));
+
+    const prepared = applySyncMutations(base, [
+      {
+        opId: 'op-bank',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-bank',
+        balanceMinor: 5_000_000,
+      },
+      {
+        opId: 'op-card-meta',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'account.updateMetadata',
+        account: {
+          id: 'account-card',
+          name: 'Home Credit',
+          accountType: 'CREDIT_CARD',
+          icon: '💳',
+          color: '#8B5CF6',
+          currency: DEFAULT_CURRENCY,
+          creditLimitMinor: 6_000_000,
+          monthlyPaymentTargetMinor: 500_000,
+          dueWeekday: 5,
+          dueWeekdayOrdinal: 4,
+          dueStartDate: '2026-12-25',
+        },
+      },
+      {
+        opId: 'op-card-bal',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-card',
+        balanceMinor: -3_000_000,
+      },
+    ]);
+
+    // Advance pay 2 months (Dec 2026 + Jan 2027) early on Nov 27, 2026 -> ₱10,000
+    const afterAdvance2 = applySyncMutations(prepared, [
+      {
+        opId: 'op-cc-adv-2',
+        clientTimestamp: '2026-11-27T12:05:00.000Z',
+        type: 'creditCard.payBill',
+        creditCardAccountId: 'account-card',
+        paymentAccountId: 'account-bank',
+        transferTransactionId: 'tx-cc-adv-2',
+        installmentTxPrefix: 'tx-cc-adv-inst-2',
+        paidAtIso: '2026-11-27T12:05:00.000Z',
+        periodMonth: '2026-11',
+        amountOverrideMinor: 1_000_000,
+        advanceMonths: 2,
+      },
+    ]);
+
+    const cardAdv2 = afterAdvance2.accounts.find((a) => a.id === 'account-card')!;
+    expect(cardAdv2.balanceMinor).toBe(-2_000_000);
+    expect(cardAdv2.paidThroughPeriod).toBe('2027-01');
+
+    // On Dec 20, 2026 with payday Dec 25, card is already paid through Jan 2027 -> dueDate rolls to Feb 2027 (4th Fri = 2027-02-26)
+    const decDate = new Date(2026, 11, 20, 12, 0, 0, 0);
+    const decSummary = computeCreditCardBillSummary({
+      account: cardAdv2,
+      commitments: afterAdvance2.recurringCommitments,
+      transactions: afterAdvance2.transactions,
+      currentDate: decDate,
+      nextPaydayDate: '2026-12-25',
+    });
+    expect(decSummary.isPaidAhead).toBe(true);
+    expect(decSummary.isPaidForCurrentMonth).toBe(true);
+    expect(decSummary.paidThroughPeriod).toBe('2027-01');
+    expect(decSummary.dueDate).toBe('2027-02-26');
+    expect(decSummary.isDueBeforeNextPayday).toBe(false);
+
+    const decSafe = computeSafeToSpend({
+      accounts: afterAdvance2.accounts,
+      commitments: afterAdvance2.recurringCommitments,
+      transactions: afterAdvance2.transactions,
+      nextPaydayDate: '2026-12-25',
+      currentDate: decDate,
+    });
+    expect(decSafe.dueBeforeNextPaydayMinor).toBe(0);
+    expect(decSafe.safeToSpendMinor).toBe(4_000_000);
+
+    // Paying off the full remaining ₱20,000 clears paidThroughPeriod
+    const afterFullPayoff = applySyncMutations(afterAdvance2, [
+      {
+        opId: 'op-cc-full-payoff',
+        clientTimestamp: '2026-12-20T12:00:00.000Z',
+        type: 'creditCard.payBill',
+        creditCardAccountId: 'account-card',
+        paymentAccountId: 'account-bank',
+        transferTransactionId: 'tx-cc-payoff',
+        installmentTxPrefix: 'tx-cc-payoff-inst',
+        paidAtIso: '2026-12-20T12:00:00.000Z',
+        periodMonth: '2026-12',
+        amountOverrideMinor: 2_000_000,
+        advanceMonths: 4,
+      },
+    ]);
+    const settledCard = afterFullPayoff.accounts.find((a) => a.id === 'account-card')!;
+    expect(settledCard.balanceMinor).toBe(0);
+    expect(settledCard.paidThroughPeriod).toBeUndefined();
+
+    // Undo full payoff restores balance (-₱20k) and previous paidThroughPeriod ('2027-01')
+    const afterUndoPayoff = applySyncMutations(afterFullPayoff, [
+      {
+        opId: 'op-cc-undo-payoff',
+        clientTimestamp: '2026-12-20T12:05:00.000Z',
+        type: 'creditCard.unpayBill',
+        creditCardAccountId: 'account-card',
+      },
+    ]);
+    const cardAfterUndoPayoff = afterUndoPayoff.accounts.find(
+      (a) => a.id === 'account-card',
+    )!;
+    expect(cardAfterUndoPayoff.balanceMinor).toBe(-2_000_000);
+    expect(cardAfterUndoPayoff.paidThroughPeriod).toBe('2027-01');
+    expect(afterUndoPayoff.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
+      4_000_000,
+    );
+
+    // Deleting the transfer transaction directly also rolls back paidThroughPeriod on the card
+    const afterDeleteAdvanceTx = applySyncMutations(afterAdvance2, [
+      {
+        opId: 'op-del-cc-adv',
+        clientTimestamp: '2026-11-27T12:10:00.000Z',
+        type: 'transaction.delete',
+        id: 'tx-cc-adv-2',
+      },
+    ]);
+    const cardAfterDelete = afterDeleteAdvanceTx.accounts.find(
+      (a) => a.id === 'account-card',
+    )!;
+    expect(cardAfterDelete.balanceMinor).toBe(-3_000_000);
+    expect(cardAfterDelete.paidThroughPeriod).toBeUndefined();
+    expect(cardAfterDelete.lastPaymentTransactionId).toBeUndefined();
+  });
+
+  it('reverts transfer and installment slices when running creditCard.unpayBill on a card with installments', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-10T12:00:00.000Z'));
+    const prepared = applySyncMutations(base, [
+      {
+        opId: 'op-set-bank-u',
+        clientTimestamp: '2026-11-10T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-bank',
+        balanceMinor: 3_000_000,
+      },
+      {
+        opId: 'op-swipe-u',
+        clientTimestamp: '2026-11-10T12:01:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-swipe-u',
+          type: 'EXPENSE',
+          amountMinor: 100_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-card',
+          categoryId: 'cat-daily-living',
+          occurredAt: '2026-11-10T12:01:00.000Z',
+          createdAt: '2026-11-10T12:01:00.000Z',
+        },
+      },
+      {
+        opId: 'op-inst-u',
+        clientTimestamp: '2026-11-10T12:02:00.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'inst-u',
+          name: 'Monitor',
+          kind: 'CREDIT_CARD_INSTALLMENT',
+          amountMinor: 250_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-card',
+          categoryId: 'cat-loans',
+          dueDay: 15,
+          totalInstallments: 6,
+          paidInstallments: 1,
+        }),
+      },
+      {
+        opId: 'op-pay-cc-u',
+        clientTimestamp: '2026-11-15T10:00:00.000Z',
+        type: 'creditCard.payBill',
+        creditCardAccountId: 'account-card',
+        paymentAccountId: 'account-bank',
+        transferTransactionId: 'tx-cc-pay-u',
+        installmentTxPrefix: 'tx-cc-inst-u',
+        paidAtIso: '2026-11-15T10:00:00.000Z',
+        periodMonth: '2026-11',
+        advanceMonths: 2,
+      },
+    ]);
+
+    expect(prepared.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
+      2_400_000,
+    );
+    expect(prepared.recurringCommitments.find((c) => c.id === 'inst-u')!.paidInstallments).toBe(
+      3,
+    );
+
+    const undone = applySyncMutations(prepared, [
+      {
+        opId: 'op-unpay-cc-u',
+        clientTimestamp: '2026-11-15T10:05:00.000Z',
+        type: 'creditCard.unpayBill',
+        creditCardAccountId: 'account-card',
+      },
+    ]);
+
+    expect(undone.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(
+      3_000_000,
+    );
+    expect(undone.accounts.find((a) => a.id === 'account-card')!.balanceMinor).toBe(
+      -100_000,
+    );
+    expect(undone.accounts.find((a) => a.id === 'account-card')!.paidThroughPeriod).toBeUndefined();
+    const instAfter = undone.recurringCommitments.find((c) => c.id === 'inst-u')!;
+    expect(instAfter.paidInstallments).toBe(1);
+    expect(instAfter.lastPaidPeriod).toBeUndefined();
+    expect(undone.transactions.some((t) => t.id === 'tx-cc-pay-u')).toBe(false);
+    expect(undone.transactions.some((t) => t.id === 'tx-cc-inst-u-inst-u')).toBe(false);
+  });
 });

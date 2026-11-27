@@ -67,6 +67,9 @@ export async function handleCreateAccount(
     ...(params.input.dueStartDate !== undefined
       ? { dueStartDate: params.input.dueStartDate }
       : {}),
+    ...(params.input.paidThroughPeriod !== undefined
+      ? { paidThroughPeriod: params.input.paidThroughPeriod }
+      : {}),
   });
 
   const result = await repo.createAccount(params.userId, account);

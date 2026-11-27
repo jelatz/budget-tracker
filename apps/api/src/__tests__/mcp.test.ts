@@ -587,6 +587,8 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
       'delete_transaction',
       'pay_obligation',
       'unpay_obligation',
+      'pay_credit_card',
+      'unpay_credit_card',
     ]);
 
     // 9. Tool calls: get_budget_context, log_transaction (+ idempotency), list, delete, pay/unpay
@@ -715,6 +717,170 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
     };
     expect(unpayJson.result.structuredContent.obligation.paidInstallments).toBe(1);
     expect(unpayJson.result.structuredContent.obligation.lastPaidPeriod).toBeNull();
+
+    // 9b. Advance pay obligation for 2 cycles, then undo back to original state
+    const advPayRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 91,
+      method: 'tools/call',
+      params: {
+        name: 'pay_obligation',
+        arguments: {
+          obligation: 'JBL Partybox',
+          paidAt: '2026-11-27',
+          cycles: 2,
+          advance: true,
+        },
+      },
+    });
+    const advPayJson = (await advPayRes.json()) as {
+      result: {
+        isError?: boolean;
+        structuredContent: {
+          obligation: {
+            paidInstallments: number;
+            lastPaidPeriod: string;
+            isPaidAhead: boolean;
+            lastPaidCycles: number;
+          };
+        };
+      };
+    };
+    expect(advPayJson.result.isError).toBeUndefined();
+    expect(advPayJson.result.structuredContent.obligation.paidInstallments).toBe(3);
+    expect(advPayJson.result.structuredContent.obligation.lastPaidPeriod).toBe('2026-12');
+    expect(advPayJson.result.structuredContent.obligation.isPaidAhead).toBe(true);
+    expect(advPayJson.result.structuredContent.obligation.lastPaidCycles).toBe(2);
+
+    const undoAdvRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 92,
+      method: 'tools/call',
+      params: {
+        name: 'unpay_obligation',
+        arguments: { obligation: 'JBL Partybox' },
+      },
+    });
+    const undoAdvJson = (await undoAdvRes.json()) as {
+      result: {
+        structuredContent: {
+          obligation: { paidInstallments: number; lastPaidPeriod: string | null };
+        };
+      };
+    };
+    expect(undoAdvJson.result.structuredContent.obligation.paidInstallments).toBe(1);
+    expect(undoAdvJson.result.structuredContent.obligation.lastPaidPeriod).toBeNull();
+
+    // 9c. pay_credit_card missing required fields prompts user, then advance-paying updates paidThroughPeriod
+    const missingCardRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 93,
+      method: 'tools/call',
+      params: {
+        name: 'pay_credit_card',
+        arguments: { card: '', paymentAccount: '' },
+      },
+    });
+    const missingCardJson = (await missingCardRes.json()) as {
+      result: {
+        isError: boolean;
+        structuredContent: {
+          needsUserInput: boolean;
+          missingFields: string[];
+          availableCreditCards: string[];
+        };
+      };
+    };
+    expect(missingCardJson.result.isError).toBe(true);
+    expect(missingCardJson.result.structuredContent.needsUserInput).toBe(true);
+    expect(missingCardJson.result.structuredContent.missingFields).toEqual([
+      'card',
+      'paymentAccount',
+    ]);
+    expect(missingCardJson.result.structuredContent.availableCreditCards).toContain(
+      'Maribank CC',
+    );
+
+    // Seed swipe balance on Maribank CC and cash on Main Bank for card payment
+    const seededRec = usersById.get('user-mcp-1')!;
+    seededRec.state = applySyncMutations(seededRec.state, [
+      {
+        opId: 'op-mcp-seed-bank',
+        clientTimestamp: '2026-11-27T10:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-bank',
+        balanceMinor: 2_000_000,
+      },
+      {
+        opId: 'op-mcp-seed-cc',
+        clientTimestamp: '2026-11-27T10:01:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'acc-maribank-cc',
+        balanceMinor: -1_000_000,
+      },
+    ]);
+
+    const payCardRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 94,
+      method: 'tools/call',
+      params: {
+        name: 'pay_credit_card',
+        arguments: {
+          card: 'Maribank CC',
+          paymentAccount: 'Main Bank',
+          amount: 4000,
+          advanceMonths: 2,
+          paidAt: '2026-11-27',
+        },
+      },
+    });
+    const payCardJson = (await payCardRes.json()) as {
+      result: {
+        isError?: boolean;
+        structuredContent: {
+          creditCard: {
+            balanceMinor: number;
+            paidThroughPeriod: string;
+            isPaidAhead: boolean;
+          };
+        };
+      };
+    };
+    expect(payCardJson.result.isError).toBeUndefined();
+    expect(payCardJson.result.structuredContent.creditCard.balanceMinor).toBe(-600_000);
+    expect(payCardJson.result.structuredContent.creditCard.paidThroughPeriod).toBe(
+      '2026-12',
+    );
+    expect(payCardJson.result.structuredContent.creditCard.isPaidAhead).toBe(true);
+
+    const unpayCardRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 95,
+      method: 'tools/call',
+      params: {
+        name: 'unpay_credit_card',
+        arguments: { card: 'Maribank CC' },
+      },
+    });
+    const unpayCardJson = (await unpayCardRes.json()) as {
+      result: {
+        isError?: boolean;
+        structuredContent: {
+          creditCard: {
+            balanceMinor: number;
+            paidThroughPeriod: string | null;
+            isPaidAhead: boolean;
+          };
+        };
+      };
+    };
+    expect(unpayCardJson.result.isError).toBeUndefined();
+    expect(unpayCardJson.result.structuredContent.creditCard.balanceMinor).toBe(
+      -1_000_000,
+    );
+    expect(unpayCardJson.result.structuredContent.creditCard.paidThroughPeriod).toBeNull();
+    expect(unpayCardJson.result.structuredContent.creditCard.isPaidAhead).toBe(false);
 
     // 10. Missing/empty required fields return structured needsUserInput prompts without mutating state
     const missingExpenseRes = await callMcp({

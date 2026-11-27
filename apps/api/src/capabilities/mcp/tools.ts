@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
+  computeCreditCardBillSummary,
   computeSafeToSpend,
   formatCalendarDateString,
   formatMinorUnits,
@@ -9,6 +10,7 @@ import {
   MAX_SAFE_MONEY_MINOR,
   parseCalendarDate,
   parseDecimalToMinorUnits,
+  resolveEffectiveCommitmentCycles,
   transactionSchema,
   type Account,
   type Category,
@@ -195,7 +197,7 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'pay_obligation',
     title: 'Pay Obligation',
     description:
-      'Record a monthly payment for a loan, recurring bill, or credit card installment (e.g. "JBL Partybox", "House Rent"). Required: obligation. Never guess which obligation—ask the user if missing or ambiguous.',
+      'Record a monthly or advance payment for a loan, recurring bill, or credit card installment (e.g. "JBL Partybox", "House Rent"). Supports paying multiple cycles ahead (cycles > 1 or advance: true). Required: obligation. Never guess which obligation—ask the user if missing or ambiguous.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -208,7 +210,7 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
           type: 'number',
           exclusiveMinimum: 0,
           description:
-            'Optional actual payment amount in major currency units. Defaults to the scheduled obligation amount.',
+            'Optional actual payment amount in major currency units. Defaults to the scheduled obligation amount times cycles.',
         },
         account: {
           type: 'string',
@@ -219,6 +221,20 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
           type: 'string',
           description:
             'Optional ISO-8601 timestamp or YYYY-MM-DD date. Defaults to current time.',
+        },
+        cycles: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 120,
+          default: 1,
+          description:
+            'Optional number of cycles/months to pay or advance pay (1-120). Defaults to 1.',
+        },
+        advance: {
+          type: 'boolean',
+          default: false,
+          description:
+            'Set true to advance-pay the next upcoming cycle even if already paid for the current month.',
         },
       },
       required: ['obligation'],
@@ -246,6 +262,77 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
         },
       },
       required: ['obligation'],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'pay_credit_card',
+    title: 'Pay Credit Card',
+    description:
+      'Record a credit card bill or paydown payment from a bank, e-wallet, or cash account, with optional advance payment for 1 or multiple months. Required: card and paymentAccount. Never guess missing required fields—ask the user first.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        card: {
+          type: 'string',
+          minLength: 1,
+          description: 'Credit card account name or ID.',
+        },
+        paymentAccount: {
+          type: 'string',
+          minLength: 1,
+          description: 'Source bank, e-wallet, or cash account name or ID to pay from.',
+        },
+        amount: {
+          type: 'number',
+          exclusiveMinimum: 0,
+          description:
+            'Optional payment amount in major currency units. Defaults to the card upcoming bill / paydown plan times advanceMonths (or full owed bill).',
+        },
+        advanceMonths: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 120,
+          description:
+            'Optional number of months to cover/advance pay (1-120). Advances card due date and active card installments.',
+        },
+        paidAt: {
+          type: 'string',
+          description:
+            'Optional ISO-8601 timestamp or YYYY-MM-DD date. Defaults to current time.',
+        },
+      },
+      required: ['card', 'paymentAccount'],
+      additionalProperties: false,
+    },
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: false,
+    },
+  },
+  {
+    name: 'unpay_credit_card',
+    title: 'Undo Credit Card Payment',
+    description:
+      'Undo the most recent credit card bill, paydown, or advance payment (reverting the transfer, any installment slices recorded with it, and paid-through period). Required: card. Never guess which card—ask the user if missing or ambiguous.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        card: {
+          type: 'string',
+          minLength: 1,
+          description: 'Credit card account name or ID.',
+        },
+      },
+      required: ['card'],
       additionalProperties: false,
     },
     annotations: {
@@ -398,10 +485,24 @@ const payObligationArgsSchema = z.object({
   amount: z.number().finite().positive().optional(),
   account: z.string().trim().min(1).optional(),
   paidAt: z.string().trim().optional(),
+  cycles: z.number().int().min(1).max(120).optional(),
+  advance: z.boolean().optional(),
 });
 
 const unpayObligationArgsSchema = z.object({
   obligation: z.string().trim().min(1),
+});
+
+const payCreditCardArgsSchema = z.object({
+  card: z.string().trim().min(1),
+  paymentAccount: z.string().trim().min(1),
+  amount: z.number().finite().positive().optional(),
+  advanceMonths: z.number().int().min(1).max(120).optional(),
+  paidAt: z.string().trim().optional(),
+});
+
+const unpayCreditCardArgsSchema = z.object({
+  card: z.string().trim().min(1),
 });
 
 async function requireUserState(syncRepo: SyncRepository, userId: string) {
@@ -420,6 +521,13 @@ function summarizeAccount(account: Account) {
     currency: account.currency,
     balanceMinor: account.balanceMinor,
     balanceFormatted: formatMinorUnits(account.balanceMinor, account.currency),
+    monthlyPaymentTargetMinor: account.monthlyPaymentTargetMinor ?? null,
+    paidThroughPeriod: account.paidThroughPeriod ?? null,
+    canUndoLastPayment: Boolean(
+      account.lastPaymentTransactionId ||
+        account.lastPaymentInstallmentTxPrefix ||
+        account.paidThroughPeriod,
+    ),
   };
 }
 
@@ -446,7 +554,10 @@ function summarizeCommitment(c: RecurringCommitment, now: Date) {
     paidInstallments: c.paidInstallments,
     totalInstallments: c.totalInstallments ?? null,
     lastPaidPeriod: c.lastPaidPeriod ?? null,
+    lastPaidCycles: c.lastPaidCycles ?? null,
+    paidThroughPeriod: status.paidThroughPeriod,
     isPaidThisMonth: status.isPaid,
+    isPaidAhead: status.isPaidAhead,
     isPaidOff: status.isPaidOff,
     dueState: status.state,
     isActive: c.isActive,
@@ -942,13 +1053,28 @@ export async function executeMcpTool(
       }
       const commitment = match.item;
 
+      const requestedCycles = input.cycles ?? 1;
+      const isAdvance = input.advance === true || requestedCycles > 1;
+
       if (isCommitmentPaidOff(commitment)) {
         return toolError(`"${commitment.name}" is already paid off.`);
       }
-      if (commitment.lastPaidPeriod === resolvedDate.periodMonth) {
+      if (
+        !isAdvance &&
+        commitment.lastPaidPeriod &&
+        commitment.lastPaidPeriod >= resolvedDate.periodMonth
+      ) {
         return toolError(
-          `"${commitment.name}" is already marked paid for ${resolvedDate.periodMonth}.`,
+          `"${commitment.name}" is already marked paid through ${commitment.lastPaidPeriod}. Pass advance: true or cycles > 1 to advance pay.`,
         );
+      }
+
+      const effectiveCycles = resolveEffectiveCommitmentCycles(
+        commitment,
+        requestedCycles,
+      );
+      if (effectiveCycles <= 0) {
+        return toolError(`"${commitment.name}" has no remaining installments to pay.`);
       }
 
       let accountId: string | undefined;
@@ -986,6 +1112,8 @@ export async function executeMcpTool(
             transactionId,
             paidAtIso: resolvedDate.iso,
             periodMonth: resolvedDate.periodMonth,
+            cyclesCount: effectiveCycles,
+            isAdvancePayment: isAdvance,
             ...(accountId ? { accountId } : {}),
             ...(actualAmountMinor !== undefined ? { actualAmountMinor } : {}),
           },
@@ -998,13 +1126,17 @@ export async function executeMcpTool(
       const createdTx = pushed.state.transactions.find(
         (t) => t.id === transactionId,
       );
-      const paidMinor = actualAmountMinor ?? commitment.amountMinor;
+      const paidMinor = actualAmountMinor ?? commitment.amountMinor * effectiveCycles;
 
       return toolSuccess({
         revision: pushed.revision,
         obligation: updated ? summarizeCommitment(updated, new Date()) : null,
         transaction: createdTx ?? null,
-        summary: `Marked ${commitment.name} as paid for ${resolvedDate.periodMonth} (${formatMinorUnits(paidMinor, commitment.currency)}).`,
+        summary: isAdvance
+          ? `Advance paid ${commitment.name} for ${effectiveCycles} ${
+              effectiveCycles === 1 ? 'cycle' : 'cycles'
+            } through ${updated?.lastPaidPeriod ?? resolvedDate.periodMonth} (${formatMinorUnits(paidMinor, commitment.currency)}).`
+          : `Marked ${commitment.name} as paid for ${resolvedDate.periodMonth} (${formatMinorUnits(paidMinor, commitment.currency)}).`,
       });
     }
 
@@ -1084,6 +1216,319 @@ export async function executeMcpTool(
         revision: pushed.revision,
         obligation: updated ? summarizeCommitment(updated, new Date()) : null,
         summary: `Marked ${commitment.name} as unpaid.`,
+      });
+    }
+
+    case 'pay_credit_card': {
+      const rawObj =
+        typeof args === 'object' && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : {};
+      const hasCard =
+        typeof rawObj.card === 'string' && rawObj.card.trim().length > 0;
+      const hasPaymentAccount =
+        typeof rawObj.paymentAccount === 'string' &&
+        rawObj.paymentAccount.trim().length > 0;
+      const missingFields: string[] = [];
+      if (!hasCard) missingFields.push('card');
+      if (!hasPaymentAccount) missingFields.push('paymentAccount');
+
+      if (missingFields.length > 0) {
+        const pulled = await requireUserState(deps.syncRepo, deps.userId);
+        const creditCards = pulled.state.accounts
+          .filter((a) => a.accountType === 'CREDIT_CARD')
+          .map((a) => a.name);
+        const paymentAccounts = pulled.state.accounts
+          .filter((a) => a.accountType !== 'CREDIT_CARD')
+          .map((a) => a.name);
+        return toolError(
+          `Missing required field(s): ${missingFields.join(', ')}. Ask the user instead of guessing.`,
+          {
+            needsUserInput: true,
+            missingFields,
+            promptForUser: `Ask the user for: ${missingFields.join(', ')}. Do not guess.`,
+            availableCreditCards: creditCards,
+            availablePaymentAccounts: paymentAccounts,
+          },
+        );
+      }
+
+      const parsed = payCreditCardArgsSchema.safeParse(args);
+      if (!parsed.success) {
+        return toolError(
+          parsed.error.issues[0]?.message ?? 'Invalid pay_credit_card arguments.',
+          {
+            needsUserInput: true,
+            promptForUser: 'Ask the user to clarify the credit card payment details.',
+          },
+        );
+      }
+
+      const input = parsed.data;
+      const resolvedDate = resolveDateInput(input.paidAt);
+      if (!resolvedDate) {
+        return toolError(
+          'Invalid paidAt date. Use ISO-8601 or YYYY-MM-DD format.',
+        );
+      }
+
+      let explicitAmountMinor: number | undefined;
+      if (input.amount !== undefined) {
+        const converted = decimalAmountToMinorUnits(input.amount);
+        if (converted === null) {
+          return toolError(
+            'Invalid amount: must be greater than 0 with at most 2 decimal places.',
+            {
+              needsUserInput: true,
+              missingFields: ['amount'],
+              promptForUser: 'Ask the user for a valid positive payment amount.',
+            },
+          );
+        }
+        explicitAmountMinor = converted;
+      }
+
+      const pulled = await requireUserState(deps.syncRepo, deps.userId);
+      const creditCardAccounts = pulled.state.accounts.filter(
+        (a) => a.accountType === 'CREDIT_CARD',
+      );
+      const liquidAccounts = pulled.state.accounts.filter(
+        (a) => a.accountType !== 'CREDIT_CARD',
+      );
+
+      const cardMatch = resolveNamedItem(
+        creditCardAccounts,
+        input.card,
+        'credit card',
+      );
+      if ('error' in cardMatch) {
+        return toolError(cardMatch.error, {
+          needsUserInput: true,
+          promptForUser: 'Ask the user which credit card they want to pay.',
+          availableCreditCards: cardMatch.candidates,
+        });
+      }
+      const cardAccount = cardMatch.item;
+
+      const payerMatch = resolveNamedItem(
+        liquidAccounts,
+        input.paymentAccount,
+        'payment account',
+      );
+      if ('error' in payerMatch) {
+        return toolError(payerMatch.error, {
+          needsUserInput: true,
+          promptForUser: 'Ask the user which account to pay from.',
+          availablePaymentAccounts: payerMatch.candidates,
+        });
+      }
+      const paymentAccount = payerMatch.item;
+
+      if (paymentAccount.currency !== cardAccount.currency) {
+        return toolError(
+          `Payment account currency (${paymentAccount.currency}) must match ${cardAccount.name} currency (${cardAccount.currency}).`,
+        );
+      }
+
+      const refDate = new Date(resolvedDate.iso);
+      const summaryBefore = computeCreditCardBillSummary({
+        account: cardAccount,
+        commitments: pulled.state.recurringCommitments,
+        transactions: pulled.state.transactions,
+        currentDate: refDate,
+      });
+
+      if (explicitAmountMinor === undefined && summaryBefore.totalCardDebtMinor <= 0) {
+        return toolError(
+          `"${cardAccount.name}" has no remaining balance or installments to pay.`,
+        );
+      }
+
+      let amountOverrideMinor = explicitAmountMinor;
+      if (amountOverrideMinor === undefined) {
+        if (input.advanceMonths !== undefined) {
+          if (summaryBefore.isPaydownPlan && summaryBefore.monthlyPaymentTargetMinor) {
+            const targetMinor = Math.min(
+              summaryBefore.totalCardDebtMinor,
+              summaryBefore.monthlyPaymentTargetMinor * input.advanceMonths,
+            );
+            if (targetMinor > 0) {
+              amountOverrideMinor = targetMinor;
+            }
+          }
+        } else if (summaryBefore.isPaydownPlan && summaryBefore.upcomingBillMinor > 0) {
+          amountOverrideMinor = summaryBefore.upcomingBillMinor;
+        }
+      }
+
+      const transferTransactionId = `tx-${randomUUID()}`;
+      const installmentTxPrefix = `tx-inst-${randomUUID().slice(0, 8)}`;
+
+      const pushed = await deps.syncRepo.pushMutations({
+        userId: deps.userId,
+        lastKnownRevision: pulled.revision,
+        mutations: [
+          {
+            opId: `op-mcp-${randomUUID()}`,
+            clientTimestamp: new Date().toISOString(),
+            type: 'creditCard.payBill',
+            creditCardAccountId: cardAccount.id,
+            paymentAccountId: paymentAccount.id,
+            transferTransactionId,
+            installmentTxPrefix,
+            paidAtIso: resolvedDate.iso,
+            periodMonth: resolvedDate.periodMonth,
+            ...(amountOverrideMinor !== undefined ? { amountOverrideMinor } : {}),
+            ...(input.advanceMonths !== undefined
+              ? { advanceMonths: input.advanceMonths }
+              : {}),
+          },
+        ],
+      });
+
+      const updatedCard = pushed.state.accounts.find((a) => a.id === cardAccount.id)!;
+      const summaryAfter = computeCreditCardBillSummary({
+        account: updatedCard,
+        commitments: pushed.state.recurringCommitments,
+        transactions: pushed.state.transactions,
+        currentDate: refDate,
+      });
+      const transferTx =
+        pushed.state.transactions.find((t) => t.id === transferTransactionId) ?? null;
+      const paidMinor = transferTx?.amountMinor ?? amountOverrideMinor ?? 0;
+
+      return toolSuccess({
+        revision: pushed.revision,
+        creditCard: {
+          id: updatedCard.id,
+          name: updatedCard.name,
+          balanceMinor: updatedCard.balanceMinor,
+          totalCardDebtMinor: summaryAfter.totalCardDebtMinor,
+          upcomingBillMinor: summaryAfter.upcomingBillMinor,
+          dueDate: summaryAfter.dueDate,
+          paidThroughPeriod: summaryAfter.paidThroughPeriod,
+          isPaidAhead: summaryAfter.isPaidAhead,
+        },
+        transferTransaction: transferTx,
+        summary: input.advanceMonths
+          ? `Advance paid ${cardAccount.name} for ${input.advanceMonths} ${
+              input.advanceMonths === 1 ? 'month' : 'months'
+            } (${formatMinorUnits(paidMinor, cardAccount.currency)}).${
+              summaryAfter.dueDate ? ` Next due: ${summaryAfter.dueDate}.` : ''
+            }`
+          : `Paid ${cardAccount.name} (${formatMinorUnits(paidMinor, cardAccount.currency)}) from ${paymentAccount.name}.`,
+      });
+    }
+
+    case 'unpay_credit_card': {
+      const rawObj =
+        typeof args === 'object' && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : {};
+      if (typeof rawObj.card !== 'string' || rawObj.card.trim().length === 0) {
+        const pulled = await requireUserState(deps.syncRepo, deps.userId);
+        const creditCards = pulled.state.accounts.filter(
+          (a) => a.accountType === 'CREDIT_CARD',
+        );
+        const undoableCards = creditCards
+          .filter((a) =>
+            Boolean(
+              a.lastPaymentTransactionId ||
+                a.lastPaymentInstallmentTxPrefix ||
+                a.paidThroughPeriod,
+            ),
+          )
+          .map((a) => a.name);
+        return toolError(
+          'Missing required field: card. Ask the user which credit card payment to undo.',
+          {
+            needsUserInput: true,
+            missingFields: ['card'],
+            promptForUser:
+              'Ask the user which credit card payment to undo. Do not guess.',
+            availableCreditCards:
+              undoableCards.length > 0
+                ? undoableCards
+                : creditCards.map((a) => a.name),
+          },
+        );
+      }
+
+      const parsed = unpayCreditCardArgsSchema.safeParse(args);
+      if (!parsed.success) {
+        return toolError(
+          parsed.error.issues[0]?.message ?? 'card is required.',
+          {
+            needsUserInput: true,
+            missingFields: ['card'],
+            promptForUser: 'Ask the user which credit card payment to undo.',
+          },
+        );
+      }
+
+      const pulled = await requireUserState(deps.syncRepo, deps.userId);
+      const creditCards = pulled.state.accounts.filter(
+        (a) => a.accountType === 'CREDIT_CARD',
+      );
+      const cardMatch = resolveNamedItem(
+        creditCards,
+        parsed.data.card,
+        'credit card',
+      );
+      if ('error' in cardMatch) {
+        return toolError(cardMatch.error, {
+          needsUserInput: true,
+          promptForUser: 'Ask the user to clarify which credit card they meant.',
+          availableCreditCards: cardMatch.candidates,
+        });
+      }
+      const cardAccount = cardMatch.item;
+
+      if (
+        !cardAccount.lastPaymentTransactionId &&
+        !cardAccount.lastPaymentInstallmentTxPrefix &&
+        !cardAccount.paidThroughPeriod
+      ) {
+        return toolError(
+          `"${cardAccount.name}" does not have a recent bill payment to undo.`,
+        );
+      }
+
+      const pushed = await deps.syncRepo.pushMutations({
+        userId: deps.userId,
+        lastKnownRevision: pulled.revision,
+        mutations: [
+          {
+            opId: `op-mcp-${randomUUID()}`,
+            clientTimestamp: new Date().toISOString(),
+            type: 'creditCard.unpayBill',
+            creditCardAccountId: cardAccount.id,
+          },
+        ],
+      });
+
+      const updatedCard = pushed.state.accounts.find(
+        (a) => a.id === cardAccount.id,
+      )!;
+      const summaryAfter = computeCreditCardBillSummary({
+        account: updatedCard,
+        commitments: pushed.state.recurringCommitments,
+        transactions: pushed.state.transactions,
+      });
+
+      return toolSuccess({
+        revision: pushed.revision,
+        creditCard: {
+          id: updatedCard.id,
+          name: updatedCard.name,
+          balanceMinor: updatedCard.balanceMinor,
+          totalCardDebtMinor: summaryAfter.totalCardDebtMinor,
+          upcomingBillMinor: summaryAfter.upcomingBillMinor,
+          dueDate: summaryAfter.dueDate,
+          paidThroughPeriod: summaryAfter.paidThroughPeriod,
+          isPaidAhead: summaryAfter.isPaidAhead,
+        },
+        summary: `Undid the most recent payment for ${cardAccount.name}.`,
       });
     }
 

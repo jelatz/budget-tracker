@@ -4,6 +4,7 @@ import {
   computeInstallmentProgress,
   formatCalendarDateShort,
   formatMinorUnits,
+  formatPeriodMonthShort,
   getCommitmentDueStatus,
   resolveCommitmentDueDate,
   type Account,
@@ -22,6 +23,7 @@ export interface ObligationCardProps {
   isDeleting?: boolean;
   isUnpaying?: boolean;
   onPay: () => void;
+  onAdvancePay: () => void;
   onUnpay: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -34,6 +36,7 @@ export function ObligationCard({
   isDeleting = false,
   isUnpaying = false,
   onPay,
+  onAdvancePay,
   onUnpay,
   onEdit,
   onDelete,
@@ -64,6 +67,10 @@ export function ObligationCard({
 
   if (dueStatus.isPaidOff) {
     statusLabel = 'Paid Off';
+    statusTone =
+      'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft text-ledger-pine dark:text-ledger-pine-dark';
+  } else if (dueStatus.isPaidAhead && dueStatus.paidThroughPeriod) {
+    statusLabel = `Paid thru ${formatPeriodMonthShort(dueStatus.paidThroughPeriod)}`;
     statusTone =
       'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft text-ledger-pine dark:text-ledger-pine-dark';
   } else if (dueStatus.isPaid) {
@@ -174,7 +181,11 @@ export function ObligationCard({
         </View>
 
         <View className="flex-row flex-wrap items-center gap-2">
-          {!dueStatus.isPaid && !dueStatus.isPaidOff && !confirmDelete && !confirmUndo ? (
+          {!dueStatus.isPaid &&
+          !dueStatus.isPaidOff &&
+          dueStatus.state !== 'FUTURE_MONTH' &&
+          !confirmDelete &&
+          !confirmUndo ? (
             <Pressable
               onPress={onPay}
               accessibilityRole="button"
@@ -183,6 +194,22 @@ export function ObligationCard({
             >
               <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
                 Pay Now
+              </ThemedText>
+            </Pressable>
+          ) : null}
+
+          {!dueStatus.isPaidOff &&
+          (dueStatus.isPaid || dueStatus.state === 'FUTURE_MONTH') &&
+          !confirmDelete &&
+          !confirmUndo ? (
+            <Pressable
+              onPress={onAdvancePay}
+              accessibilityRole="button"
+              accessibilityLabel={`Advance pay ${commitment.name}`}
+              className="min-h-[44px] min-w-[44px] px-3.5 py-2 rounded-xl bg-brand-50 dark:bg-ledger-pine-dark-soft border border-brand-500 dark:border-brand-400 items-center justify-center active:opacity-80"
+            >
+              <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                Advance Pay
               </ThemedText>
             </Pressable>
           ) : null}

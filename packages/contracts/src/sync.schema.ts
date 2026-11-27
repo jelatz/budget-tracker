@@ -124,6 +124,8 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
     periodMonth: periodMonthSchema.optional(),
     accountId: z.string().min(1).optional(),
     actualAmountMinor: positiveAmountMinorSchema.optional(),
+    cyclesCount: z.number().int().min(1).max(120).optional(),
+    isAdvancePayment: z.boolean().optional(),
   }),
   z.object({
     ...baseMutationFields,
@@ -140,6 +142,12 @@ export const syncMutationSchema = z.discriminatedUnion('type', [
     paidAtIso: z.string().datetime(),
     periodMonth: periodMonthSchema.optional(),
     amountOverrideMinor: positiveAmountMinorSchema.optional(),
+    advanceMonths: z.number().int().min(1).max(120).optional(),
+  }),
+  z.object({
+    ...baseMutationFields,
+    type: z.literal('creditCard.unpayBill'),
+    creditCardAccountId: z.string().min(1),
   }),
   z.object({
     ...baseMutationFields,

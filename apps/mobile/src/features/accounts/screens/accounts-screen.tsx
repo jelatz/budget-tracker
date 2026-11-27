@@ -559,6 +559,21 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
           ? { dueWeekdayOrdinal: resolvedDueWeekdayOrdinal }
           : {}),
         ...(dueStartDate !== undefined ? { dueStartDate } : {}),
+        ...(editingAccount?.paidThroughPeriod !== undefined
+          ? { paidThroughPeriod: editingAccount.paidThroughPeriod }
+          : {}),
+        ...(editingAccount?.previousPaidThroughPeriod !== undefined
+          ? { previousPaidThroughPeriod: editingAccount.previousPaidThroughPeriod }
+          : {}),
+        ...(editingAccount?.lastPaymentTransactionId !== undefined
+          ? { lastPaymentTransactionId: editingAccount.lastPaymentTransactionId }
+          : {}),
+        ...(editingAccount?.lastPaymentInstallmentTxPrefix !== undefined
+          ? {
+              lastPaymentInstallmentTxPrefix:
+                editingAccount.lastPaymentInstallmentTxPrefix,
+            }
+          : {}),
       });
       setModalVisible(false);
       showSuccess(

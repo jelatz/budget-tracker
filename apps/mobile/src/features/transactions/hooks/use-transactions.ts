@@ -44,6 +44,7 @@ import {
   payRecurringCommitment,
   resetLocalStore,
   setAccountBalance,
+  unpayCreditCardBill,
   unpayRecurringCommitment,
   updateMonthlyBudget,
   updateTransaction,
@@ -452,6 +453,8 @@ export function usePayRecurringCommitment() {
       paidAtIso?: string;
       accountId?: string;
       actualAmountMinor?: number;
+      cyclesCount?: number;
+      isAdvancePayment?: boolean;
     }) => payRecurringCommitment(params),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
@@ -479,7 +482,20 @@ export function usePayCreditCardBill() {
       paymentAccountId: string;
       paidAtIso?: string;
       amountOverrideMinor?: number;
+      advanceMonths?: number;
     }) => payCreditCardBill(params),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+    },
+  });
+}
+
+export function useUnpayCreditCardBill() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (creditCardAccountId: string) =>
+      unpayCreditCardBill(creditCardAccountId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
     },

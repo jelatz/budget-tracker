@@ -600,6 +600,8 @@ export async function payRecurringCommitment(params: {
   paidAtIso?: string;
   accountId?: string;
   actualAmountMinor?: number;
+  cyclesCount?: number;
+  isAdvancePayment?: boolean;
 }): Promise<{ commitment: RecurringCommitment; transaction: Transaction }> {
   const state = getCurrentSyncState();
   const commitment = state.recurringCommitments.find(
@@ -616,8 +618,14 @@ export async function payRecurringCommitment(params: {
   const paidDate = params.paidAtIso ? new Date(params.paidAtIso) : new Date();
   const validDate = Number.isNaN(paidDate.getTime()) ? new Date() : paidDate;
   const periodMonth = `${validDate.getFullYear()}-${String(validDate.getMonth() + 1).padStart(2, '0')}`;
+  const requestedCycles = params.cyclesCount ?? 1;
+  const isAdvance = params.isAdvancePayment === true || requestedCycles > 1;
 
-  if (commitment.lastPaidPeriod === periodMonth) {
+  if (
+    !isAdvance &&
+    commitment.lastPaidPeriod &&
+    commitment.lastPaidPeriod >= periodMonth
+  ) {
     throw new Error('Already marked paid for this period.');
   }
 
@@ -640,6 +648,10 @@ export async function payRecurringCommitment(params: {
     ...(params.actualAmountMinor !== undefined
       ? { actualAmountMinor: params.actualAmountMinor }
       : {}),
+    ...(params.cyclesCount !== undefined
+      ? { cyclesCount: params.cyclesCount }
+      : {}),
+    ...(isAdvance ? { isAdvancePayment: true } : {}),
   });
 
   const updatedCommitment = nextState.recurringCommitments.find(
@@ -681,6 +693,7 @@ export async function payCreditCardBill(params: {
   paymentAccountId: string;
   paidAtIso?: string;
   amountOverrideMinor?: number;
+  advanceMonths?: number;
 }): Promise<{ creditCardAccount: Account; transferTransaction: Transaction | null }> {
   const state = getCurrentSyncState();
   const card = state.accounts.find((a) => a.id === params.creditCardAccountId);
@@ -721,6 +734,9 @@ export async function payCreditCardBill(params: {
     ...(params.amountOverrideMinor !== undefined
       ? { amountOverrideMinor: params.amountOverrideMinor }
       : {}),
+    ...(params.advanceMonths !== undefined
+      ? { advanceMonths: params.advanceMonths }
+      : {}),
   });
 
   const updatedCard = nextState.accounts.find(
@@ -733,6 +749,25 @@ export async function payCreditCardBill(params: {
     creditCardAccount: updatedCard ?? card,
     transferTransaction: transferTx,
   };
+}
+
+export async function unpayCreditCardBill(
+  creditCardAccountId: string,
+): Promise<Account> {
+  const state = getCurrentSyncState();
+  const card = state.accounts.find((a) => a.id === creditCardAccountId);
+  if (!card || card.accountType !== 'CREDIT_CARD') {
+    throw new Error('Credit card account not found.');
+  }
+
+  const nextState = enqueueSyncMutation({
+    opId: createSyncOpId(),
+    clientTimestamp: new Date().toISOString(),
+    type: 'creditCard.unpayBill',
+    creditCardAccountId,
+  });
+
+  return nextState.accounts.find((a) => a.id === creditCardAccountId) ?? card;
 }
 
 // ==========================================
