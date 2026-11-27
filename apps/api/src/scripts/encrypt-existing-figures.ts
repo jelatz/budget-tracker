@@ -113,7 +113,19 @@ const TABLE_SPECS: readonly TableMigrationSpec<any>[] = [
     getRowId: (row: typeof accounts.$inferSelect) => row.id,
     getWhere: (row: typeof accounts.$inferSelect) =>
       and(eq(accounts.userId, row.userId), eq(accounts.id, row.id)),
-    fields: [{ prop: 'balanceMinor', column: 'balance_minor' }],
+    fields: [
+      { prop: 'balanceMinor', column: 'balance_minor' },
+      {
+        prop: 'creditLimitMinor',
+        column: 'credit_limit_minor',
+        nullable: true,
+      },
+      {
+        prop: 'monthlyPaymentTargetMinor',
+        column: 'monthly_payment_target_minor',
+        nullable: true,
+      },
+    ],
   },
   {
     tableName: 'transactions',

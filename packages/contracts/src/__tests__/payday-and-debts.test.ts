@@ -455,4 +455,157 @@ describe('Payday Calendar & Debts/Credit-Card Math', () => {
     expect(next?.date).toBe('2026-11-27');
     expect(next?.daysUntil).toBe(1);
   });
+
+  it('tracks credit card limit, monthly paydown plan, Nth-weekday due schedule, and rollover after payment', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-27T12:00:00.000Z'));
+
+    const prepared = applySyncMutations(base, [
+      {
+        opId: 'op-bank',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-bank',
+        balanceMinor: 5_000_000, // ₱50,000.00
+      },
+      {
+        opId: 'op-card-meta',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'account.updateMetadata',
+        account: {
+          id: 'account-card',
+          name: 'Home Credit',
+          accountType: 'CREDIT_CARD',
+          icon: '💳',
+          color: '#8B5CF6',
+          currency: DEFAULT_CURRENCY,
+          creditLimitMinor: 6_000_000, // ₱60,000.00
+          monthlyPaymentTargetMinor: 500_000, // ₱5,000.00 / mo
+          dueWeekday: 5, // Friday
+          dueWeekdayOrdinal: 4, // 4th Friday
+          dueStartDate: '2026-12-25',
+        },
+      },
+      {
+        opId: 'op-card-bal',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-card',
+        balanceMinor: -3_200_432, // ₱32,004.32 used
+      },
+    ]);
+
+    const card = prepared.accounts.find((a) => a.id === 'account-card')!;
+
+    // On Nov 27, 2026: first due date is Dec 25, 2026 (not due in Nov, so Safe to Spend in Nov does not deduct Dec's ₱5k)
+    const novDate = new Date(2026, 10, 27, 12, 0, 0, 0);
+    const novSummary = computeCreditCardBillSummary({
+      account: card,
+      commitments: prepared.recurringCommitments,
+      transactions: prepared.transactions,
+      currentDate: novDate,
+      nextPaydayDate: '2026-11-30',
+    });
+    expect(novSummary.dueScheduleLabel).toBe('Every 4th Friday');
+    expect(novSummary.dueDate).toBe('2026-12-25');
+    expect(novSummary.upcomingBillMinor).toBe(500_000);
+    expect(novSummary.totalCardDebtMinor).toBe(3_200_432);
+    expect(novSummary.creditLimitMinor).toBe(6_000_000);
+    expect(novSummary.availableCreditMinor).toBe(2_799_568);
+    expect(novSummary.utilizationPercent).toBe(53);
+    expect(novSummary.isPaydownPlan).toBe(true);
+    expect(novSummary.remainingPaymentsCount).toBe(7); // 6 x 5,000 + 2,004.32
+    expect(novSummary.finalPaymentMinor).toBe(200_432);
+    expect(novSummary.isDueBeforeNextPayday).toBe(false);
+
+    const novSafe = computeSafeToSpend({
+      accounts: prepared.accounts,
+      commitments: prepared.recurringCommitments,
+      transactions: prepared.transactions,
+      nextPaydayDate: '2026-11-30',
+      currentDate: novDate,
+    });
+    expect(novSafe.dueBeforeNextPaydayMinor).toBe(0);
+    expect(novSafe.safeToSpendMinor).toBe(5_000_000);
+
+    // On Dec 20, 2026 with next payday Dec 25, 2026: dueDate <= nextPaydayDate so ₱5,000 (not ₱32,004.32) is reserved
+    const decDate = new Date(2026, 11, 20, 12, 0, 0, 0);
+    const decSummary = computeCreditCardBillSummary({
+      account: card,
+      commitments: prepared.recurringCommitments,
+      transactions: prepared.transactions,
+      currentDate: decDate,
+      nextPaydayDate: '2026-12-25',
+    });
+    expect(decSummary.dueDate).toBe('2026-12-25');
+    expect(decSummary.upcomingBillMinor).toBe(500_000);
+    expect(decSummary.isDueBeforeNextPayday).toBe(true);
+
+    const decSafe = computeSafeToSpend({
+      accounts: prepared.accounts,
+      commitments: prepared.recurringCommitments,
+      transactions: prepared.transactions,
+      nextPaydayDate: '2026-12-25',
+      currentDate: decDate,
+    });
+    expect(decSafe.dueBeforeNextPaydayMinor).toBe(500_000);
+    expect(decSafe.safeToSpendMinor).toBe(4_500_000);
+
+    // After paying ₱5,000 on Dec 25, 2026: balance drops to -2,700,432, rolls over to Jan 22, 2027 (4th Fri of Jan 2027)
+    const afterDecPay = applySyncMutations(prepared, [
+      {
+        opId: 'op-pay-dec',
+        clientTimestamp: '2026-12-25T10:00:00.000Z',
+        type: 'creditCard.payBill',
+        creditCardAccountId: 'account-card',
+        paymentAccountId: 'account-bank',
+        transferTransactionId: 'tx-hc-dec',
+        installmentTxPrefix: 'tx-hc-inst-dec',
+        paidAtIso: '2026-12-25T10:00:00.000Z',
+        periodMonth: '2026-12',
+        amountOverrideMinor: 500_000,
+      },
+    ]);
+
+    const cardAfterDecPay = afterDecPay.accounts.find((a) => a.id === 'account-card')!;
+    expect(cardAfterDecPay.balanceMinor).toBe(-2_700_432);
+    const decPayTx = afterDecPay.transactions.find((t) => t.id === 'tx-hc-dec')!;
+    expect(decPayTx.note).toBe('Credit card paydown payment');
+
+    const summaryAfterDecPay = computeCreditCardBillSummary({
+      account: cardAfterDecPay,
+      commitments: afterDecPay.recurringCommitments,
+      transactions: afterDecPay.transactions,
+      currentDate: new Date(2026, 11, 26, 12, 0, 0, 0),
+      nextPaydayDate: '2026-12-30',
+    });
+    expect(summaryAfterDecPay.isPaidForCurrentMonth).toBe(true);
+    expect(summaryAfterDecPay.paidThisPeriodMinor).toBe(500_000);
+    expect(summaryAfterDecPay.availableCreditMinor).toBe(3_299_568);
+    expect(summaryAfterDecPay.remainingPaymentsCount).toBe(6);
+    expect(summaryAfterDecPay.dueDate).toBe('2027-01-22');
+    expect(summaryAfterDecPay.isDueBeforeNextPayday).toBe(false);
+
+    // Final month: when remaining debt is ₱2,004.32 (< ₱5,000 target), upcoming payment caps at ₱2,004.32
+    const finalMonthState = applySyncMutations(afterDecPay, [
+      {
+        opId: 'op-final-bal',
+        clientTimestamp: '2027-06-20T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-card',
+        balanceMinor: -200_432,
+      },
+    ]);
+    const finalCard = finalMonthState.accounts.find((a) => a.id === 'account-card')!;
+    const finalSummary = computeCreditCardBillSummary({
+      account: finalCard,
+      commitments: finalMonthState.recurringCommitments,
+      transactions: finalMonthState.transactions,
+      currentDate: new Date(2027, 5, 20, 12, 0, 0, 0),
+      nextPaydayDate: '2027-06-25',
+    });
+    expect(finalSummary.upcomingBillMinor).toBe(200_432);
+    expect(finalSummary.remainingPaymentsCount).toBe(1);
+    expect(finalSummary.finalPaymentMinor).toBe(200_432);
+    expect(finalSummary.isDueBeforeNextPayday).toBe(true);
+  });
 });

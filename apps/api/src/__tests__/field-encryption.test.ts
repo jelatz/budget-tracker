@@ -157,7 +157,22 @@ describe('AES-256-GCM monetary field encryption', () => {
       ],
       [
         accounts,
-        [{ userId: 'user-1', id: 'acc-1', balanceMinor: '123450' }],
+        [
+          {
+            userId: 'user-1',
+            id: 'acc-1',
+            balanceMinor: '123450',
+            creditLimitMinor: '6000000',
+            monthlyPaymentTargetMinor: '500000',
+          },
+          {
+            userId: 'user-1',
+            id: 'acc-2',
+            balanceMinor: '50000',
+            creditLimitMinor: null,
+            monthlyPaymentTargetMinor: null,
+          },
+        ],
       ],
       [
         transactions,
@@ -219,12 +234,12 @@ describe('AES-256-GCM monetary field encryption', () => {
     const drySummary = await encryptExistingFiguresInDb(mockDb, cipherA, {
       dryRun: true,
     });
-    expect(drySummary.reduce((sum, t) => sum + t.fieldsEncrypted, 0)).toBe(7);
+    expect(drySummary.reduce((sum, t) => sum + t.fieldsEncrypted, 0)).toBe(10);
     expect(store.get(accounts)![0]!.balanceMinor).toBe('123450');
 
     const firstRun = await encryptExistingFiguresInDb(mockDb, cipherA);
-    expect(firstRun.reduce((sum, t) => sum + t.fieldsEncrypted, 0)).toBe(7);
-    expect(firstRun.reduce((sum, t) => sum + t.rowsUpdated, 0)).toBe(6);
+    expect(firstRun.reduce((sum, t) => sum + t.fieldsEncrypted, 0)).toBe(10);
+    expect(firstRun.reduce((sum, t) => sum + t.rowsUpdated, 0)).toBe(7);
 
     expect(
       cipherA.decrypt(String(store.get(accounts)![0]!.balanceMinor), {
@@ -234,6 +249,27 @@ describe('AES-256-GCM monetary field encryption', () => {
         column: 'balance_minor',
       }),
     ).toBe(123450);
+    expect(
+      cipherA.decrypt(String(store.get(accounts)![0]!.creditLimitMinor), {
+        userId: 'user-1',
+        table: 'accounts',
+        rowId: 'acc-1',
+        column: 'credit_limit_minor',
+      }),
+    ).toBe(6000000);
+    expect(
+      cipherA.decrypt(
+        String(store.get(accounts)![0]!.monthlyPaymentTargetMinor),
+        {
+          userId: 'user-1',
+          table: 'accounts',
+          rowId: 'acc-1',
+          column: 'monthly_payment_target_minor',
+        },
+      ),
+    ).toBe(500000);
+    expect(store.get(accounts)![1]!.creditLimitMinor).toBeNull();
+    expect(store.get(accounts)![1]!.monthlyPaymentTargetMinor).toBeNull();
     expect(
       cipherA.decrypt(String(store.get(incomeSources)![0]!.typicalPayoutMinor), {
         userId: 'user-1',
@@ -247,7 +283,7 @@ describe('AES-256-GCM monetary field encryption', () => {
     const secondRun = await encryptExistingFiguresInDb(mockDb, cipherA);
     expect(secondRun.reduce((sum, t) => sum + t.fieldsEncrypted, 0)).toBe(0);
     expect(secondRun.reduce((sum, t) => sum + t.rowsUpdated, 0)).toBe(0);
-    expect(secondRun.reduce((sum, t) => sum + t.fieldsAlreadyEncrypted, 0)).toBe(7);
+    expect(secondRun.reduce((sum, t) => sum + t.fieldsAlreadyEncrypted, 0)).toBe(10);
 
     const rekeyIndexByTable = new Map<unknown, number>();
     mockTx.update = (table: unknown) => ({
@@ -265,6 +301,6 @@ describe('AES-256-GCM monetary field encryption', () => {
     const rekeyRun = await encryptExistingFiguresInDb(mockDb, cipherB, {
       rekey: true,
     });
-    expect(rekeyRun.reduce((sum, t) => sum + t.fieldsRekeyed, 0)).toBe(7);
+    expect(rekeyRun.reduce((sum, t) => sum + t.fieldsRekeyed, 0)).toBe(10);
   });
 });

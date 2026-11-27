@@ -48,10 +48,25 @@ export async function handleCreateAccount(
     color: params.input.color,
     currency: params.input.currency,
     balanceMinor: params.input.balanceMinor,
+    ...(params.input.creditLimitMinor !== undefined
+      ? { creditLimitMinor: params.input.creditLimitMinor }
+      : {}),
+    ...(params.input.monthlyPaymentTargetMinor !== undefined
+      ? { monthlyPaymentTargetMinor: params.input.monthlyPaymentTargetMinor }
+      : {}),
     ...(params.input.statementDay !== undefined
       ? { statementDay: params.input.statementDay }
       : {}),
     ...(params.input.dueDay !== undefined ? { dueDay: params.input.dueDay } : {}),
+    ...(params.input.dueWeekday !== undefined
+      ? { dueWeekday: params.input.dueWeekday }
+      : {}),
+    ...(params.input.dueWeekdayOrdinal !== undefined
+      ? { dueWeekdayOrdinal: params.input.dueWeekdayOrdinal }
+      : {}),
+    ...(params.input.dueStartDate !== undefined
+      ? { dueStartDate: params.input.dueStartDate }
+      : {}),
   });
 
   const result = await repo.createAccount(params.userId, account);

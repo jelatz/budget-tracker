@@ -143,8 +143,36 @@ export async function loadUserSyncStateInTx(
         rowId: a.id,
         column: 'balance_minor',
       }),
+      ...(a.creditLimitMinor !== null
+        ? {
+            creditLimitMinor: cipher.decrypt(a.creditLimitMinor, {
+              userId,
+              table: 'accounts',
+              rowId: a.id,
+              column: 'credit_limit_minor',
+            }),
+          }
+        : {}),
+      ...(a.monthlyPaymentTargetMinor !== null
+        ? {
+            monthlyPaymentTargetMinor: cipher.decrypt(
+              a.monthlyPaymentTargetMinor,
+              {
+                userId,
+                table: 'accounts',
+                rowId: a.id,
+                column: 'monthly_payment_target_minor',
+              },
+            ),
+          }
+        : {}),
       ...(a.statementDay !== null ? { statementDay: a.statementDay } : {}),
       ...(a.dueDay !== null ? { dueDay: a.dueDay } : {}),
+      ...(a.dueWeekday !== null ? { dueWeekday: a.dueWeekday } : {}),
+      ...(a.dueWeekdayOrdinal !== null
+        ? { dueWeekdayOrdinal: a.dueWeekdayOrdinal }
+        : {}),
+      ...(a.dueStartDate !== null ? { dueStartDate: a.dueStartDate } : {}),
     })),
     categories: categoryRows.map((c) => ({
       id: c.id,
@@ -320,8 +348,29 @@ export async function saveUserSyncStateInTx(
           rowId: a.id,
           column: 'balance_minor',
         }),
+        creditLimitMinor:
+          typeof a.creditLimitMinor === 'number'
+            ? cipher.encrypt(a.creditLimitMinor, {
+                userId,
+                table: 'accounts',
+                rowId: a.id,
+                column: 'credit_limit_minor',
+              })
+            : null,
+        monthlyPaymentTargetMinor:
+          typeof a.monthlyPaymentTargetMinor === 'number'
+            ? cipher.encrypt(a.monthlyPaymentTargetMinor, {
+                userId,
+                table: 'accounts',
+                rowId: a.id,
+                column: 'monthly_payment_target_minor',
+              })
+            : null,
         statementDay: a.statementDay ?? null,
         dueDay: a.dueDay ?? null,
+        dueWeekday: a.dueWeekday ?? null,
+        dueWeekdayOrdinal: a.dueWeekdayOrdinal ?? null,
+        dueStartDate: a.dueStartDate ?? null,
         sortOrder: index,
       })),
       200,

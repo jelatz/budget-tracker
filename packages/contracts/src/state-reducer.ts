@@ -900,7 +900,10 @@ export function applySyncMutation(
           accountId: paymentAccount.id,
           toAccountId: cardAccount.id,
           merchant: truncateText(`${cardAccount.name} Bill Payment`, 80),
-          note: 'Paid credit card bill in full',
+          note:
+            transferAmountMinor < owedMinor
+              ? 'Credit card paydown payment'
+              : 'Paid credit card bill in full',
           occurredAt: paidIso,
           createdAt: paidIso,
         });

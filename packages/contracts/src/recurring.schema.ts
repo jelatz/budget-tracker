@@ -5,7 +5,7 @@ import {
   DEFAULT_CURRENCY,
   positiveAmountMinorSchema,
 } from './money';
-import type { Account, AccountType } from './transactions.schema';
+import type { Account, AccountType, Transaction } from './transactions.schema';
 
 export const periodMonthSchema = z
   .string()
@@ -474,6 +474,63 @@ export function resolveCommitmentDueDate(
   );
 }
 
+const FULL_WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+] as const;
+
+const ORDINAL_LABELS: Record<number, string> = {
+  1: '1st',
+  2: '2nd',
+  3: '3rd',
+  4: '4th',
+};
+
+/**
+ * Returns the local noon Date for the Nth weekday (1=1st..4=4th, weekday 0=Sun..6=Sat) in a given month.
+ */
+export function getNthWeekdayOfMonth(
+  year: number,
+  monthIndex0: number,
+  weekday: number,
+  ordinal: number,
+): Date {
+  const firstOfMonth = new Date(year, monthIndex0, 1, 12, 0, 0, 0);
+  const firstWeekday = firstOfMonth.getDay();
+  const offset = (weekday - firstWeekday + 7) % 7;
+  const day = 1 + offset + (ordinal - 1) * 7;
+  return new Date(year, monthIndex0, day, 12, 0, 0, 0);
+}
+
+/**
+ * Formats a human-readable credit card due schedule label (e.g. "Every 4th Friday" or "Due day 5").
+ */
+export function formatCreditCardDueScheduleLabel(
+  account: Pick<Account, 'dueDay' | 'dueWeekday' | 'dueWeekdayOrdinal'>,
+): string | null {
+  if (
+    typeof account.dueWeekday === 'number' &&
+    account.dueWeekday >= 0 &&
+    account.dueWeekday <= 6 &&
+    typeof account.dueWeekdayOrdinal === 'number' &&
+    account.dueWeekdayOrdinal >= 1 &&
+    account.dueWeekdayOrdinal <= 4
+  ) {
+    const ord = ORDINAL_LABELS[account.dueWeekdayOrdinal] ?? `${account.dueWeekdayOrdinal}th`;
+    const dayName = FULL_WEEKDAY_NAMES[account.dueWeekday] ?? 'Friday';
+    return `Every ${ord} ${dayName}`;
+  }
+  if (typeof account.dueDay === 'number' && account.dueDay >= 1 && account.dueDay <= 31) {
+    return `Due day ${account.dueDay}`;
+  }
+  return null;
+}
+
 /**
  * Resolves the YYYY-MM-DD due date for a credit card's dueDay.
  */
@@ -502,6 +559,82 @@ export function resolveCreditCardDueDate(
   return thisMonthDue;
 }
 
+/**
+ * Resolves the next YYYY-MM-DD due date for a credit card supporting day-of-month,
+ * Nth-weekday (e.g. 4th Friday), optional first due date (`dueStartDate`), and paid-this-month rollover.
+ */
+export function resolveCreditCardDueDateForAccount(
+  account: Pick<Account, 'dueDay' | 'dueWeekday' | 'dueWeekdayOrdinal' | 'dueStartDate'>,
+  options: {
+    upcomingBillMinor: number;
+    isPaidForCurrentMonth?: boolean;
+    referenceDate?: Date;
+  },
+): string | null {
+  const now = options.referenceDate ?? new Date();
+  const todayStr = formatCalendarDateString(now);
+  const startStr =
+    account.dueStartDate && parseCalendarDate(account.dueStartDate)
+      ? account.dueStartDate.trim()
+      : null;
+
+  const hasWeekdaySchedule =
+    typeof account.dueWeekday === 'number' &&
+    account.dueWeekday >= 0 &&
+    account.dueWeekday <= 6 &&
+    typeof account.dueWeekdayOrdinal === 'number' &&
+    account.dueWeekdayOrdinal >= 1 &&
+    account.dueWeekdayOrdinal <= 4;
+
+  const hasDayOfMonth =
+    typeof account.dueDay === 'number' && account.dueDay >= 1 && account.dueDay <= 31;
+
+  if (!hasWeekdaySchedule && !hasDayOfMonth) {
+    return startStr;
+  }
+
+  const getDueDateInMonth = (year: number, monthIndex0: number): string | null => {
+    if (hasWeekdaySchedule) {
+      return formatCalendarDateString(
+        getNthWeekdayOfMonth(
+          year,
+          monthIndex0,
+          account.dueWeekday!,
+          account.dueWeekdayOrdinal!,
+        ),
+      );
+    }
+    if (hasDayOfMonth) {
+      const daysInMonth = new Date(year, monthIndex0 + 1, 0).getDate();
+      const clampedDay = Math.min(account.dueDay!, daysInMonth);
+      return formatCalendarDateString(new Date(year, monthIndex0, clampedDay, 12, 0, 0, 0));
+    }
+    return null;
+  };
+
+  for (let monthOffset = 0; monthOffset <= 12; monthOffset += 1) {
+    const targetMonth = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1, 12, 0, 0, 0);
+    const candidate = getDueDateInMonth(targetMonth.getFullYear(), targetMonth.getMonth());
+    if (!candidate) {
+      return null;
+    }
+    if (startStr && candidate < startStr) {
+      continue;
+    }
+    if (monthOffset === 0) {
+      if (options.isPaidForCurrentMonth) {
+        continue;
+      }
+      if (candidate < todayStr && options.upcomingBillMinor === 0) {
+        continue;
+      }
+    }
+    return candidate;
+  }
+
+  return null;
+}
+
 export interface CreditCardBillSummary {
   account: Account;
   swipesOwedMinor: number;
@@ -511,17 +644,29 @@ export interface CreditCardBillSummary {
   allInstallmentsRemainingMinor: number;
   futureInstallmentsRemainingMinor: number;
   totalCardDebtMinor: number;
+  creditLimitMinor: number | null;
+  availableCreditMinor: number | null;
+  utilizationPercent: number | null;
+  isPaydownPlan: boolean;
+  monthlyPaymentTargetMinor: number | null;
+  paidThisPeriodMinor: number;
+  isPaidForCurrentMonth: boolean;
+  remainingPaymentsCount: number | null;
+  finalPaymentMinor: number | null;
+  dueScheduleLabel: string | null;
   dueDate: string | null;
   isDueBeforeNextPayday: boolean;
   installments: RecurringCommitment[];
 }
 
 /**
- * Computes upcoming full-pay bill and total debt (swipes + installments) for a credit card account.
+ * Computes upcoming payment/bill, credit limit utilization, paydown progress,
+ * and total debt (swipes + installments) for a credit card account.
  */
 export function computeCreditCardBillSummary(params: {
   account: Account;
   commitments: readonly RecurringCommitment[];
+  transactions?: readonly Transaction[];
   currentDate?: Date;
   nextPaydayDate?: string | null;
 }): CreditCardBillSummary {
@@ -548,7 +693,7 @@ export function computeCreditCardBillSummary(params: {
     0,
   );
 
-  const upcomingBillMinor = swipesOwedMinor + installmentsDueThisPeriodMinor;
+  const fullCycleBillMinor = swipesOwedMinor + installmentsDueThisPeriodMinor;
 
   const allInstallmentsRemainingMinor = installments
     .filter((c) => c.isActive && !isCommitmentPaidOff(c))
@@ -560,19 +705,91 @@ export function computeCreditCardBillSummary(params: {
   );
 
   const totalCardDebtMinor = swipesOwedMinor + allInstallmentsRemainingMinor;
-  const dueDate = resolveCreditCardDueDate(
-    params.account.dueDay,
-    upcomingBillMinor,
-    now,
+
+  let paidThisPeriodMinor = 0;
+  for (const tx of params.transactions ?? []) {
+    if (tx.type !== 'TRANSFER' || tx.toAccountId !== params.account.id) {
+      continue;
+    }
+    const txDate = new Date(tx.occurredAt);
+    if (
+      !Number.isNaN(txDate.getTime()) &&
+      formatCalendarDateString(txDate).slice(0, 7) === currentPeriod
+    ) {
+      paidThisPeriodMinor += tx.amountMinor;
+    }
+  }
+
+  const isPaydownPlan =
+    typeof params.account.monthlyPaymentTargetMinor === 'number' &&
+    params.account.monthlyPaymentTargetMinor > 0;
+  const monthlyPaymentTargetMinor = isPaydownPlan
+    ? params.account.monthlyPaymentTargetMinor!
+    : null;
+  const isPaidForCurrentMonth = Boolean(
+    isPaydownPlan &&
+      monthlyPaymentTargetMinor &&
+      totalCardDebtMinor > 0 &&
+      paidThisPeriodMinor >= monthlyPaymentTargetMinor,
   );
 
+  const scheduledCycleAmountMinor = isPaydownPlan
+    ? Math.min(fullCycleBillMinor, monthlyPaymentTargetMinor!)
+    : fullCycleBillMinor;
+
+  const dueDate = resolveCreditCardDueDateForAccount(params.account, {
+    upcomingBillMinor: scheduledCycleAmountMinor,
+    isPaidForCurrentMonth,
+    referenceDate: now,
+  });
+
+  let upcomingBillMinor: number;
+  if (!isPaydownPlan) {
+    upcomingBillMinor = fullCycleBillMinor;
+  } else if (fullCycleBillMinor === 0) {
+    upcomingBillMinor = 0;
+  } else if (dueDate && dueDate.slice(0, 7) > currentPeriod) {
+    upcomingBillMinor = Math.min(fullCycleBillMinor, monthlyPaymentTargetMinor!);
+  } else {
+    upcomingBillMinor = Math.min(
+      fullCycleBillMinor,
+      Math.max(0, monthlyPaymentTargetMinor! - paidThisPeriodMinor),
+    );
+  }
+
+  const isFutureMonthDue = Boolean(dueDate && dueDate.slice(0, 7) > currentPeriod);
   const isDueBeforeNextPayday =
     upcomingBillMinor > 0 &&
-    Boolean(
-      !params.nextPaydayDate ||
-        !dueDate ||
-        dueDate <= params.nextPaydayDate,
-    );
+    (params.nextPaydayDate
+      ? Boolean(!dueDate || dueDate <= params.nextPaydayDate)
+      : !isFutureMonthDue);
+
+  const creditLimitMinor =
+    typeof params.account.creditLimitMinor === 'number' &&
+    params.account.creditLimitMinor > 0
+      ? params.account.creditLimitMinor
+      : null;
+  const availableCreditMinor =
+    creditLimitMinor !== null
+      ? Math.max(0, creditLimitMinor - totalCardDebtMinor)
+      : null;
+  const utilizationPercent =
+    creditLimitMinor !== null
+      ? Math.min(100, Math.round((totalCardDebtMinor * 100) / creditLimitMinor))
+      : null;
+
+  const remainingPaymentsCount =
+    isPaydownPlan && monthlyPaymentTargetMinor
+      ? totalCardDebtMinor > 0
+        ? Math.ceil(totalCardDebtMinor / monthlyPaymentTargetMinor)
+        : 0
+      : null;
+  const finalPaymentMinor =
+    isPaydownPlan && monthlyPaymentTargetMinor && totalCardDebtMinor > 0
+      ? totalCardDebtMinor % monthlyPaymentTargetMinor || monthlyPaymentTargetMinor
+      : null;
+
+  const dueScheduleLabel = formatCreditCardDueScheduleLabel(params.account);
 
   return {
     account: params.account,
@@ -583,6 +800,16 @@ export function computeCreditCardBillSummary(params: {
     allInstallmentsRemainingMinor,
     futureInstallmentsRemainingMinor,
     totalCardDebtMinor,
+    creditLimitMinor,
+    availableCreditMinor,
+    utilizationPercent,
+    isPaydownPlan,
+    monthlyPaymentTargetMinor,
+    paidThisPeriodMinor,
+    isPaidForCurrentMonth,
+    remainingPaymentsCount,
+    finalPaymentMinor,
+    dueScheduleLabel,
     dueDate,
     isDueBeforeNextPayday,
     installments,
@@ -608,6 +835,7 @@ export interface DebtOverview {
 export function computeDebtOverview(params: {
   accounts: readonly Account[];
   commitments: readonly RecurringCommitment[];
+  transactions?: readonly Transaction[];
   nextPaydayDate?: string | null;
   currentDate?: Date;
 }): DebtOverview {
@@ -628,6 +856,7 @@ export function computeDebtOverview(params: {
     computeCreditCardBillSummary({
       account,
       commitments: params.commitments,
+      transactions: params.transactions,
       currentDate: now,
       nextPaydayDate: params.nextPaydayDate,
     }),
@@ -742,6 +971,7 @@ export type SafeToSpendMetrics = z.infer<typeof safeToSpendMetricsSchema>;
 export function computeSafeToSpend(params: {
   accounts: readonly Account[];
   commitments: readonly RecurringCommitment[];
+  transactions?: readonly Transaction[];
   nextPaydayDate?: string | null;
   currentDate?: Date;
 }): SafeToSpendMetrics {
@@ -757,6 +987,7 @@ export function computeSafeToSpend(params: {
   const debtOverview = computeDebtOverview({
     accounts: params.accounts,
     commitments: params.commitments,
+    transactions: params.transactions,
     nextPaydayDate: params.nextPaydayDate ?? null,
     currentDate: now,
   });

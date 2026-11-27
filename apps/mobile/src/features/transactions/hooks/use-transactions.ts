@@ -501,6 +501,7 @@ export function useDebtOverview(currentDate?: Date) {
   const overview: DebtOverview = computeDebtOverview({
     accounts: accountsQuery.data ?? [],
     commitments: commitmentsQuery.data ?? [],
+    transactions: transactionsQuery.data ?? [],
     nextPaydayDate,
     currentDate,
   });

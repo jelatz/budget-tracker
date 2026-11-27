@@ -51,8 +51,36 @@ function mapAccountRow(
       rowId: row.id,
       column: 'balance_minor',
     }),
+    ...(row.creditLimitMinor !== null
+      ? {
+          creditLimitMinor: cipher.decrypt(row.creditLimitMinor, {
+            userId: row.userId,
+            table: 'accounts',
+            rowId: row.id,
+            column: 'credit_limit_minor',
+          }),
+        }
+      : {}),
+    ...(row.monthlyPaymentTargetMinor !== null
+      ? {
+          monthlyPaymentTargetMinor: cipher.decrypt(
+            row.monthlyPaymentTargetMinor,
+            {
+              userId: row.userId,
+              table: 'accounts',
+              rowId: row.id,
+              column: 'monthly_payment_target_minor',
+            },
+          ),
+        }
+      : {}),
     ...(row.statementDay !== null ? { statementDay: row.statementDay } : {}),
     ...(row.dueDay !== null ? { dueDay: row.dueDay } : {}),
+    ...(row.dueWeekday !== null ? { dueWeekday: row.dueWeekday } : {}),
+    ...(row.dueWeekdayOrdinal !== null
+      ? { dueWeekdayOrdinal: row.dueWeekdayOrdinal }
+      : {}),
+    ...(row.dueStartDate !== null ? { dueStartDate: row.dueStartDate } : {}),
   });
 }
 
@@ -156,8 +184,29 @@ export function createPgAccountsRepository(
             rowId: account.id,
             column: 'balance_minor',
           }),
+          creditLimitMinor:
+            typeof account.creditLimitMinor === 'number'
+              ? cipher.encrypt(account.creditLimitMinor, {
+                  userId,
+                  table: 'accounts',
+                  rowId: account.id,
+                  column: 'credit_limit_minor',
+                })
+              : null,
+          monthlyPaymentTargetMinor:
+            typeof account.monthlyPaymentTargetMinor === 'number'
+              ? cipher.encrypt(account.monthlyPaymentTargetMinor, {
+                  userId,
+                  table: 'accounts',
+                  rowId: account.id,
+                  column: 'monthly_payment_target_minor',
+                })
+              : null,
           statementDay: account.statementDay ?? null,
           dueDay: account.dueDay ?? null,
+          dueWeekday: account.dueWeekday ?? null,
+          dueWeekdayOrdinal: account.dueWeekdayOrdinal ?? null,
+          dueStartDate: account.dueStartDate ?? null,
           sortOrder: nextSortOrder,
         });
 
@@ -200,8 +249,30 @@ export function createPgAccountsRepository(
             accountType: patch.accountType ?? existing.accountType,
             icon: patch.icon ?? existing.icon,
             color: patch.color ?? existing.color,
+            creditLimitMinor:
+              patch.creditLimitMinor !== undefined
+                ? cipher.encrypt(patch.creditLimitMinor, {
+                    userId,
+                    table: 'accounts',
+                    rowId: accountId,
+                    column: 'credit_limit_minor',
+                  })
+                : existing.creditLimitMinor,
+            monthlyPaymentTargetMinor:
+              patch.monthlyPaymentTargetMinor !== undefined
+                ? cipher.encrypt(patch.monthlyPaymentTargetMinor, {
+                    userId,
+                    table: 'accounts',
+                    rowId: accountId,
+                    column: 'monthly_payment_target_minor',
+                  })
+                : existing.monthlyPaymentTargetMinor,
             statementDay: patch.statementDay ?? existing.statementDay,
             dueDay: patch.dueDay ?? existing.dueDay,
+            dueWeekday: patch.dueWeekday ?? existing.dueWeekday,
+            dueWeekdayOrdinal:
+              patch.dueWeekdayOrdinal ?? existing.dueWeekdayOrdinal,
+            dueStartDate: patch.dueStartDate ?? existing.dueStartDate,
           })
           .where(and(eq(accounts.userId, userId), eq(accounts.id, accountId)))
           .returning();

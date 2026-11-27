@@ -7,12 +7,14 @@ import {
 import {
   calendarDateStringSchema,
   formatCalendarDateString,
+  getNthWeekdayOfMonth,
   isCommitmentPaidOff,
   isTransactionInMonth,
   parseCalendarDate,
   periodMonthSchema,
   type RecurringCommitment,
 } from './recurring.schema';
+export { getNthWeekdayOfMonth };
 import type { Transaction } from './transactions.schema';
 
 export const payScheduleSchema = z.enum([
@@ -111,21 +113,7 @@ export interface UpcomingPayday {
   isReceived: boolean;
 }
 
-/**
- * Returns the local noon Date for the Nth weekday (1=1st..4=4th, weekday 0=Sun..6=Sat) in a given month.
- */
-export function getNthWeekdayOfMonth(
-  year: number,
-  monthIndex0: number,
-  weekday: number,
-  ordinal: number,
-): Date {
-  const firstOfMonth = new Date(year, monthIndex0, 1, 12, 0, 0, 0);
-  const firstWeekday = firstOfMonth.getDay();
-  const offset = (weekday - firstWeekday + 7) % 7;
-  const day = 1 + offset + (ordinal - 1) * 7;
-  return new Date(year, monthIndex0, day, 12, 0, 0, 0);
-}
+// getNthWeekdayOfMonth is imported from ./recurring.schema and re-exported above.
 
 const WEEKDAY_NAME_MAP: Record<string, number> = {
   sunday: 0,

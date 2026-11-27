@@ -71,8 +71,12 @@ export function CreditCardDebtCard({
   );
 
   const handleOpenPayModal = () => {
+    const defaultAmount =
+      summary.upcomingBillMinor > 0
+        ? summary.upcomingBillMinor
+        : summary.totalCardDebtMinor;
     setPaymentAccountId(eligiblePayAccounts[0]?.id ?? '');
-    setAmountInput(minorUnitsToDecimalInput(summary.upcomingBillMinor));
+    setAmountInput(minorUnitsToDecimalInput(defaultAmount));
     setDateInput(formatCalendarDateString(new Date()));
     setPayError(null);
     setPayModalOpen(true);
@@ -103,11 +107,15 @@ export function CreditCardDebtCard({
         paymentAccountId,
         paidAtIso: paidIso,
         amountOverrideMinor:
-          parsedMinor !== summary.upcomingBillMinor ? parsedMinor : undefined,
+          parsedMinor !== summary.swipesOwedMinor + summary.installmentsDueThisPeriodMinor
+            ? parsedMinor
+            : undefined,
       });
       setPayModalOpen(false);
       onBillPaid(
-        `Paid ${account.name} full bill (${formatMinorUnits(parsedMinor, currency)}).`,
+        summary.isPaydownPlan
+          ? `Paid ${account.name} (${formatMinorUnits(parsedMinor, currency)}).`
+          : `Paid ${account.name} full bill (${formatMinorUnits(parsedMinor, currency)}).`,
       );
     } catch (error: unknown) {
       setPayError(
@@ -117,6 +125,32 @@ export function CreditCardDebtCard({
   };
 
   const modalWidth = Math.min(Math.max(windowWidth - 32, 280), 520);
+
+  const scheduleText = summary.dueScheduleLabel
+    ? summary.dueDate
+      ? summary.isPaidForCurrentMonth
+        ? `${summary.dueScheduleLabel} · Paid this month · Next due ${formatCalendarDateShort(summary.dueDate)}`
+        : `${summary.dueScheduleLabel} · Due ${formatCalendarDateShort(summary.dueDate)}`
+      : summary.dueScheduleLabel
+    : summary.dueDate
+      ? `Due ${formatCalendarDateShort(summary.dueDate)}`
+      : 'Due date not set';
+
+  const payButtonLabel =
+    summary.totalCardDebtMinor <= 0
+      ? `Settled (${formatMinorUnits(0, currency)})`
+      : summary.isPaydownPlan
+        ? summary.isPaidForCurrentMonth
+          ? 'Pay Extra'
+          : `Pay ${formatMinorUnits(summary.upcomingBillMinor, currency)}`
+        : 'Pay Full Bill';
+
+  const utilizationBarTone =
+    (summary.utilizationPercent ?? 0) >= 80
+      ? 'bg-ledger-terracotta dark:bg-ledger-terracotta-dark'
+      : (summary.utilizationPercent ?? 0) >= 50
+        ? 'bg-ledger-ochre dark:bg-ledger-ochre-dark'
+        : 'bg-brand-500 dark:bg-brand-400';
 
   return (
     <>
@@ -135,16 +169,14 @@ export function CreditCardDebtCard({
                 </ThemedText>
               </View>
               <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                {summary.dueDate
-                  ? `Due ${formatCalendarDateShort(summary.dueDate)}`
-                  : 'Due date not set'}
+                {scheduleText}
                 {summary.isDueBeforeNextPayday ? ' · Due before next payday' : ''}
               </ThemedText>
             </View>
 
             <View className="items-end shrink-0">
               <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                Upcoming Bill
+                {summary.isPaydownPlan ? 'Next Payment' : 'Upcoming Bill'}
               </ThemedText>
               <ThemedText
                 numeric
@@ -160,48 +192,131 @@ export function CreditCardDebtCard({
             </View>
           </View>
 
-          {/* Breakdown Pill Box: Swipes + Installments = Full Bill */}
-          <View className="p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1.5">
-            <View className="flex-row items-center justify-between gap-2">
-              <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                Day-to-day swipes owed
-              </ThemedText>
-              <ThemedText
-                numeric
-                style={TABULAR_NUMS_STYLE}
-                className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
-              >
-                {formatMinorUnits(summary.swipesOwedMinor, currency)}
-              </ThemedText>
-            </View>
-
-            <View className="flex-row items-center justify-between gap-2">
-              <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                Monthly installment slices due ({summary.unpaidInstallmentsThisPeriod.length})
-              </ThemedText>
-              <ThemedText
-                numeric
-                style={TABULAR_NUMS_STYLE}
-                className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
-              >
-                {formatMinorUnits(summary.installmentsDueThisPeriodMinor, currency)}
-              </ThemedText>
-            </View>
-
-            {summary.futureInstallmentsRemainingMinor > 0 ? (
-              <View className="flex-row items-center justify-between gap-2 pt-1.5 border-t border-ledger-border dark:border-ledger-border-dark">
-                <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                  Future installment months remaining
+          {/* Credit Limit & Utilization Bar */}
+          {summary.creditLimitMinor !== null ? (
+            <View className="gap-1.5">
+              <View className="flex-row flex-wrap items-center justify-between gap-2">
+                <ThemedText
+                  numeric
+                  style={TABULAR_NUMS_STYLE}
+                  className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                >
+                  Used {formatMinorUnits(summary.totalCardDebtMinor, currency)} /{' '}
+                  {formatMinorUnits(summary.creditLimitMinor, currency)} (
+                  {summary.utilizationPercent ?? 0}%)
                 </ThemedText>
                 <ThemedText
                   numeric
                   style={TABULAR_NUMS_STYLE}
-                  className="shrink-0 text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                  className="text-xs font-bold text-ledger-pine dark:text-ledger-pine-dark"
                 >
-                  {formatMinorUnits(summary.futureInstallmentsRemainingMinor, currency)}
+                  Avail {formatMinorUnits(summary.availableCreditMinor ?? 0, currency)}
                 </ThemedText>
               </View>
-            ) : null}
+              <View className="h-2 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark overflow-hidden">
+                <View
+                  className={`h-full rounded-full ${utilizationBarTone}`}
+                  style={{ width: `${summary.utilizationPercent ?? 0}%` }}
+                />
+              </View>
+            </View>
+          ) : null}
+
+          {/* Breakdown Pill Box */}
+          <View className="p-3 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark gap-1.5">
+            {summary.isPaydownPlan ? (
+              <>
+                <View className="flex-row items-center justify-between gap-2">
+                  <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Balance owed
+                  </ThemedText>
+                  <ThemedText
+                    numeric
+                    style={TABULAR_NUMS_STYLE}
+                    className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
+                    {formatMinorUnits(summary.totalCardDebtMinor, currency)}
+                  </ThemedText>
+                </View>
+
+                <View className="flex-row items-center justify-between gap-2">
+                  <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Monthly paydown plan
+                  </ThemedText>
+                  <ThemedText
+                    numeric
+                    style={TABULAR_NUMS_STYLE}
+                    className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
+                    {formatMinorUnits(summary.monthlyPaymentTargetMinor ?? 0, currency)} / mo
+                  </ThemedText>
+                </View>
+
+                {summary.remainingPaymentsCount !== null &&
+                summary.remainingPaymentsCount > 0 ? (
+                  <View className="flex-row items-center justify-between gap-2 pt-1.5 border-t border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                      Estimated payoff
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      style={TABULAR_NUMS_STYLE}
+                      className="shrink-0 text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                    >
+                      {summary.remainingPaymentsCount}{' '}
+                      {summary.remainingPaymentsCount === 1 ? 'payment' : 'payments'} left
+                      {summary.finalPaymentMinor !== null &&
+                      summary.finalPaymentMinor !== summary.monthlyPaymentTargetMinor
+                        ? ` · final ${formatMinorUnits(summary.finalPaymentMinor, currency)}`
+                        : ''}
+                    </ThemedText>
+                  </View>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <View className="flex-row items-center justify-between gap-2">
+                  <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Day-to-day swipes owed
+                  </ThemedText>
+                  <ThemedText
+                    numeric
+                    style={TABULAR_NUMS_STYLE}
+                    className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
+                    {formatMinorUnits(summary.swipesOwedMinor, currency)}
+                  </ThemedText>
+                </View>
+
+                <View className="flex-row items-center justify-between gap-2">
+                  <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                    Monthly installment slices due ({summary.unpaidInstallmentsThisPeriod.length})
+                  </ThemedText>
+                  <ThemedText
+                    numeric
+                    style={TABULAR_NUMS_STYLE}
+                    className="shrink-0 text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                  >
+                    {formatMinorUnits(summary.installmentsDueThisPeriodMinor, currency)}
+                  </ThemedText>
+                </View>
+
+                {summary.futureInstallmentsRemainingMinor > 0 ? (
+                  <View className="flex-row items-center justify-between gap-2 pt-1.5 border-t border-ledger-border dark:border-ledger-border-dark">
+                    <ThemedText className="flex-1 min-w-0 text-xs text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                      Future installment months remaining
+                    </ThemedText>
+                    <ThemedText
+                      numeric
+                      style={TABULAR_NUMS_STYLE}
+                      className="shrink-0 text-xs font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+                    >
+                      {formatMinorUnits(summary.futureInstallmentsRemainingMinor, currency)}
+                    </ThemedText>
+                  </View>
+                ) : null}
+              </>
+            )}
           </View>
 
         {/* Active Card Installments List */}
@@ -319,17 +434,21 @@ export function CreditCardDebtCard({
 
           <Pressable
             onPress={handleOpenPayModal}
-            disabled={summary.upcomingBillMinor <= 0 || eligiblePayAccounts.length === 0}
+            disabled={summary.totalCardDebtMinor <= 0 || eligiblePayAccounts.length === 0}
             accessibilityRole="button"
-            accessibilityLabel={`Pay full bill for ${account.name}`}
+            accessibilityLabel={
+              summary.isPaydownPlan
+                ? `Pay ${account.name}`
+                : `Pay full bill for ${account.name}`
+            }
             className={`flex-1 min-w-[150px] min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 dark:bg-brand-400 items-center justify-center ${
-              summary.upcomingBillMinor <= 0 || eligiblePayAccounts.length === 0
+              summary.totalCardDebtMinor <= 0 || eligiblePayAccounts.length === 0
                 ? 'opacity-45'
                 : 'active:opacity-90'
             }`}
           >
             <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
-              {summary.upcomingBillMinor > 0 ? 'Pay Full Bill' : 'Settled (₱0)'}
+              {payButtonLabel}
             </ThemedText>
           </Pressable>
         </View>
@@ -378,10 +497,14 @@ export function CreditCardDebtCard({
                       accessibilityRole="header"
                       className="text-lg font-bold text-ledger-ink dark:text-ledger-ink-dark"
                     >
-                      Pay Full Card Bill
+                      {summary.isPaydownPlan
+                        ? 'Pay Credit Card'
+                        : 'Pay Full Card Bill'}
                     </ThemedText>
                     <ThemedText className="text-xs text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
-                      {account.name} · settles swipes and this month&apos;s installment slices
+                      {summary.isPaydownPlan
+                        ? `${account.name} · reduces your owed card balance`
+                        : `${account.name} · settles swipes and this month's installment slices`}
                     </ThemedText>
                   </View>
 
@@ -504,7 +627,7 @@ export function CreditCardDebtCard({
                       <ActivityIndicator size="small" color={theme.onPrimary} />
                     ) : (
                       <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
-                        Pay Full Bill
+                        {summary.isPaydownPlan ? 'Confirm Payment' : 'Pay Full Bill'}
                       </ThemedText>
                     )}
                   </Pressable>

@@ -64,6 +64,26 @@ export function normalizeLegacyAccountType(raw?: unknown): AccountType {
   return 'BANK';
 }
 
+function isValidCalendarDateString(value: string): boolean {
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number.parseInt(match[1], 10);
+  const month = Number.parseInt(match[2], 10);
+  const day = Number.parseInt(match[3], 10);
+  const constructed = new Date(year, month - 1, day, 12, 0, 0, 0);
+  return (
+    constructed.getFullYear() === year &&
+    constructed.getMonth() === month - 1 &&
+    constructed.getDate() === day
+  );
+}
+
+const accountCalendarDateSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be in YYYY-MM-DD format')
+  .refine(isValidCalendarDateString, 'Must be a valid calendar date');
+
 export const accountSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -72,8 +92,13 @@ export const accountSchema = z.object({
   color: z.string().min(1),
   currency: currencyCodeSchema,
   balanceMinor: amountMinorSchema,
+  creditLimitMinor: positiveAmountMinorSchema.optional(),
+  monthlyPaymentTargetMinor: positiveAmountMinorSchema.optional(),
   statementDay: z.number().int().min(1).max(31).optional(),
   dueDay: z.number().int().min(1).max(31).optional(),
+  dueWeekday: z.number().int().min(0).max(6).optional(),
+  dueWeekdayOrdinal: z.number().int().min(1).max(4).optional(),
+  dueStartDate: accountCalendarDateSchema.optional(),
 });
 export type Account = z.infer<typeof accountSchema>;
 
@@ -85,8 +110,13 @@ export const upsertAccountInputSchema = z.object({
   color: z.string().min(1).default('#1B4332'),
   currency: currencyCodeSchema.default(DEFAULT_CURRENCY),
   balanceMinor: amountMinorSchema.default(0),
+  creditLimitMinor: positiveAmountMinorSchema.optional(),
+  monthlyPaymentTargetMinor: positiveAmountMinorSchema.optional(),
   statementDay: z.number().int().min(1).max(31).optional(),
   dueDay: z.number().int().min(1).max(31).optional(),
+  dueWeekday: z.number().int().min(0).max(6).optional(),
+  dueWeekdayOrdinal: z.number().int().min(1).max(4).optional(),
+  dueStartDate: accountCalendarDateSchema.optional(),
 });
 export type UpsertAccountInput = z.infer<typeof upsertAccountInputSchema>;
 

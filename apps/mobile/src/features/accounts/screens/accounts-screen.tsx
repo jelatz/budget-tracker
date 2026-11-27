@@ -18,11 +18,13 @@ import {
   DEFAULT_CURRENCY_SYMBOL,
   filterAccountsByListFilter,
   formatAccountLinkedErrorMessage,
+  formatCreditCardDueScheduleLabel,
   formatMinorUnits,
   getAccountLinkedRecords,
   isLiquidCashAccountType,
   minorUnitsToDecimalInput,
   normalizeDecimalInput,
+  parseCalendarDate,
   parseDecimalToMinorUnits,
   type Account,
   type AccountListFilter,
@@ -103,6 +105,23 @@ const ACCOUNT_TYPE_CONFIG_MAP = new Map<AccountType, AccountTypeConfig>(
 
 const ACCOUNT_ICONS = ['🏦', '🏛️', '📱', '💚', '💳', '💵', '🪙', '🐷', '💎', '🌊'] as const;
 
+const ORDINAL_OPTIONS = [
+  { value: 1, label: '1st' },
+  { value: 2, label: '2nd' },
+  { value: 3, label: '3rd' },
+  { value: 4, label: '4th' },
+] as const;
+
+const WEEKDAY_OPTIONS = [
+  { value: 0, label: 'Sun' },
+  { value: 1, label: 'Mon' },
+  { value: 2, label: 'Tue' },
+  { value: 3, label: 'Wed' },
+  { value: 4, label: 'Thu' },
+  { value: 5, label: 'Fri' },
+  { value: 6, label: 'Sat' },
+] as const;
+
 const ACCOUNT_COLOR_OPTIONS = [
   { label: 'Forest Pine', value: '#1B4332' },
   { label: 'Sage Pine', value: '#1E6F4E' },
@@ -146,6 +165,10 @@ function AccountCard({ account, onEdit, onSetBalance }: AccountCardProps) {
   const formattedBalance = formatMinorUnits(account.balanceMinor, account.currency);
   const typeConfig = getTypeConfig(account.accountType);
   const isNegative = account.balanceMinor < 0;
+  const dueScheduleLabel =
+    account.accountType === 'CREDIT_CARD'
+      ? formatCreditCardDueScheduleLabel(account)
+      : null;
 
   return (
     <View className="flex-1 justify-between p-4 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark gap-3">
@@ -169,30 +192,57 @@ function AccountCard({ account, onEdit, onSetBalance }: AccountCardProps) {
                   {typeConfig.label}
                 </ThemedText>
               </View>
-              {account.accountType === 'CREDIT_CARD' && account.dueDay ? (
+              {dueScheduleLabel ? (
                 <ThemedText className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                  Due day {account.dueDay}
+                  {dueScheduleLabel}
                 </ThemedText>
               ) : null}
             </View>
           </View>
         </View>
 
-        <View className="flex-row items-baseline justify-between gap-2 pt-2 border-t border-ledger-border dark:border-ledger-border-dark">
-          <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-            Balance
-          </ThemedText>
-          <ThemedText
-            numeric
-            style={TABULAR_NUMS_STYLE}
-            className={`text-lg font-extrabold ${
-              isNegative
-                ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
-                : 'text-ledger-ink dark:text-ledger-ink-dark'
-            }`}
-          >
-            {formattedBalance}
-          </ThemedText>
+        <View className="pt-2 border-t border-ledger-border dark:border-ledger-border-dark gap-1">
+          <View className="flex-row items-baseline justify-between gap-2">
+            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+              Balance
+            </ThemedText>
+            <ThemedText
+              numeric
+              style={TABULAR_NUMS_STYLE}
+              className={`text-lg font-extrabold ${
+                isNegative
+                  ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                  : 'text-ledger-ink dark:text-ledger-ink-dark'
+              }`}
+            >
+              {formattedBalance}
+            </ThemedText>
+          </View>
+
+          {account.accountType === 'CREDIT_CARD' &&
+          (typeof account.creditLimitMinor === 'number' ||
+            typeof account.monthlyPaymentTargetMinor === 'number') ? (
+            <View className="flex-row items-center justify-between gap-2 flex-wrap">
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted"
+              >
+                {typeof account.creditLimitMinor === 'number'
+                  ? `Limit ${formatMinorUnits(account.creditLimitMinor, account.currency)}`
+                  : ''}
+              </ThemedText>
+              <ThemedText
+                numeric
+                style={TABULAR_NUMS_STYLE}
+                className="text-[11px] font-semibold text-ledger-teal dark:text-ledger-teal-dark"
+              >
+                {typeof account.monthlyPaymentTargetMinor === 'number'
+                  ? `Paydown ${formatMinorUnits(account.monthlyPaymentTargetMinor, account.currency)}/mo`
+                  : ''}
+              </ThemedText>
+            </View>
+          ) : null}
         </View>
       </View>
 
@@ -257,8 +307,15 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
   const [accountType, setAccountType] = useState<AccountType>('BANK');
   const [nameInput, setNameInput] = useState('');
   const [balanceInput, setBalanceInput] = useState('0');
+  const [creditLimitInput, setCreditLimitInput] = useState('');
+  const [paymentMode, setPaymentMode] = useState<'FULL' | 'PAYDOWN'>('FULL');
+  const [monthlyPaymentTargetInput, setMonthlyPaymentTargetInput] = useState('');
+  const [dueScheduleMode, setDueScheduleMode] = useState<'DAY' | 'WEEKDAY'>('DAY');
   const [statementDayInput, setStatementDayInput] = useState('');
   const [dueDayInput, setDueDayInput] = useState('');
+  const [dueWeekday, setDueWeekday] = useState<number>(5);
+  const [dueWeekdayOrdinal, setDueWeekdayOrdinal] = useState<number>(4);
+  const [dueStartDateInput, setDueStartDateInput] = useState('');
   const [selectedIcon, setSelectedIcon] = useState('🏦');
   const [selectedColor, setSelectedColor] = useState('#1B4332');
   const [formError, setFormError] = useState<string | null>(null);
@@ -320,8 +377,15 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
     setAccountType(presetType);
     setNameInput('');
     setBalanceInput('0');
+    setCreditLimitInput('');
+    setPaymentMode('FULL');
+    setMonthlyPaymentTargetInput('');
+    setDueScheduleMode('DAY');
     setStatementDayInput('');
     setDueDayInput('');
+    setDueWeekday(5);
+    setDueWeekdayOrdinal(4);
+    setDueStartDateInput('');
     setSelectedIcon(config.defaultIcon);
     setSelectedColor(config.defaultColor);
     setFormError(null);
@@ -334,10 +398,33 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
     setAccountType(account.accountType);
     setNameInput(account.name);
     setBalanceInput(minorUnitsToDecimalInput(account.balanceMinor));
+    setCreditLimitInput(
+      typeof account.creditLimitMinor === 'number'
+        ? minorUnitsToDecimalInput(account.creditLimitMinor)
+        : '',
+    );
+    const hasPaydown =
+      typeof account.monthlyPaymentTargetMinor === 'number' &&
+      account.monthlyPaymentTargetMinor > 0;
+    setPaymentMode(hasPaydown ? 'PAYDOWN' : 'FULL');
+    setMonthlyPaymentTargetInput(
+      hasPaydown
+        ? minorUnitsToDecimalInput(account.monthlyPaymentTargetMinor!)
+        : '',
+    );
+    const hasWeekday =
+      typeof account.dueWeekday === 'number' &&
+      typeof account.dueWeekdayOrdinal === 'number';
+    setDueScheduleMode(hasWeekday ? 'WEEKDAY' : 'DAY');
     setStatementDayInput(
       typeof account.statementDay === 'number' ? String(account.statementDay) : '',
     );
     setDueDayInput(typeof account.dueDay === 'number' ? String(account.dueDay) : '');
+    setDueWeekday(typeof account.dueWeekday === 'number' ? account.dueWeekday : 5);
+    setDueWeekdayOrdinal(
+      typeof account.dueWeekdayOrdinal === 'number' ? account.dueWeekdayOrdinal : 4,
+    );
+    setDueStartDateInput(account.dueStartDate ?? '');
     setSelectedIcon(account.icon);
     setSelectedColor(account.color);
     setFormError(null);
@@ -391,9 +478,33 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
       return;
     }
 
+    let creditLimitMinor: number | undefined;
+    let monthlyPaymentTargetMinor: number | undefined;
     let statementDay: number | undefined;
     let dueDay: number | undefined;
+    let resolvedDueWeekday: number | undefined;
+    let resolvedDueWeekdayOrdinal: number | undefined;
+    let dueStartDate: string | undefined;
+
     if (accountType === 'CREDIT_CARD') {
+      if (creditLimitInput.trim().length > 0) {
+        const parsedLimit = parseDecimalToMinorUnits(creditLimitInput);
+        if (parsedLimit === null || parsedLimit <= 0) {
+          setFormError('Credit limit must be greater than 0.');
+          return;
+        }
+        creditLimitMinor = parsedLimit;
+      }
+
+      if (paymentMode === 'PAYDOWN') {
+        const parsedTarget = parseDecimalToMinorUnits(monthlyPaymentTargetInput);
+        if (parsedTarget === null || parsedTarget <= 0) {
+          setFormError('Monthly paydown amount must be greater than 0.');
+          return;
+        }
+        monthlyPaymentTargetMinor = parsedTarget;
+      }
+
       if (statementDayInput.trim().length > 0) {
         const s = Number.parseInt(statementDayInput.trim(), 10);
         if (!Number.isInteger(s) || s < 1 || s > 31) {
@@ -402,13 +513,26 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
         }
         statementDay = s;
       }
-      if (dueDayInput.trim().length > 0) {
+
+      if (dueScheduleMode === 'WEEKDAY') {
+        resolvedDueWeekday = dueWeekday;
+        resolvedDueWeekdayOrdinal = dueWeekdayOrdinal;
+      } else if (dueDayInput.trim().length > 0) {
         const d = Number.parseInt(dueDayInput.trim(), 10);
         if (!Number.isInteger(d) || d < 1 || d > 31) {
           setFormError('Due day must be between 1 and 31.');
           return;
         }
         dueDay = d;
+      }
+
+      if (dueStartDateInput.trim().length > 0) {
+        const trimmedStart = dueStartDateInput.trim();
+        if (!parseCalendarDate(trimmedStart)) {
+          setFormError('First due date must be a valid YYYY-MM-DD date.');
+          return;
+        }
+        dueStartDate = trimmedStart;
       }
     }
 
@@ -422,8 +546,19 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
         color: selectedColor,
         currency: editingAccount?.currency ?? DEFAULT_CURRENCY,
         balanceMinor: parsedBalanceMinor,
+        ...(creditLimitMinor !== undefined ? { creditLimitMinor } : {}),
+        ...(monthlyPaymentTargetMinor !== undefined
+          ? { monthlyPaymentTargetMinor }
+          : {}),
         ...(statementDay !== undefined ? { statementDay } : {}),
         ...(dueDay !== undefined ? { dueDay } : {}),
+        ...(resolvedDueWeekday !== undefined
+          ? { dueWeekday: resolvedDueWeekday }
+          : {}),
+        ...(resolvedDueWeekdayOrdinal !== undefined
+          ? { dueWeekdayOrdinal: resolvedDueWeekdayOrdinal }
+          : {}),
+        ...(dueStartDate !== undefined ? { dueStartDate } : {}),
       });
       setModalVisible(false);
       showSuccess(
@@ -959,37 +1094,302 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
                   </View>
 
                   {accountType === 'CREDIT_CARD' && (
-                    <View className="flex-row gap-3">
-                      <View className="flex-1 gap-1.5">
+                    <View className="gap-3 p-3.5 rounded-2xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                      {/* Credit Limit */}
+                      <View className="gap-1.5">
                         <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                          Statement Day (1–31)
+                          Credit Limit (Optional)
                         </ThemedText>
-                        <TextInput
-                          value={statementDayInput}
-                          onChangeText={(t) => setStatementDayInput(t.replace(/[^0-9]/g, ''))}
-                          placeholder="e.g. 5"
-                          placeholderTextColor={theme.textMuted}
-                          keyboardType="number-pad"
-                          maxLength={2}
-                          style={TABULAR_NUMS_STYLE}
-                          className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                        />
+                        <View className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center">
+                          <ThemedText className="text-sm font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
+                            {DEFAULT_CURRENCY_SYMBOL}
+                          </ThemedText>
+                          <TextInput
+                            value={creditLimitInput}
+                            onChangeText={(text) =>
+                              setCreditLimitInput(normalizeDecimalInput(text))
+                            }
+                            placeholder="e.g. 60000"
+                            placeholderTextColor={theme.textMuted}
+                            accessibilityLabel="Credit limit"
+                            keyboardType="decimal-pad"
+                            inputMode="decimal"
+                            editable={!isBusy}
+                            style={TABULAR_NUMS_STYLE}
+                            className="flex-1 h-full text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                          />
+                        </View>
                       </View>
-                      <View className="flex-1 gap-1.5">
+
+                      {/* Payment Mode */}
+                      <View className="gap-1.5">
                         <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                          Due Day (1–31)
+                          Payment Mode
                         </ThemedText>
-                        <TextInput
-                          value={dueDayInput}
-                          onChangeText={(t) => setDueDayInput(t.replace(/[^0-9]/g, ''))}
-                          placeholder="e.g. 25"
-                          placeholderTextColor={theme.textMuted}
-                          keyboardType="number-pad"
-                          maxLength={2}
-                          style={TABULAR_NUMS_STYLE}
-                          className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                        />
+                        <View className="flex-row gap-2">
+                          <Pressable
+                            onPress={() => setPaymentMode('FULL')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Pay in Full monthly"
+                            accessibilityState={{ selected: paymentMode === 'FULL' }}
+                            className={`flex-1 min-h-[44px] px-3 rounded-xl border items-center justify-center ${
+                              paymentMode === 'FULL'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-canvas dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
+                            }`}
+                          >
+                            <ThemedText
+                              className={`text-xs font-bold ${
+                                paymentMode === 'FULL'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                              }`}
+                            >
+                              Pay in Full
+                            </ThemedText>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setPaymentMode('PAYDOWN')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Monthly Paydown Plan"
+                            accessibilityState={{ selected: paymentMode === 'PAYDOWN' }}
+                            className={`flex-1 min-h-[44px] px-3 rounded-xl border items-center justify-center ${
+                              paymentMode === 'PAYDOWN'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-canvas dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
+                            }`}
+                          >
+                            <ThemedText
+                              className={`text-xs font-bold ${
+                                paymentMode === 'PAYDOWN'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                              }`}
+                            >
+                              Monthly Paydown
+                            </ThemedText>
+                          </Pressable>
+                        </View>
                       </View>
+
+                      {paymentMode === 'PAYDOWN' && (
+                        <View className="flex-row gap-3">
+                          <View className="flex-1 gap-1.5">
+                            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                              Monthly Payment
+                            </ThemedText>
+                            <View className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center">
+                              <ThemedText className="text-sm font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-1.5">
+                                {DEFAULT_CURRENCY_SYMBOL}
+                              </ThemedText>
+                              <TextInput
+                                value={monthlyPaymentTargetInput}
+                                onChangeText={(text) =>
+                                  setMonthlyPaymentTargetInput(
+                                    normalizeDecimalInput(text),
+                                  )
+                                }
+                                placeholder="5000"
+                                placeholderTextColor={theme.textMuted}
+                                accessibilityLabel="Monthly payment target"
+                                keyboardType="decimal-pad"
+                                inputMode="decimal"
+                                editable={!isBusy}
+                                style={TABULAR_NUMS_STYLE}
+                                className="flex-1 h-full text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                              />
+                            </View>
+                          </View>
+
+                          <View className="flex-1 gap-1.5">
+                            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                              First Due Date
+                            </ThemedText>
+                            <TextInput
+                              value={dueStartDateInput}
+                              onChangeText={setDueStartDateInput}
+                              placeholder="YYYY-MM-DD"
+                              placeholderTextColor={theme.textMuted}
+                              accessibilityLabel="First due date"
+                              editable={!isBusy}
+                              style={TABULAR_NUMS_STYLE}
+                              className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-sm font-medium text-ledger-ink dark:text-ledger-ink-dark"
+                            />
+                          </View>
+                        </View>
+                      )}
+
+                      {/* Due Schedule */}
+                      <View className="gap-1.5">
+                        <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                          Due Schedule
+                        </ThemedText>
+                        <View className="flex-row gap-2">
+                          <Pressable
+                            onPress={() => setDueScheduleMode('DAY')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Due on day of month"
+                            accessibilityState={{ selected: dueScheduleMode === 'DAY' }}
+                            className={`flex-1 min-h-[44px] px-3 rounded-xl border items-center justify-center ${
+                              dueScheduleMode === 'DAY'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-canvas dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
+                            }`}
+                          >
+                            <ThemedText
+                              className={`text-xs font-bold ${
+                                dueScheduleMode === 'DAY'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                              }`}
+                            >
+                              Day of Month
+                            </ThemedText>
+                          </Pressable>
+                          <Pressable
+                            onPress={() => setDueScheduleMode('WEEKDAY')}
+                            accessibilityRole="button"
+                            accessibilityLabel="Due on Nth weekday"
+                            accessibilityState={{
+                              selected: dueScheduleMode === 'WEEKDAY',
+                            }}
+                            className={`flex-1 min-h-[44px] px-3 rounded-xl border items-center justify-center ${
+                              dueScheduleMode === 'WEEKDAY'
+                                ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                : 'bg-ledger-canvas dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
+                            }`}
+                          >
+                            <ThemedText
+                              className={`text-xs font-bold ${
+                                dueScheduleMode === 'WEEKDAY'
+                                  ? 'text-brand-500 dark:text-brand-400'
+                                  : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                              }`}
+                            >
+                              Nth Weekday
+                            </ThemedText>
+                          </Pressable>
+                        </View>
+                      </View>
+
+                      {dueScheduleMode === 'DAY' ? (
+                        <View className="flex-row gap-3">
+                          <View className="flex-1 gap-1.5">
+                            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                              Statement Day (1–31)
+                            </ThemedText>
+                            <TextInput
+                              value={statementDayInput}
+                              onChangeText={(t) =>
+                                setStatementDayInput(t.replace(/[^0-9]/g, ''))
+                              }
+                              placeholder="e.g. 5"
+                              placeholderTextColor={theme.textMuted}
+                              keyboardType="number-pad"
+                              maxLength={2}
+                              style={TABULAR_NUMS_STYLE}
+                              className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                            />
+                          </View>
+                          <View className="flex-1 gap-1.5">
+                            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                              Due Day (1–31)
+                            </ThemedText>
+                            <TextInput
+                              value={dueDayInput}
+                              onChangeText={(t) =>
+                                setDueDayInput(t.replace(/[^0-9]/g, ''))
+                              }
+                              placeholder="e.g. 25"
+                              placeholderTextColor={theme.textMuted}
+                              keyboardType="number-pad"
+                              maxLength={2}
+                              style={TABULAR_NUMS_STYLE}
+                              className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                            />
+                          </View>
+                        </View>
+                      ) : (
+                        <View className="gap-2.5">
+                          <View className="flex-row flex-wrap gap-1.5">
+                            {ORDINAL_OPTIONS.map((ord) => {
+                              const isSelected = dueWeekdayOrdinal === ord.value;
+                              return (
+                                <Pressable
+                                  key={ord.value}
+                                  onPress={() => setDueWeekdayOrdinal(ord.value)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`${ord.label} week of month`}
+                                  accessibilityState={{ selected: isSelected }}
+                                  className={`min-h-[44px] px-3.5 rounded-xl border items-center justify-center ${
+                                    isSelected
+                                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                      : 'bg-ledger-canvas dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
+                                  }`}
+                                >
+                                  <ThemedText
+                                    className={`text-xs font-bold ${
+                                      isSelected
+                                        ? 'text-brand-500 dark:text-brand-400'
+                                        : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                                    }`}
+                                  >
+                                    {ord.label}
+                                  </ThemedText>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+
+                          <View className="flex-row flex-wrap gap-1.5">
+                            {WEEKDAY_OPTIONS.map((day) => {
+                              const isSelected = dueWeekday === day.value;
+                              return (
+                                <Pressable
+                                  key={day.value}
+                                  onPress={() => setDueWeekday(day.value)}
+                                  accessibilityRole="button"
+                                  accessibilityLabel={`Weekday ${day.label}`}
+                                  accessibilityState={{ selected: isSelected }}
+                                  className={`min-h-[44px] px-3 rounded-xl border items-center justify-center ${
+                                    isSelected
+                                      ? 'bg-brand-50 dark:bg-ledger-pine-dark-soft border-brand-500 dark:border-brand-400'
+                                      : 'bg-ledger-canvas dark:bg-ledger-surface-dark border-ledger-border dark:border-ledger-border-dark'
+                                  }`}
+                                >
+                                  <ThemedText
+                                    className={`text-xs font-bold ${
+                                      isSelected
+                                        ? 'text-brand-500 dark:text-brand-400'
+                                        : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                                    }`}
+                                  >
+                                    {day.label}
+                                  </ThemedText>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+
+                          <View className="gap-1.5">
+                            <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                              Statement Day (Optional, 1–31)
+                            </ThemedText>
+                            <TextInput
+                              value={statementDayInput}
+                              onChangeText={(t) =>
+                                setStatementDayInput(t.replace(/[^0-9]/g, ''))
+                              }
+                              placeholder="e.g. 5"
+                              placeholderTextColor={theme.textMuted}
+                              keyboardType="number-pad"
+                              maxLength={2}
+                              style={TABULAR_NUMS_STYLE}
+                              className="h-11 px-3.5 rounded-xl bg-ledger-canvas dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                            />
+                          </View>
+                        </View>
+                      )}
                     </View>
                   )}
 

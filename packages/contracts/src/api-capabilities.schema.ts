@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { destructiveConfirmationSchema } from './confirmation';
+import { positiveAmountMinorSchema } from './money';
 import {
   accountSchema,
   accountTypeSchema,
@@ -32,8 +33,17 @@ export const updateAccountRequestSchema = z
     accountType: accountTypeSchema.optional(),
     icon: z.string().min(1).optional(),
     color: z.string().min(1).optional(),
+    creditLimitMinor: positiveAmountMinorSchema.optional(),
+    monthlyPaymentTargetMinor: positiveAmountMinorSchema.optional(),
     statementDay: z.number().int().min(1).max(31).optional(),
     dueDay: z.number().int().min(1).max(31).optional(),
+    dueWeekday: z.number().int().min(0).max(6).optional(),
+    dueWeekdayOrdinal: z.number().int().min(1).max(4).optional(),
+    dueStartDate: z
+      .string()
+      .trim()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be in YYYY-MM-DD format')
+      .optional(),
   })
   .refine(
     (val) =>
@@ -41,8 +51,13 @@ export const updateAccountRequestSchema = z
       val.accountType !== undefined ||
       val.icon !== undefined ||
       val.color !== undefined ||
+      val.creditLimitMinor !== undefined ||
+      val.monthlyPaymentTargetMinor !== undefined ||
       val.statementDay !== undefined ||
-      val.dueDay !== undefined,
+      val.dueDay !== undefined ||
+      val.dueWeekday !== undefined ||
+      val.dueWeekdayOrdinal !== undefined ||
+      val.dueStartDate !== undefined,
     { message: 'At least one account metadata field is required' },
   );
 export type UpdateAccountRequest = z.infer<typeof updateAccountRequestSchema>;

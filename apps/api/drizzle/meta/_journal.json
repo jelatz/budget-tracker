@@ -29,6 +29,13 @@
       "when": 1795680335375,
       "tag": "0003_simplify_ledger_and_debts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795758217383,
+      "tag": "0004_credit_card_limit_and_paydown",
+      "breakpoints": true
     }
   ]
 }

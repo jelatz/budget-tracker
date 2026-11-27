@@ -98,8 +98,14 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
       existingAccount.icon !== validated.icon ||
       existingAccount.color !== validated.color ||
       existingAccount.currency !== validated.currency ||
+      existingAccount.creditLimitMinor !== validated.creditLimitMinor ||
+      existingAccount.monthlyPaymentTargetMinor !==
+        validated.monthlyPaymentTargetMinor ||
       existingAccount.statementDay !== validated.statementDay ||
-      existingAccount.dueDay !== validated.dueDay;
+      existingAccount.dueDay !== validated.dueDay ||
+      existingAccount.dueWeekday !== validated.dueWeekday ||
+      existingAccount.dueWeekdayOrdinal !== validated.dueWeekdayOrdinal ||
+      existingAccount.dueStartDate !== validated.dueStartDate;
     const balanceChanged =
       existingAccount.balanceMinor !== validated.balanceMinor;
 
@@ -121,10 +127,27 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
           icon: validated.icon,
           color: validated.color,
           currency: validated.currency,
+          ...(validated.creditLimitMinor !== undefined
+            ? { creditLimitMinor: validated.creditLimitMinor }
+            : {}),
+          ...(validated.monthlyPaymentTargetMinor !== undefined
+            ? {
+                monthlyPaymentTargetMinor: validated.monthlyPaymentTargetMinor,
+              }
+            : {}),
           ...(validated.statementDay !== undefined
             ? { statementDay: validated.statementDay }
             : {}),
           ...(validated.dueDay !== undefined ? { dueDay: validated.dueDay } : {}),
+          ...(validated.dueWeekday !== undefined
+            ? { dueWeekday: validated.dueWeekday }
+            : {}),
+          ...(validated.dueWeekdayOrdinal !== undefined
+            ? { dueWeekdayOrdinal: validated.dueWeekdayOrdinal }
+            : {}),
+          ...(validated.dueStartDate !== undefined
+            ? { dueStartDate: validated.dueStartDate }
+            : {}),
         },
       });
     }
@@ -162,10 +185,25 @@ export async function upsertAccount(input: UpsertAccountInput): Promise<Account>
     color: validated.color,
     currency: validated.currency,
     balanceMinor: validated.balanceMinor,
+    ...(validated.creditLimitMinor !== undefined
+      ? { creditLimitMinor: validated.creditLimitMinor }
+      : {}),
+    ...(validated.monthlyPaymentTargetMinor !== undefined
+      ? { monthlyPaymentTargetMinor: validated.monthlyPaymentTargetMinor }
+      : {}),
     ...(validated.statementDay !== undefined
       ? { statementDay: validated.statementDay }
       : {}),
     ...(validated.dueDay !== undefined ? { dueDay: validated.dueDay } : {}),
+    ...(validated.dueWeekday !== undefined
+      ? { dueWeekday: validated.dueWeekday }
+      : {}),
+    ...(validated.dueWeekdayOrdinal !== undefined
+      ? { dueWeekdayOrdinal: validated.dueWeekdayOrdinal }
+      : {}),
+    ...(validated.dueStartDate !== undefined
+      ? { dueStartDate: validated.dueStartDate }
+      : {}),
   });
 
   const nextState = enqueueSyncMutation({
@@ -715,6 +753,7 @@ export async function getSafeToSpendMetrics(
   return computeSafeToSpend({
     accounts: state.accounts,
     commitments: state.recurringCommitments,
+    transactions: state.transactions,
     nextPaydayDate,
     currentDate: date,
   });

@@ -164,7 +164,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                 Debts &amp; Bills
               </ThemedText>
               <ThemedText className="text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
-                Credit cards paid in full, installments, loans, and home bills
+                Credit cards, paydown plans, loans, and home bills
               </ThemedText>
             </View>
 
@@ -314,7 +314,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                 <View className="gap-3">
                   <View className="flex-row items-center justify-between">
                     <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      Credit Cards (Paid in Full Monthly)
+                      Credit Cards
                     </ThemedText>
                     <ThemedText
                       numeric
