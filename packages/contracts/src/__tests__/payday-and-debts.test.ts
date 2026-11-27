@@ -608,4 +608,334 @@ describe('Payday Calendar & Debts/Credit-Card Math', () => {
     expect(finalSummary.finalPaymentMinor).toBe(200_432);
     expect(finalSummary.isDueBeforeNextPayday).toBe(true);
   });
+
+  it('sorts unpaid credit cards, installments, loans, and bills to the top deterministically', () => {
+    const now = new Date(2026, 10, 15, 12, 0, 0, 0); // 2026-11-15
+    const base = createInitialSyncDataState(new Date('2026-11-01T12:00:00.000Z'));
+
+    const state = applySyncMutations(base, [
+      // Credit card 1 (default 'account-card'): settled (₱0 owed)
+      {
+        opId: 'op-card-settled',
+        clientTimestamp: '2026-11-01T12:00:00.000Z',
+        type: 'account.setBalance',
+        accountId: 'account-card',
+        balanceMinor: 0,
+      },
+      // Credit card 2: paid for current month with remaining balance
+      {
+        opId: 'op-card-paid-upsert',
+        clientTimestamp: '2026-11-01T12:01:00.000Z',
+        type: 'account.upsert',
+        account: {
+          id: 'card-paid-month',
+          name: 'Paid Plan Card',
+          accountType: 'CREDIT_CARD',
+          icon: '💳',
+          color: '#3B82F6',
+          currency: DEFAULT_CURRENCY,
+          balanceMinor: -900_000,
+          dueDay: 18,
+          monthlyPaymentTargetMinor: 300_000,
+        },
+      },
+      {
+        opId: 'op-card-paid-tx',
+        clientTimestamp: '2026-11-10T12:00:00.000Z',
+        type: 'transaction.create',
+        transaction: {
+          id: 'tx-pay-plan-nov',
+          type: 'TRANSFER',
+          amountMinor: 300_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          toAccountId: 'card-paid-month',
+          occurredAt: '2026-11-10T12:00:00.000Z',
+          createdAt: '2026-11-10T12:00:00.000Z',
+        },
+      },
+      // Credit card 3: unpaid due in future month (Dec 2026)
+      {
+        opId: 'op-card-future-upsert',
+        clientTimestamp: '2026-11-01T12:02:00.000Z',
+        type: 'account.upsert',
+        account: {
+          id: 'card-future',
+          name: 'Future Due Card',
+          accountType: 'CREDIT_CARD',
+          icon: '💳',
+          color: '#10B981',
+          currency: DEFAULT_CURRENCY,
+          balanceMinor: -800_000,
+          dueDay: 20,
+          dueStartDate: '2026-12-20',
+          monthlyPaymentTargetMinor: 200_000,
+        },
+      },
+      // Credit card 4: unpaid due Nov 25
+      {
+        opId: 'op-card-late-upsert',
+        clientTimestamp: '2026-11-01T12:03:00.000Z',
+        type: 'account.upsert',
+        account: {
+          id: 'card-unpaid-25',
+          name: 'Unpaid Card 25',
+          accountType: 'CREDIT_CARD',
+          icon: '💳',
+          color: '#F59E0B',
+          currency: DEFAULT_CURRENCY,
+          balanceMinor: -400_000,
+          dueDay: 25,
+        },
+      },
+      // Credit card 5: unpaid due Nov 18 (earliest due date this month -> first!)
+      {
+        opId: 'op-card-soon-upsert',
+        clientTimestamp: '2026-11-01T12:04:00.000Z',
+        type: 'account.upsert',
+        account: {
+          id: 'card-unpaid-18',
+          name: 'Unpaid Card 18',
+          accountType: 'CREDIT_CARD',
+          icon: '💳',
+          color: '#EF4444',
+          currency: DEFAULT_CURRENCY,
+          balanceMinor: -250_000,
+          dueDay: 18,
+        },
+      },
+      // Installments on Unpaid Card 18 (inserted paid-off -> paid -> unpaid)
+      {
+        opId: 'op-inst-paid-off',
+        clientTimestamp: '2026-11-01T12:05:00.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'inst-paid-off',
+          name: 'Paid Off Tablet',
+          kind: 'CREDIT_CARD_INSTALLMENT',
+          amountMinor: 100_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'card-unpaid-18',
+          categoryId: 'cat-loans',
+          dueDay: 18,
+          totalInstallments: 6,
+          paidInstallments: 6,
+        }),
+      },
+      {
+        opId: 'op-inst-paid-month',
+        clientTimestamp: '2026-11-01T12:05:10.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'inst-paid-month',
+          name: 'Paid Month Headphones',
+          kind: 'CREDIT_CARD_INSTALLMENT',
+          amountMinor: 50_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'card-unpaid-18',
+          categoryId: 'cat-loans',
+          dueDay: 18,
+          totalInstallments: 6,
+          paidInstallments: 2,
+          lastPaidPeriod: '2026-11',
+        }),
+      },
+      {
+        opId: 'op-inst-unpaid',
+        clientTimestamp: '2026-11-01T12:05:20.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'inst-unpaid',
+          name: 'Unpaid Laptop',
+          kind: 'CREDIT_CARD_INSTALLMENT',
+          amountMinor: 200_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'card-unpaid-18',
+          categoryId: 'cat-loans',
+          dueDay: 18,
+          totalInstallments: 12,
+          paidInstallments: 1,
+        }),
+      },
+      // Loans (inserted paid-off -> paid -> future -> upcoming -> due today -> overdue)
+      {
+        opId: 'op-loan-paid-off',
+        clientTimestamp: '2026-11-01T12:06:00.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'loan-paid-off',
+          name: 'Paid Off Loan',
+          kind: 'LOAN',
+          amountMinor: 300_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          dueDay: 10,
+          totalInstallments: 3,
+          paidInstallments: 3,
+        }),
+      },
+      {
+        opId: 'op-loan-paid',
+        clientTimestamp: '2026-11-01T12:06:10.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'loan-paid',
+          name: 'Paid Loan',
+          kind: 'LOAN',
+          amountMinor: 400_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          dueDay: 12,
+          lastPaidPeriod: '2026-11',
+        }),
+      },
+      {
+        opId: 'op-loan-future',
+        clientTimestamp: '2026-11-01T12:06:20.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'loan-future',
+          name: 'Future Loan',
+          kind: 'LOAN',
+          amountMinor: 500_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          dueDay: 5,
+          nextDueDate: '2026-12-05',
+        }),
+      },
+      {
+        opId: 'op-loan-upcoming',
+        clientTimestamp: '2026-11-01T12:06:30.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'loan-upcoming',
+          name: 'Upcoming Loan',
+          kind: 'LOAN',
+          amountMinor: 600_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          dueDay: 22,
+        }),
+      },
+      {
+        opId: 'op-loan-today',
+        clientTimestamp: '2026-11-01T12:06:40.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'loan-today',
+          name: 'Due Today Loan',
+          kind: 'LOAN',
+          amountMinor: 450_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          dueDay: 15,
+        }),
+      },
+      {
+        opId: 'op-loan-overdue',
+        clientTimestamp: '2026-11-01T12:06:50.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'loan-overdue',
+          name: 'Overdue Loan',
+          kind: 'LOAN',
+          amountMinor: 350_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          dueDay: 5,
+        }),
+      },
+      // Bills (inserted paid -> upcoming -> overdue)
+      {
+        opId: 'op-bill-paid',
+        clientTimestamp: '2026-11-01T12:07:00.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'bill-paid',
+          name: 'Paid Water Bill',
+          kind: 'BILL',
+          amountMinor: 80_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-dues',
+          dueDay: 10,
+          lastPaidPeriod: '2026-11',
+        }),
+      },
+      {
+        opId: 'op-bill-upcoming',
+        clientTimestamp: '2026-11-01T12:07:10.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'bill-upcoming',
+          name: 'Upcoming Internet',
+          kind: 'BILL',
+          amountMinor: 199_900,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-dues',
+          dueDay: 24,
+        }),
+      },
+      {
+        opId: 'op-bill-overdue',
+        clientTimestamp: '2026-11-01T12:07:20.000Z',
+        type: 'commitment.upsert',
+        commitment: recurringCommitmentSchema.parse({
+          id: 'bill-overdue',
+          name: 'Overdue Electric',
+          kind: 'BILL',
+          amountMinor: 320_000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-dues',
+          dueDay: 8,
+        }),
+      },
+    ]);
+
+    const overview = computeDebtOverview({
+      accounts: state.accounts,
+      commitments: state.recurringCommitments,
+      transactions: state.transactions,
+      currentDate: now,
+    });
+
+    expect(overview.creditCards.map((c) => c.account.id)).toEqual([
+      'card-unpaid-18',
+      'card-unpaid-25',
+      'card-future',
+      'card-paid-month',
+      'account-card',
+    ]);
+
+    const card18 = overview.creditCards.find((c) => c.account.id === 'card-unpaid-18')!;
+    expect(card18.installments.map((i) => i.id)).toEqual([
+      'inst-unpaid',
+      'inst-paid-month',
+      'inst-paid-off',
+    ]);
+
+    expect(overview.loans.map((l) => l.id)).toEqual([
+      'loan-overdue',
+      'loan-today',
+      'loan-upcoming',
+      'loan-future',
+      'loan-paid',
+      'loan-paid-off',
+    ]);
+
+    expect(overview.bills.map((b) => b.id)).toEqual([
+      'bill-overdue',
+      'bill-upcoming',
+      'bill-paid',
+    ]);
+  });
 });

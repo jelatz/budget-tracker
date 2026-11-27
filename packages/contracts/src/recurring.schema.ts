@@ -791,6 +791,10 @@ export function computeCreditCardBillSummary(params: {
 
   const dueScheduleLabel = formatCreditCardDueScheduleLabel(params.account);
 
+  const sortedInstallments = [...installments].sort((a, b) =>
+    compareCommitmentsUnpaidFirst(a, b, now),
+  );
+
   return {
     account: params.account,
     swipesOwedMinor,
@@ -812,8 +816,123 @@ export function computeCreditCardBillSummary(params: {
     dueScheduleLabel,
     dueDate,
     isDueBeforeNextPayday,
-    installments,
+    installments: sortedInstallments,
   };
+}
+
+function getCommitmentSortRank(
+  commitment: RecurringCommitment,
+  referenceDate: Date,
+): number {
+  const status = getCommitmentDueStatus(commitment, referenceDate);
+  if (status.isPaidOff) {
+    return 6;
+  }
+  if (!commitment.isActive) {
+    return 7;
+  }
+  switch (status.state) {
+    case 'OVERDUE':
+      return 0;
+    case 'DUE_TODAY':
+      return 1;
+    case 'UPCOMING_THIS_MONTH':
+      return 2;
+    case 'CUSTOM_SCHEDULE':
+      return 3;
+    case 'FUTURE_MONTH':
+      return 4;
+    case 'PAID':
+      return 5;
+    case 'PAID_OFF':
+      return 6;
+  }
+}
+
+/**
+ * Deterministic unpaid-first comparator for loans, bills, and credit card installments.
+ */
+export function compareCommitmentsUnpaidFirst(
+  a: RecurringCommitment,
+  b: RecurringCommitment,
+  referenceDate = new Date(),
+): number {
+  const rankDiff =
+    getCommitmentSortRank(a, referenceDate) - getCommitmentSortRank(b, referenceDate);
+  if (rankDiff !== 0) {
+    return rankDiff;
+  }
+
+  const dueDiff = resolveCommitmentDueDate(a, referenceDate).localeCompare(
+    resolveCommitmentDueDate(b, referenceDate),
+  );
+  if (dueDiff !== 0) {
+    return dueDiff;
+  }
+
+  const amountDiff = b.amountMinor - a.amountMinor;
+  if (amountDiff !== 0) {
+    return amountDiff;
+  }
+
+  return a.name.localeCompare(b.name);
+}
+
+function getCreditCardSortRank(
+  summary: CreditCardBillSummary,
+  currentPeriod: string,
+): number {
+  if (
+    summary.upcomingBillMinor > 0 &&
+    !summary.isPaidForCurrentMonth &&
+    (!summary.dueDate || summary.dueDate.slice(0, 7) <= currentPeriod)
+  ) {
+    return 0;
+  }
+  if (summary.upcomingBillMinor > 0 && !summary.isPaidForCurrentMonth) {
+    return 1;
+  }
+  if (summary.totalCardDebtMinor > 0) {
+    return 2;
+  }
+  return 3;
+}
+
+/**
+ * Deterministic unpaid-first comparator for credit card debt summaries.
+ */
+export function compareCreditCardSummariesUnpaidFirst(
+  a: CreditCardBillSummary,
+  b: CreditCardBillSummary,
+  referenceDate = new Date(),
+): number {
+  const currentPeriod = formatCalendarDateString(referenceDate).slice(0, 7);
+  const rankDiff =
+    getCreditCardSortRank(a, currentPeriod) - getCreditCardSortRank(b, currentPeriod);
+  if (rankDiff !== 0) {
+    return rankDiff;
+  }
+
+  if (a.dueDate !== b.dueDate) {
+    if (!a.dueDate) return 1;
+    if (!b.dueDate) return -1;
+    const dueDiff = a.dueDate.localeCompare(b.dueDate);
+    if (dueDiff !== 0) {
+      return dueDiff;
+    }
+  }
+
+  const upcomingDiff = b.upcomingBillMinor - a.upcomingBillMinor;
+  if (upcomingDiff !== 0) {
+    return upcomingDiff;
+  }
+
+  const totalDebtDiff = b.totalCardDebtMinor - a.totalCardDebtMinor;
+  if (totalDebtDiff !== 0) {
+    return totalDebtDiff;
+  }
+
+  return a.account.name.localeCompare(b.account.name);
 }
 
 export interface DebtOverview {
@@ -852,15 +971,17 @@ export function computeDebtOverview(params: {
     }
   }
 
-  const creditCards = creditCardAccounts.map((account) =>
-    computeCreditCardBillSummary({
-      account,
-      commitments: params.commitments,
-      transactions: params.transactions,
-      currentDate: now,
-      nextPaydayDate: params.nextPaydayDate,
-    }),
-  );
+  const creditCards = creditCardAccounts
+    .map((account) =>
+      computeCreditCardBillSummary({
+        account,
+        commitments: params.commitments,
+        transactions: params.transactions,
+        currentDate: now,
+        nextPaydayDate: params.nextPaydayDate,
+      }),
+    )
+    .sort((a, b) => compareCreditCardSummariesUnpaidFirst(a, b, now));
 
   const loans: RecurringCommitment[] = [];
   const bills: RecurringCommitment[] = [];
@@ -877,6 +998,9 @@ export function computeDebtOverview(params: {
       bills.push(c);
     }
   }
+
+  loans.sort((a, b) => compareCommitmentsUnpaidFirst(a, b, now));
+  bills.sort((a, b) => compareCommitmentsUnpaidFirst(a, b, now));
 
   const totalCreditCardUpcomingBillMinor = creditCards.reduce(
     (sum, cc) => sum + cc.upcomingBillMinor,

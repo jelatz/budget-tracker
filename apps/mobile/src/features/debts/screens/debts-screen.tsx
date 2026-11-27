@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  TextInput,
   useWindowDimensions,
   View,
 } from 'react-native';
@@ -12,7 +14,10 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import {
   DEFAULT_CURRENCY,
   formatMinorUnits,
+  type Account,
+  type Category,
   type CommitmentKind,
+  type CreditCardBillSummary,
   type DebtsRouteTab,
   type RecurringCommitment,
 } from '@repo/contracts';
@@ -62,6 +67,69 @@ function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
   return rows;
 }
 
+function tokenizeSearchQuery(query: string): string[] {
+  const trimmed = query.trim().toLowerCase();
+  return trimmed.length > 0 ? trimmed.split(/\s+/) : [];
+}
+
+function matchesSearchTokens(
+  tokens: readonly string[],
+  fields: readonly (string | null | undefined)[],
+): boolean {
+  if (tokens.length === 0) {
+    return true;
+  }
+  const haystack = fields
+    .filter((field): field is string => typeof field === 'string' && field.length > 0)
+    .join(' ')
+    .toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
+function matchesCommitment(
+  commitment: RecurringCommitment,
+  tokens: readonly string[],
+  accountLookup: Map<string, Account>,
+  categoryLookup: Map<string, Category>,
+): boolean {
+  return matchesSearchTokens(tokens, [
+    commitment.name,
+    commitment.notes,
+    commitment.dueLabel,
+    commitment.frequency,
+    commitment.nextDueDate,
+    commitment.currency,
+    accountLookup.get(commitment.accountId)?.name,
+    categoryLookup.get(commitment.categoryId)?.name,
+  ]);
+}
+
+function matchesCreditCardSummary(
+  summary: CreditCardBillSummary,
+  tokens: readonly string[],
+  categoryLookup: Map<string, Category>,
+): boolean {
+  const matchesCard = matchesSearchTokens(tokens, [
+    summary.account.name,
+    summary.account.currency,
+    summary.dueScheduleLabel,
+    summary.dueDate,
+    summary.isPaydownPlan ? 'paydown plan' : '',
+  ]);
+  if (matchesCard) {
+    return true;
+  }
+  return summary.installments.some((inst) =>
+    matchesSearchTokens(tokens, [
+      inst.name,
+      inst.notes,
+      inst.dueLabel,
+      inst.frequency,
+      categoryLookup.get(inst.categoryId)?.name,
+    ]),
+  );
+}
+
 export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
   const { isAuthenticated } = useRequireAuth();
   const theme = useTheme();
@@ -71,6 +139,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
   const isWide = windowWidth >= 768;
 
   const [activeTab, setActiveTab] = useState<DebtsRouteTab>(initialTab);
+  const [searchQuery, setSearchQuery] = useState('');
   const [formVisible, setFormVisible] = useState(false);
   const [editingCommitment, setEditingCommitment] =
     useState<RecurringCommitment | null>(null);
@@ -92,18 +161,60 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
     setActiveTab(initialTab);
   }, [initialTab]);
 
+  const accountLookup = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a])),
+    [accounts],
+  );
+  const categoryLookup = useMemo(
+    () => new Map(categories.map((c) => [c.id, c])),
+    [categories],
+  );
+  const searchTokens = useMemo(
+    () => tokenizeSearchQuery(searchQuery),
+    [searchQuery],
+  );
+  const hasSearchQuery = searchTokens.length > 0;
+
+  const filteredCreditCards = useMemo(
+    () =>
+      !hasSearchQuery
+        ? overview.creditCards
+        : overview.creditCards.filter((summary) =>
+            matchesCreditCardSummary(summary, searchTokens, categoryLookup),
+          ),
+    [overview.creditCards, hasSearchQuery, searchTokens, categoryLookup],
+  );
+  const filteredLoans = useMemo(
+    () =>
+      !hasSearchQuery
+        ? overview.loans
+        : overview.loans.filter((loan) =>
+            matchesCommitment(loan, searchTokens, accountLookup, categoryLookup),
+          ),
+    [overview.loans, hasSearchQuery, searchTokens, accountLookup, categoryLookup],
+  );
+  const filteredBills = useMemo(
+    () =>
+      !hasSearchQuery
+        ? overview.bills
+        : overview.bills.filter((bill) =>
+            matchesCommitment(bill, searchTokens, accountLookup, categoryLookup),
+          ),
+    [overview.bills, hasSearchQuery, searchTokens, accountLookup, categoryLookup],
+  );
+
   const debtGridColumns = isWide ? 2 : 1;
   const creditCardRows = useMemo(
-    () => chunkIntoRows(overview.creditCards, debtGridColumns),
-    [overview.creditCards, debtGridColumns],
+    () => chunkIntoRows(filteredCreditCards, debtGridColumns),
+    [filteredCreditCards, debtGridColumns],
   );
   const loanRows = useMemo(
-    () => chunkIntoRows(overview.loans, debtGridColumns),
-    [overview.loans, debtGridColumns],
+    () => chunkIntoRows(filteredLoans, debtGridColumns),
+    [filteredLoans, debtGridColumns],
   );
   const billRows = useMemo(
-    () => chunkIntoRows(overview.bills, debtGridColumns),
-    [overview.bills, debtGridColumns],
+    () => chunkIntoRows(filteredBills, debtGridColumns),
+    [filteredBills, debtGridColumns],
   );
 
   if (!isAuthenticated) {
@@ -111,7 +222,6 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
   }
 
   const liquidAccounts = accounts.filter((a) => a.accountType !== 'CREDIT_CARD');
-  const accountLookup = new Map(accounts.map((a) => [a.id, a]));
   const currency = accounts[0]?.currency ?? DEFAULT_CURRENCY;
   const scrollBottomPadding = Math.max(40, BottomTabInset + insets.bottom + 28);
 
@@ -138,11 +248,29 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
   const showLoans = activeTab === 'ALL' || activeTab === 'LOANS';
   const showBills = activeTab === 'ALL' || activeTab === 'BILLS';
 
+  const totalAllTabMatches =
+    filteredCreditCards.length + filteredLoans.length + filteredBills.length;
+  const visibleMatchCount =
+    (showCards ? filteredCreditCards.length : 0) +
+    (showLoans ? filteredLoans.length : 0) +
+    (showBills ? filteredBills.length : 0);
+  const renderCardsSection =
+    showCards && (!hasSearchQuery || filteredCreditCards.length > 0);
+  const renderLoansSection =
+    showLoans && (!hasSearchQuery || filteredLoans.length > 0);
+  const renderBillsSection =
+    showBills && (!hasSearchQuery || filteredBills.length > 0);
+
   return (
     <ThemedView className="flex-1 bg-ledger-canvas dark:bg-ledger-canvas-dark">
       <SafeAreaView className="flex-1" edges={['top', 'left', 'right']}>
+        <KeyboardAvoidingView
+          className="flex-1"
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <ScrollView
           className="flex-1"
+          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{
             width: '100%',
@@ -243,6 +371,36 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
             </View>
           </View>
 
+          {/* Search Bar */}
+          <View className="flex-row items-center gap-2 mb-3">
+            <View className="flex-1 flex-row items-center h-12 px-3.5 gap-2 rounded-xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark">
+              <AppIcon name="search" size={16} color={theme.textMuted} />
+              <TextInput
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                placeholder="Search card, installment, loan, bill, or account..."
+                placeholderTextColor={theme.textMuted}
+                accessibilityLabel="Search debts and bills"
+                returnKeyType="search"
+                autoCapitalize="none"
+                autoCorrect={false}
+                className="flex-1 h-full text-ledger-ink dark:text-ledger-ink-dark text-sm"
+              />
+            </View>
+            {searchQuery.length > 0 ? (
+              <Pressable
+                onPress={() => setSearchQuery('')}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search query"
+                className="min-h-[44px] min-w-[44px] px-4 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary">
+                  Clear
+                </ThemedText>
+              </Pressable>
+            ) : null}
+          </View>
+
           {/* Filter Tabs */}
           <View
             accessibilityRole="tablist"
@@ -307,25 +465,77 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                 </ThemedText>
               </Pressable>
             </View>
+          ) : hasSearchQuery && visibleMatchCount === 0 ? (
+            <View className="p-6 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-3">
+              <AppIcon name="search" size={26} color={theme.textMuted} />
+              <ThemedText className="text-base font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
+                No Matching Debts or Bills
+              </ThemedText>
+              <ThemedText className="text-xs sm:text-sm font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center max-w-[320px]">
+                No debts or bills match &ldquo;{searchQuery.trim()}&rdquo;
+                {activeTab !== 'ALL'
+                  ? ` in ${TAB_OPTIONS.find((t) => t.key === activeTab)?.label ?? 'this tab'}`
+                  : ''}
+                .
+              </ThemedText>
+              <View className="flex-row flex-wrap justify-center gap-2 mt-1">
+                <Pressable
+                  onPress={() => setSearchQuery('')}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search query"
+                  className="min-h-[44px] px-4 py-2.5 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+                >
+                  <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                    Clear Search
+                  </ThemedText>
+                </Pressable>
+                {activeTab !== 'ALL' && totalAllTabMatches > 0 ? (
+                  <Pressable
+                    onPress={() => setActiveTab('ALL')}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Show ${totalAllTabMatches} matches in All Tabs`}
+                    className="min-h-[44px] px-4 py-2.5 rounded-xl bg-brand-500 dark:bg-brand-400 items-center justify-center active:opacity-90"
+                  >
+                    <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-brand-900">
+                      Show {totalAllTabMatches} in All Tabs
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
+              </View>
+            </View>
           ) : (
-            <View className="gap-6">
+            <View className="gap-8">
+              {hasSearchQuery ? (
+                <ThemedText className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary -mb-4">
+                  Showing {visibleMatchCount}{' '}
+                  {visibleMatchCount === 1 ? 'match' : 'matches'}
+                </ThemedText>
+              ) : null}
               {/* Credit Cards Section */}
-              {showCards ? (
-                <View className="gap-3">
-                  <View className="flex-row items-center justify-between">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      Credit Cards
-                    </ThemedText>
-                    <ThemedText
-                      numeric
-                      className="text-xs font-semibold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
-                    >
-                      {overview.creditCards.length}{' '}
-                      {overview.creditCards.length === 1 ? 'card' : 'cards'}
-                    </ThemedText>
+              {renderCardsSection ? (
+                <View className="gap-3.5">
+                  <View className="flex-row items-center justify-between gap-3 pb-2.5 border-b border-ledger-border-strong dark:border-ledger-border-strong-dark">
+                    <View className="flex-1 min-w-0 flex-row items-center gap-2">
+                      <AppIcon name="creditCard" size={18} color={theme.primary} />
+                      <ThemedText
+                        accessibilityRole="header"
+                        className="text-base sm:text-lg font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark flex-shrink"
+                      >
+                        Credit Cards
+                      </ThemedText>
+                    </View>
+                    <View className="shrink-0 px-2.5 py-1 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                      <ThemedText
+                        numeric
+                        className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                      >
+                        {filteredCreditCards.length}{' '}
+                        {filteredCreditCards.length === 1 ? 'card' : 'cards'}
+                      </ThemedText>
+                    </View>
                   </View>
 
-                  {overview.creditCards.length === 0 ? (
+                  {filteredCreditCards.length === 0 ? (
                     <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-2.5">
                       <AppIcon name="creditCard" size={24} color={theme.textMuted} />
                       <ThemedText className="text-sm font-bold text-ledger-ink dark:text-ledger-ink-dark text-center">
@@ -386,25 +596,39 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               ) : null}
 
               {/* Loans Section */}
-              {showLoans ? (
-                <View className="gap-3">
-                  <View className="flex-row items-center justify-between">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      Loans &amp; Fixed Payoffs
-                    </ThemedText>
+              {renderLoansSection ? (
+                <View className="gap-3.5">
+                  <View className="flex-row items-center justify-between gap-3 pb-2.5 border-b border-ledger-border-strong dark:border-ledger-border-strong-dark">
+                    <View className="flex-1 min-w-0 flex-row items-center gap-2">
+                      <AppIcon name="loan" size={18} color={theme.info} />
+                      <ThemedText
+                        accessibilityRole="header"
+                        className="text-base sm:text-lg font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark flex-shrink"
+                      >
+                        Loans &amp; Fixed Payoffs
+                      </ThemedText>
+                      <View className="shrink-0 px-2 py-0.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                        <ThemedText
+                          numeric
+                          className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                        >
+                          {filteredLoans.length}
+                        </ThemedText>
+                      </View>
+                    </View>
                     <Pressable
                       onPress={() => handleOpenAdd('LOAN')}
                       accessibilityRole="button"
                       accessibilityLabel="Add Loan"
-                      className="min-h-[44px] px-3 justify-center"
+                      className="shrink-0 min-h-[44px] px-3 justify-center"
                     >
-                      <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                      <ThemedText className="text-xs sm:text-sm font-bold text-brand-500 dark:text-brand-400">
                         + Add Loan
                       </ThemedText>
                     </Pressable>
                   </View>
 
-                  {overview.loans.length === 0 ? (
+                  {filteredLoans.length === 0 ? (
                     <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-2">
                       <AppIcon name="loan" size={22} color={theme.textMuted} />
                       <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
@@ -450,25 +674,44 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
               ) : null}
 
               {/* Home & Utilities Section */}
-              {showBills ? (
-                <View className="gap-3">
-                  <View className="flex-row items-center justify-between">
-                    <ThemedText className="text-[11px] font-bold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      Home &amp; Utilities (Editable Bill Amounts)
-                    </ThemedText>
+              {renderBillsSection ? (
+                <View className="gap-3.5">
+                  <View className="flex-row items-center justify-between gap-3 pb-2.5 border-b border-ledger-border-strong dark:border-ledger-border-strong-dark">
+                    <View className="flex-1 min-w-0">
+                      <View className="flex-row items-center gap-2">
+                        <AppIcon name="calendar" size={18} color={theme.textSecondary} />
+                        <ThemedText
+                          accessibilityRole="header"
+                          className="text-base sm:text-lg font-extrabold tracking-tight text-ledger-ink dark:text-ledger-ink-dark flex-shrink"
+                        >
+                          Home &amp; Utilities
+                        </ThemedText>
+                        <View className="shrink-0 px-2 py-0.5 rounded-full bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark">
+                          <ThemedText
+                            numeric
+                            className="text-xs font-bold text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary"
+                          >
+                            {filteredBills.length}
+                          </ThemedText>
+                        </View>
+                      </View>
+                      <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary mt-0.5">
+                        Editable monthly bill amounts
+                      </ThemedText>
+                    </View>
                     <Pressable
                       onPress={() => handleOpenAdd('BILL')}
                       accessibilityRole="button"
                       accessibilityLabel="Add Home or Utility Bill"
-                      className="min-h-[44px] px-3 justify-center"
+                      className="shrink-0 min-h-[44px] px-3 justify-center"
                     >
-                      <ThemedText className="text-xs font-bold text-brand-500 dark:text-brand-400">
+                      <ThemedText className="text-xs sm:text-sm font-bold text-brand-500 dark:text-brand-400">
                         + Add Bill
                       </ThemedText>
                     </Pressable>
                   </View>
 
-                  {overview.bills.length === 0 ? (
+                  {filteredBills.length === 0 ? (
                     <View className="p-5 rounded-2xl bg-ledger-surface dark:bg-ledger-surface-dark border border-ledger-border dark:border-ledger-border-dark items-center gap-2">
                       <AppIcon name="calendar" size={22} color={theme.textMuted} />
                       <ThemedText className="text-xs font-medium text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary text-center">
@@ -515,6 +758,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
             </View>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
 
         <ObligationFormModal
           visible={formVisible}
