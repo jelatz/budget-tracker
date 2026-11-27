@@ -272,6 +272,16 @@ function extractHiddenInput(html: string, name: string): string {
   return match[1];
 }
 
+function extractMetaRefreshUrl(html: string): string {
+  const match = html.match(
+    /<meta\s+http-equiv="refresh"\s+content="0;url=([^"]+)"/i,
+  );
+  if (!match) {
+    throw new Error('Could not find meta refresh redirect URL in HTML');
+  }
+  return match[1].replace(/&amp;/g, '&');
+}
+
 describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
   it('returns 401 with RFC 9728 WWW-Authenticate on unauthenticated /mcp and serves discovery metadata', async () => {
     const { app } = createTestHarness();
@@ -355,6 +365,9 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
     const getAuthRes = await app.request(authUrl.toString());
     expect(getAuthRes.status).toBe(200);
     const authHtml = await getAuthRes.text();
+    expect(authHtml.indexOf('value="approve"')).toBeLessThan(
+      authHtml.indexOf('value="deny"'),
+    );
     const csrfToken = extractHiddenInput(authHtml, 'csrf_token');
 
     // 3. Invalid password returns 401 inline error
@@ -398,8 +411,8 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
       body: goodLoginBody.toString(),
     });
-    expect(goodLoginRes.status).toBe(302);
-    const location = goodLoginRes.headers.get('location')!;
+    expect(goodLoginRes.status).toBe(200);
+    const location = extractMetaRefreshUrl(await goodLoginRes.text());
     const redirected = new URL(location);
     const code = redirected.searchParams.get('code')!;
     expect(code.startsWith('bt_code_')).toBe(true);
@@ -737,8 +750,10 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
         decision: 'approve',
       }).toString(),
     });
-    expect(postRes.status).toBe(302);
-    const code = new URL(postRes.headers.get('location')!).searchParams.get('code')!;
+    expect(postRes.status).toBe(200);
+    const code = new URL(extractMetaRefreshUrl(await postRes.text())).searchParams.get(
+      'code',
+    )!;
 
     const basicHeader = `Basic ${Buffer.from('gemini-static-id:gemini-static-secret').toString('base64')}`;
     const tokenRes = await app.request('https://budget.example.com/oauth/token', {

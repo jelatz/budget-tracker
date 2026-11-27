@@ -17,6 +17,7 @@ import {
   OAUTH_REFRESH_TOKEN_PREFIX,
 } from '../../core/auth/middleware';
 import { getEnv } from '../../core/env';
+import { logWarn } from '../../core/logger';
 import type { AuthRepository } from '../auth/repository';
 
 const ACCESS_TOKEN_TTL_SECONDS = 24 * 60 * 60; // 24 hours
@@ -342,6 +343,7 @@ function renderAuthorizeHtml(params: {
     }
     .actions {
       display: flex;
+      flex-direction: row-reverse;
       gap: 10px;
       margin-top: 6px;
     }
@@ -393,10 +395,95 @@ function renderAuthorizeHtml(params: {
       <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" />
 
       <div class="actions">
-        <button type="submit" name="decision" value="deny" class="btn-cancel">Cancel</button>
         <button type="submit" name="decision" value="approve" class="btn-primary">Authorize &amp; Connect</button>
+        <button type="submit" name="decision" value="deny" class="btn-cancel">Cancel</button>
       </div>
     </form>
+  </main>
+</body>
+</html>`;
+}
+
+function renderRedirectHtml(params: {
+  title: string;
+  message: string;
+  targetUrl: string;
+  buttonLabel: string;
+}): string {
+  const safeTargetUrl = escapeHtml(params.targetUrl);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="refresh" content="0;url=${safeTargetUrl}" />
+  <title>${escapeHtml(params.title)}</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #FAF8F4;
+      color: #1C1B18;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #131210; color: #F4F1EA; }
+      .card { background: #1B1A17 !important; border-color: #2E2B25 !important; }
+      .muted { color: #ABA599 !important; }
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #FFFFFF;
+      border: 1px solid #E5E0D6;
+      border-radius: 20px;
+      padding: 24px;
+      text-align: center;
+      box-shadow: 0 10px 30px rgba(28, 27, 24, 0.06);
+    }
+    .badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #EAF2EE;
+      color: #1B4332;
+      margin-bottom: 12px;
+    }
+    h1 { margin: 0 0 8px; font-size: 20px; line-height: 1.25; }
+    p { margin: 0 0 18px; font-size: 14px; line-height: 1.45; }
+    .muted { color: #5C584F; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 44px;
+      padding: 10px 16px;
+      border-radius: 12px;
+      background: #1B4332;
+      color: #FAF8F4;
+      font-size: 14px;
+      font-weight: 700;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="badge">Budget Tracker MCP</span>
+    <h1>${escapeHtml(params.title)}</h1>
+    <p class="muted">${escapeHtml(params.message)}</p>
+    <a class="btn" href="${safeTargetUrl}">${escapeHtml(params.buttonLabel)}</a>
   </main>
 </body>
 </html>`;
@@ -779,7 +866,15 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
         if (state) {
           target.searchParams.set('state', state);
         }
-        return c.redirect(target.toString(), 302);
+        return c.html(
+          renderRedirectHtml({
+            title: 'Authorization Cancelled',
+            message: `Returning to ${client.clientName}...`,
+            targetUrl: target.toString(),
+            buttonLabel: `Return to ${client.clientName}`,
+          }),
+          200,
+        );
       }
 
       const email = (bodyRecord.email ?? '').trim().toLowerCase();
@@ -844,7 +939,15 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
       if (state) {
         target.searchParams.set('state', state);
       }
-      return c.redirect(target.toString(), 302);
+      return c.html(
+        renderRedirectHtml({
+          title: 'Connected!',
+          message: `Redirecting back to ${client.clientName} to finish setup...`,
+          targetUrl: target.toString(),
+          buttonLabel: `Continue to ${client.clientName}`,
+        }),
+        200,
+      );
     })
     .post('/oauth/token', async (c) => {
       c.header('Cache-Control', 'no-store');
@@ -888,17 +991,27 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
         );
       }
 
-      const clientId = basic?.clientId ?? bodyClientId;
-      const clientSecret = basic?.clientSecret ?? bodyClientSecret;
+      const clientId = basic?.clientId || bodyClientId;
+      const clientSecret = basic?.clientSecret || bodyClientSecret;
+      const grantType = bodyRecord.grant_type?.trim();
+
+      const rejectToken = (
+        status: 400 | 401,
+        error: string,
+        errorDescription: string,
+        reason: string,
+      ) => {
+        logWarn('mcp_oauth_token_rejected', {
+          reason,
+          grantType: grantType ?? null,
+          hasBasic: Boolean(basic),
+          hasBodyClientId: Boolean(bodyClientId),
+        });
+        return c.json({ error, error_description: errorDescription }, status);
+      };
 
       if (!clientId) {
-        return c.json(
-          {
-            error: 'invalid_client',
-            error_description: 'client_id is required.',
-          },
-          401,
-        );
+        return rejectToken(401, 'invalid_client', 'client_id is required.', 'missing_client_id');
       }
 
       const { dcrIdKey, dcrSecretKey, codeKey, rtBindKey } = getKeys();
@@ -909,13 +1022,7 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
         getStaticClient(),
       );
       if (!client) {
-        return c.json(
-          {
-            error: 'invalid_client',
-            error_description: 'Unknown OAuth client_id.',
-          },
-          401,
-        );
+        return rejectToken(401, 'invalid_client', 'Unknown OAuth client_id.', 'unknown_client_id');
       }
 
       if (client.clientSecret) {
@@ -923,17 +1030,9 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
           !clientSecret ||
           !timingSafeEqualStrings(clientSecret, client.clientSecret)
         ) {
-          return c.json(
-            {
-              error: 'invalid_client',
-              error_description: 'Invalid client_secret.',
-            },
-            401,
-          );
+          return rejectToken(401, 'invalid_client', 'Invalid client_secret.', 'invalid_client_secret');
         }
       }
-
-      const grantType = bodyRecord.grant_type?.trim();
       const issueTokenPair = async (userId: string, scope: string) => {
         const accessToken = `${OAUTH_ACCESS_TOKEN_PREFIX}${generateSessionToken()}`;
         const rawRefresh = generateSessionToken();
@@ -974,13 +1073,11 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
         const codeVerifier = bodyRecord.code_verifier?.trim() ?? '';
 
         if (!code || !redirectUri || !codeVerifier) {
-          return c.json(
-            {
-              error: 'invalid_request',
-              error_description:
-                'code, redirect_uri, and code_verifier are required.',
-            },
+          return rejectToken(
             400,
+            'invalid_request',
+            'code, redirect_uri, and code_verifier are required.',
+            'missing_auth_code_params',
           );
         }
 
@@ -997,12 +1094,11 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
           payload.clientId !== client.clientId ||
           payload.redirectUri !== redirectUri
         ) {
-          return c.json(
-            {
-              error: 'invalid_grant',
-              error_description: 'Authorization code is invalid or expired.',
-            },
+          return rejectToken(
             400,
+            'invalid_grant',
+            'Authorization code is invalid or expired.',
+            'invalid_or_mismatched_code',
           );
         }
 
@@ -1010,12 +1106,11 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
           .update(codeVerifier)
           .digest('base64url');
         if (!timingSafeEqualStrings(computedChallenge, payload.codeChallenge)) {
-          return c.json(
-            {
-              error: 'invalid_grant',
-              error_description: 'Invalid PKCE code_verifier.',
-            },
+          return rejectToken(
             400,
+            'invalid_grant',
+            'Invalid PKCE code_verifier.',
+            'pkce_mismatch',
           );
         }
 
@@ -1023,12 +1118,11 @@ export function createMcpOAuthRoutes(deps: McpOAuthDependencies) {
           hashSessionToken(code),
         );
         if (!codeSession || codeSession.user.id !== payload.userId) {
-          return c.json(
-            {
-              error: 'invalid_grant',
-              error_description: 'Authorization code has already been used or revoked.',
-            },
+          return rejectToken(
             400,
+            'invalid_grant',
+            'Authorization code has already been used or revoked.',
+            'code_session_missing_or_used',
           );
         }
 

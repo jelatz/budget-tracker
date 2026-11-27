@@ -292,7 +292,6 @@ const oauthContentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "frame-ancestors 'none'",
   "base-uri 'self'",
-  "form-action 'self' https:",
 ].join('; ');
 
 // 6. Write Build Output API v3 routing config
