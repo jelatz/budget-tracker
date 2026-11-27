@@ -155,6 +155,43 @@ function chunkIntoRows<T>(items: readonly T[], columns: number): T[][] {
   return rows;
 }
 
+type BalanceSign = '-' | '+';
+
+function parseUnsignedBalanceInput(raw: string): {
+  text: string;
+  signOverride?: BalanceSign;
+} {
+  const normalized = normalizeDecimalInput(raw);
+  let signOverride: BalanceSign | undefined;
+  let stripped = normalized;
+  if (stripped.startsWith('-')) {
+    signOverride = '-';
+    stripped = stripped.slice(1);
+  } else if (stripped.startsWith('+')) {
+    signOverride = '+';
+    stripped = stripped.slice(1);
+  }
+  return {
+    text: stripped.replace(/[+-]/g, ''),
+    ...(signOverride ? { signOverride } : {}),
+  };
+}
+
+function combineSignedMinorUnits(
+  absInput: string,
+  sign: BalanceSign,
+): number | null {
+  const parsed = parseDecimalToMinorUnits(absInput);
+  if (parsed === null) {
+    return null;
+  }
+  if (parsed === 0) {
+    return 0;
+  }
+  const absMinor = Math.abs(parsed);
+  return sign === '-' ? -absMinor : absMinor;
+}
+
 interface AccountCardProps {
   account: Account;
   onEdit: (account: Account) => void;
@@ -299,6 +336,7 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
   // Set Balance modal state
   const [balanceAccount, setBalanceAccount] = useState<Account | null>(null);
   const [quickBalanceInput, setQuickBalanceInput] = useState('');
+  const [quickBalanceSign, setQuickBalanceSign] = useState<BalanceSign>('+');
   const [quickBalanceError, setQuickBalanceError] = useState<string | null>(null);
 
   // Add/Edit Account modal state
@@ -307,6 +345,7 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
   const [accountType, setAccountType] = useState<AccountType>('BANK');
   const [nameInput, setNameInput] = useState('');
   const [balanceInput, setBalanceInput] = useState('0');
+  const [balanceSign, setBalanceSign] = useState<BalanceSign>('+');
   const [creditLimitInput, setCreditLimitInput] = useState('');
   const [paymentMode, setPaymentMode] = useState<'FULL' | 'PAYDOWN'>('FULL');
   const [monthlyPaymentTargetInput, setMonthlyPaymentTargetInput] = useState('');
@@ -377,6 +416,7 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
     setAccountType(presetType);
     setNameInput('');
     setBalanceInput('0');
+    setBalanceSign(presetType === 'CREDIT_CARD' ? '-' : '+');
     setCreditLimitInput('');
     setPaymentMode('FULL');
     setMonthlyPaymentTargetInput('');
@@ -397,7 +437,16 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
     setEditingAccount(account);
     setAccountType(account.accountType);
     setNameInput(account.name);
-    setBalanceInput(minorUnitsToDecimalInput(account.balanceMinor));
+    setBalanceInput(minorUnitsToDecimalInput(Math.abs(account.balanceMinor)));
+    setBalanceSign(
+      account.accountType === 'CREDIT_CARD'
+        ? account.balanceMinor > 0
+          ? '+'
+          : '-'
+        : account.balanceMinor < 0
+          ? '-'
+          : '+',
+    );
     setCreditLimitInput(
       typeof account.creditLimitMinor === 'number'
         ? minorUnitsToDecimalInput(account.creditLimitMinor)
@@ -434,13 +483,25 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
 
   const handleOpenSetBalance = (account: Account) => {
     setBalanceAccount(account);
-    setQuickBalanceInput(minorUnitsToDecimalInput(account.balanceMinor));
+    setQuickBalanceInput(minorUnitsToDecimalInput(Math.abs(account.balanceMinor)));
+    setQuickBalanceSign(
+      account.accountType === 'CREDIT_CARD'
+        ? account.balanceMinor > 0
+          ? '+'
+          : '-'
+        : account.balanceMinor < 0
+          ? '-'
+          : '+',
+    );
     setQuickBalanceError(null);
   };
 
   const handleConfirmSetBalance = async () => {
     if (!balanceAccount) return;
-    const parsedMinor = parseDecimalToMinorUnits(quickBalanceInput);
+    const parsedMinor = combineSignedMinorUnits(
+      quickBalanceInput,
+      quickBalanceSign,
+    );
     if (parsedMinor === null) {
       setQuickBalanceError('Enter a valid number (up to 2 decimal places).');
       return;
@@ -472,7 +533,7 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
       return;
     }
 
-    const parsedBalanceMinor = parseDecimalToMinorUnits(balanceInput);
+    const parsedBalanceMinor = combineSignedMinorUnits(balanceInput, balanceSign);
     if (parsedBalanceMinor === null) {
       setFormError('Please enter a valid numeric balance.');
       return;
@@ -905,23 +966,130 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
                   </ThemedText>
                 ) : null}
 
-                <View className="gap-1.5">
+                <View className="gap-2">
                   <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                    Exact Actual Balance ({balanceAccount?.currency ?? DEFAULT_CURRENCY})
+                    {balanceAccount?.accountType === 'CREDIT_CARD'
+                      ? `Outstanding Card Balance (${balanceAccount.currency})`
+                      : `Exact Actual Balance (${balanceAccount?.currency ?? DEFAULT_CURRENCY})`}
                   </ThemedText>
-                  <TextInput
-                    value={quickBalanceInput}
-                    onChangeText={(text) => setQuickBalanceInput(normalizeDecimalInput(text))}
-                    keyboardType="decimal-pad"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    placeholderTextColor={theme.textMuted}
-                    style={TABULAR_NUMS_STYLE}
-                    className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
-                  />
+
+                  {balanceAccount?.accountType === 'CREDIT_CARD' ? (
+                    <View className="flex-row gap-2">
+                      <Pressable
+                        onPress={() => setQuickBalanceSign('-')}
+                        disabled={setBalanceMutation.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel="Balance owed (negative)"
+                        accessibilityState={{ selected: quickBalanceSign === '-' }}
+                        className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
+                          quickBalanceSign === '-'
+                            ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-terracotta dark:border-ledger-terracotta-dark'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
+                        }`}
+                      >
+                        <ThemedText
+                          className={`text-xs font-bold ${
+                            quickBalanceSign === '-'
+                              ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                          }`}
+                        >
+                          Owed (−)
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => setQuickBalanceSign('+')}
+                        disabled={setBalanceMutation.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel="Overpaid credit surplus (positive)"
+                        accessibilityState={{ selected: quickBalanceSign === '+' }}
+                        className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
+                          quickBalanceSign === '+'
+                            ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-pine dark:border-ledger-pine-dark'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
+                        }`}
+                      >
+                        <ThemedText
+                          className={`text-xs font-bold ${
+                            quickBalanceSign === '+'
+                              ? 'text-ledger-pine dark:text-ledger-pine-dark'
+                              : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                          }`}
+                        >
+                          Overpaid (+)
+                        </ThemedText>
+                      </Pressable>
+                    </View>
+                  ) : null}
+
+                  <View className="flex-row items-center gap-2">
+                    <View className="flex-1 h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center">
+                      <ThemedText
+                        style={TABULAR_NUMS_STYLE}
+                        className={`text-base font-bold mr-2 ${
+                          quickBalanceSign === '-'
+                            ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                            : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
+                        }`}
+                      >
+                        {quickBalanceSign === '-' ? '-' : ''}
+                        {DEFAULT_CURRENCY_SYMBOL}
+                      </ThemedText>
+                      <TextInput
+                        value={quickBalanceInput}
+                        onChangeText={(text) => {
+                          const { text: nextText, signOverride } =
+                            parseUnsignedBalanceInput(text);
+                          setQuickBalanceInput(nextText);
+                          if (signOverride) setQuickBalanceSign(signOverride);
+                          if (quickBalanceError) setQuickBalanceError(null);
+                        }}
+                        keyboardType="decimal-pad"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        placeholderTextColor={theme.textMuted}
+                        accessibilityLabel="Account balance amount"
+                        editable={!setBalanceMutation.isPending}
+                        style={TABULAR_NUMS_STYLE}
+                        className="flex-1 h-full text-base font-bold text-ledger-ink dark:text-ledger-ink-dark"
+                      />
+                    </View>
+
+                    {balanceAccount?.accountType !== 'CREDIT_CARD' ? (
+                      <Pressable
+                        onPress={() =>
+                          setQuickBalanceSign((prev) => (prev === '-' ? '+' : '-'))
+                        }
+                        disabled={setBalanceMutation.isPending}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          quickBalanceSign === '-'
+                            ? 'Switch to positive balance'
+                            : 'Toggle negative balance'
+                        }
+                        className={`min-h-[44px] min-w-[44px] px-3 rounded-xl border items-center justify-center ${
+                          quickBalanceSign === '-'
+                            ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-terracotta dark:border-ledger-terracotta-dark'
+                            : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
+                        }`}
+                      >
+                        <ThemedText
+                          className={`text-sm font-extrabold ${
+                            quickBalanceSign === '-'
+                              ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                              : 'text-ledger-ink dark:text-ledger-ink-dark'
+                          }`}
+                        >
+                          +/−
+                        </ThemedText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+
                   {balanceAccount?.accountType === 'CREDIT_CARD' ? (
                     <ThemedText className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      Enter negative amount (e.g. -5200) for owed card balance, or 0 if paid off.
+                      Type the positive amount you owe (e.g. 5200) — Owed (−) stores it as{' '}
+                      -5,200.00 automatically. Tracked Card Installments are added on top.
                     </ThemedText>
                   ) : null}
                 </View>
@@ -1039,6 +1207,9 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
                               if (!editingAccount) {
                                 setSelectedIcon(option.defaultIcon);
                                 setSelectedColor(option.defaultColor);
+                                setBalanceSign(
+                                  option.value === 'CREDIT_CARD' ? '-' : '+',
+                                );
                               }
                             }}
                             accessibilityRole="button"
@@ -1088,24 +1259,133 @@ export function AccountsScreen({ initialTab = 'ACCOUNTS' }: AccountsScreenProps 
                     />
                   </View>
 
-                  <View className="gap-1.5">
+                  <View className="gap-2">
                     <ThemedText className="text-[11px] font-semibold uppercase tracking-wider text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
-                      {editingAccount ? 'Current Balance' : 'Starting Balance'}
+                      {accountType === 'CREDIT_CARD'
+                        ? editingAccount
+                          ? 'Outstanding Card Balance'
+                          : 'Starting Card Balance'
+                        : editingAccount
+                          ? 'Current Balance'
+                          : 'Starting Balance'}
                     </ThemedText>
-                    <View className="h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center">
-                      <ThemedText className="text-lg font-bold text-ledger-ink-muted dark:text-ledger-ink-dark-muted mr-2">
-                        {DEFAULT_CURRENCY_SYMBOL}
-                      </ThemedText>
-                      <TextInput
-                        value={balanceInput}
-                        onChangeText={(text) => setBalanceInput(normalizeDecimalInput(text))}
-                        keyboardType="decimal-pad"
-                        inputMode="decimal"
-                        editable={!isBusy}
-                        style={TABULAR_NUMS_STYLE}
-                        className="flex-1 h-full text-ledger-ink dark:text-ledger-ink-dark text-base font-bold"
-                      />
+
+                    {accountType === 'CREDIT_CARD' ? (
+                      <View className="flex-row gap-2">
+                        <Pressable
+                          onPress={() => setBalanceSign('-')}
+                          disabled={isBusy}
+                          accessibilityRole="button"
+                          accessibilityLabel="Balance owed (negative)"
+                          accessibilityState={{ selected: balanceSign === '-' }}
+                          className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
+                            balanceSign === '-'
+                              ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-terracotta dark:border-ledger-terracotta-dark'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
+                          }`}
+                        >
+                          <ThemedText
+                            className={`text-xs font-bold ${
+                              balanceSign === '-'
+                                ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                            }`}
+                          >
+                            Owed (−)
+                          </ThemedText>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => setBalanceSign('+')}
+                          disabled={isBusy}
+                          accessibilityRole="button"
+                          accessibilityLabel="Overpaid credit surplus (positive)"
+                          accessibilityState={{ selected: balanceSign === '+' }}
+                          className={`flex-1 min-h-[44px] px-3 py-2 rounded-xl border items-center justify-center ${
+                            balanceSign === '+'
+                              ? 'bg-ledger-pine-soft dark:bg-ledger-pine-dark-soft border-ledger-pine dark:border-ledger-pine-dark'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
+                          }`}
+                        >
+                          <ThemedText
+                            className={`text-xs font-bold ${
+                              balanceSign === '+'
+                                ? 'text-ledger-pine dark:text-ledger-pine-dark'
+                                : 'text-ledger-ink-secondary dark:text-ledger-ink-dark-secondary'
+                            }`}
+                          >
+                            Overpaid (+)
+                          </ThemedText>
+                        </Pressable>
+                      </View>
+                    ) : null}
+
+                    <View className="flex-row items-center gap-2">
+                      <View className="flex-1 h-12 px-4 rounded-xl bg-ledger-canvas dark:bg-ledger-subtle-dark border border-ledger-border-strong dark:border-ledger-border-strong-dark flex-row items-center">
+                        <ThemedText
+                          style={TABULAR_NUMS_STYLE}
+                          className={`text-lg font-bold mr-2 ${
+                            balanceSign === '-'
+                              ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                              : 'text-ledger-ink-muted dark:text-ledger-ink-dark-muted'
+                          }`}
+                        >
+                          {balanceSign === '-' ? '-' : ''}
+                          {DEFAULT_CURRENCY_SYMBOL}
+                        </ThemedText>
+                        <TextInput
+                          value={balanceInput}
+                          onChangeText={(text) => {
+                            const { text: nextText, signOverride } =
+                              parseUnsignedBalanceInput(text);
+                            setBalanceInput(nextText);
+                            if (signOverride) setBalanceSign(signOverride);
+                          }}
+                          keyboardType="decimal-pad"
+                          inputMode="decimal"
+                          editable={!isBusy}
+                          accessibilityLabel="Account balance amount"
+                          style={TABULAR_NUMS_STYLE}
+                          className="flex-1 h-full text-ledger-ink dark:text-ledger-ink-dark text-base font-bold"
+                        />
+                      </View>
+
+                      {accountType !== 'CREDIT_CARD' ? (
+                        <Pressable
+                          onPress={() =>
+                            setBalanceSign((prev) => (prev === '-' ? '+' : '-'))
+                          }
+                          disabled={isBusy}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            balanceSign === '-'
+                              ? 'Switch to positive balance'
+                              : 'Toggle negative balance'
+                          }
+                          className={`min-h-[44px] min-w-[44px] px-3 rounded-xl border items-center justify-center ${
+                            balanceSign === '-'
+                              ? 'bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border-ledger-terracotta dark:border-ledger-terracotta-dark'
+                              : 'bg-ledger-subtle dark:bg-ledger-subtle-dark border-ledger-border dark:border-ledger-border-dark'
+                          }`}
+                        >
+                          <ThemedText
+                            className={`text-sm font-extrabold ${
+                              balanceSign === '-'
+                                ? 'text-ledger-terracotta dark:text-ledger-terracotta-dark'
+                                : 'text-ledger-ink dark:text-ledger-ink-dark'
+                            }`}
+                          >
+                            +/−
+                          </ThemedText>
+                        </Pressable>
+                      ) : null}
                     </View>
+
+                    {accountType === 'CREDIT_CARD' ? (
+                      <ThemedText className="text-[11px] text-ledger-ink-muted dark:text-ledger-ink-dark-muted">
+                        Type the positive amount you owe — Owed (−) stores it as negative
+                        debt automatically. Tracked Card Installments are added on top.
+                      </ThemedText>
+                    ) : null}
                   </View>
 
                   {accountType === 'CREDIT_CARD' && (
