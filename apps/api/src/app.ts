@@ -14,6 +14,11 @@ import {
 } from './capabilities/auth/repository';
 import { createAuthRoutes } from './capabilities/auth/routes';
 import { createHealthRoutes } from './capabilities/health/routes';
+import {
+  createMcpOAuthRoutes,
+  type McpStaticOAuthClient,
+} from './capabilities/mcp/oauth';
+import { createMcpRoutes } from './capabilities/mcp/routes';
 import { createMetaRoutes } from './capabilities/meta/routes';
 import {
   createPgSyncRepository,
@@ -50,6 +55,8 @@ export interface AppDependencies {
   allowedOrigins?: readonly string[];
   allowLocalhostCors?: boolean;
   disableRateLimit?: boolean;
+  mcpOAuthSecret?: string;
+  mcpStaticClient?: McpStaticOAuthClient;
 }
 
 export function createApp(deps?: AppDependencies) {
@@ -169,6 +176,53 @@ export function createApp(deps?: AppDependencies) {
 
   const rateLimitDisabled = Boolean(deps?.disableRateLimit);
 
+  const isMcpCorsPath = (path: string): boolean =>
+    path.startsWith('/.well-known/') ||
+    path === '/oauth/register' ||
+    path === '/oauth/token' ||
+    path === '/mcp';
+
+  const mcpPermissiveCors = cors({
+    origin: '*',
+    credentials: false,
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Accept',
+      'Mcp-Session-Id',
+      'MCP-Protocol-Version',
+    ],
+    exposeHeaders: ['Mcp-Session-Id', 'MCP-Protocol-Version', 'WWW-Authenticate'],
+    maxAge: 86400,
+  });
+
+  const appCors = cors({
+    origin: (origin) => {
+      if (!origin) {
+        return '';
+      }
+      const normalized = origin.trim().replace(/\/+$/, '');
+      if (
+        allowedOriginSet.has(normalized) ||
+        (allowLocalhostCors && isLocalDevOrigin(normalized))
+      ) {
+        return origin;
+      }
+      return null;
+    },
+    credentials: true,
+    allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Request-Id',
+      'X-Requested-With',
+    ],
+    exposeHeaders: ['X-Request-Id'],
+    maxAge: 86400,
+  });
+
   const app = new Hono<{ Variables: RequestLogVariables }>()
     .use('*', createRequestLoggerMiddleware())
     .use('*', async (c, next) => {
@@ -184,34 +238,12 @@ export function createApp(deps?: AppDependencies) {
         );
       }
     })
-    .use(
-      '*',
-      cors({
-        origin: (origin) => {
-          if (!origin) {
-            return '';
-          }
-          const normalized = origin.trim().replace(/\/+$/, '');
-          if (
-            allowedOriginSet.has(normalized) ||
-            (allowLocalhostCors && isLocalDevOrigin(normalized))
-          ) {
-            return origin;
-          }
-          return null;
-        },
-        credentials: true,
-        allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-        allowHeaders: [
-          'Content-Type',
-          'Authorization',
-          'X-Request-Id',
-          'X-Requested-With',
-        ],
-        exposeHeaders: ['X-Request-Id'],
-        maxAge: 86400,
-      }),
-    )
+    .use('*', async (c, next) => {
+      if (isMcpCorsPath(c.req.path)) {
+        return mcpPermissiveCors(c, next);
+      }
+      return appCors(c, next);
+    })
     .use('/v1/*', async (c, next) => {
       await next();
       c.header('Cache-Control', 'private, no-store');
@@ -236,6 +268,24 @@ export function createApp(deps?: AppDependencies) {
       }),
     )
     .use(
+      '/oauth/*',
+      createRateLimitMiddleware({
+        keyPrefix: 'mcp-oauth',
+        windowMs: 15 * 60_000,
+        maxRequests: 30,
+        skip: () => rateLimitDisabled,
+      }),
+    )
+    .use(
+      '/mcp',
+      createRateLimitMiddleware({
+        keyPrefix: 'mcp-api',
+        windowMs: 60_000,
+        maxRequests: 240,
+        skip: () => rateLimitDisabled,
+      }),
+    )
+    .use(
       '/v1/*',
       createRateLimitMiddleware({
         keyPrefix: 'api',
@@ -252,6 +302,8 @@ export function createApp(deps?: AppDependencies) {
     .use('/v1/accounts/*', standardJsonBodyLimit)
     .use('/v1/transactions', standardJsonBodyLimit)
     .use('/v1/transactions/*', standardJsonBodyLimit)
+    .use('/oauth/*', standardJsonBodyLimit)
+    .use('/mcp', standardJsonBodyLimit)
     .onError((error, c) => handleApiError(error, c))
     .notFound((c) => {
       const requestId = c.get('requestId');
@@ -287,7 +339,28 @@ export function createApp(deps?: AppDependencies) {
     )
     .route('/', createSyncRoutes(syncRepo, requireAuth))
     .route('/', createAccountsRoutes(accountsRepo, requireAuth))
-    .route('/', createTransactionsRoutes(transactionsRepo, requireAuth));
+    .route('/', createTransactionsRoutes(transactionsRepo, requireAuth))
+    .route(
+      '/',
+      createMcpOAuthRoutes({
+        authRepo,
+        ...(deps?.mcpOAuthSecret
+          ? { getSigningSecret: () => deps.mcpOAuthSecret! }
+          : {}),
+        ...(deps?.mcpStaticClient
+          ? { getStaticClient: () => deps.mcpStaticClient }
+          : {}),
+      }),
+    )
+    .route(
+      '/',
+      createMcpRoutes({
+        verifySessionTokenHash: (tokenHash) =>
+          authRepo.verifySessionTokenHash(tokenHash),
+        transactionsRepo,
+        syncRepo,
+      }),
+    );
 
   return app;
 }

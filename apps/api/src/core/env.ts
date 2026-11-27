@@ -52,6 +52,8 @@ const envSchema = z.object({
   MIN_SUPPORTED_VERSION: z.string().trim().min(1).default('1.0.0'),
   CORS_ORIGINS: z.string().default(''),
   ALLOW_UNAUTHENTICATED_DEMO: booleanStringSchema,
+  MCP_OAUTH_CLIENT_ID: z.string().trim().min(1).optional(),
+  MCP_OAUTH_CLIENT_SECRET: z.string().trim().min(1).optional(),
 });
 
 export type ApiEnv = z.infer<typeof envSchema>;
@@ -64,6 +66,8 @@ export function getEnv(): ApiEnv {
   }
   const defaultPoolMax = process.env.VERCEL === '1' ? '2' : '5';
   const previousKeyRaw = process.env.DATA_ENCRYPTION_KEY_PREVIOUS?.trim();
+  const mcpClientIdRaw = process.env.MCP_OAUTH_CLIENT_ID?.trim();
+  const mcpClientSecretRaw = process.env.MCP_OAUTH_CLIENT_SECRET?.trim();
   const parsed = envSchema.safeParse({
     NODE_ENV: process.env.NODE_ENV ?? 'development',
     HOST: process.env.HOST ?? '0.0.0.0',
@@ -76,6 +80,8 @@ export function getEnv(): ApiEnv {
     MIN_SUPPORTED_VERSION: process.env.MIN_SUPPORTED_VERSION ?? '1.0.0',
     CORS_ORIGINS: process.env.CORS_ORIGINS ?? '',
     ALLOW_UNAUTHENTICATED_DEMO: process.env.ALLOW_UNAUTHENTICATED_DEMO ?? 'false',
+    MCP_OAUTH_CLIENT_ID: mcpClientIdRaw || undefined,
+    MCP_OAUTH_CLIENT_SECRET: mcpClientSecretRaw || undefined,
   });
   if (!parsed.success) {
     const details = parsed.error.issues

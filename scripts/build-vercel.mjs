@@ -287,12 +287,20 @@ const contentSecurityPolicy = [
   "form-action 'self'",
 ].join('; ');
 
+const oauthContentSecurityPolicy = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self' https:",
+].join('; ');
+
 // 6. Write Build Output API v3 routing config
 writeJson(path.join(vercelOutputDir, 'config.json'), {
   version: 3,
   routes: [
     {
-      src: '^/.*',
+      src: '^/(?!oauth(?:/|$)).*',
       headers: {
         'Content-Security-Policy': contentSecurityPolicy,
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
@@ -303,8 +311,34 @@ writeJson(path.join(vercelOutputDir, 'config.json'), {
       },
       continue: true,
     },
+    {
+      src: '^/oauth(?:/.*)?$',
+      headers: {
+        'Content-Security-Policy': oauthContentSecurityPolicy,
+        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+        'Referrer-Policy': 'no-referrer',
+        'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      },
+      continue: true,
+    },
     { src: '^/(health)$', dest: '/api/index?__path=/$1' },
     { src: '^/(v1(?:/.*)?)$', dest: '/api/index?__path=/$1' },
+    { src: '^/(mcp(?:/.*)?)$', dest: '/api/index?__path=/$1' },
+    { src: '^/(oauth(?:/.*)?)$', dest: '/api/index?__path=/$1' },
+    {
+      src: '^/(\\.well-known/oauth-protected-resource(?:/.*)?)$',
+      dest: '/api/index?__path=/$1',
+    },
+    {
+      src: '^/(\\.well-known/oauth-authorization-server)$',
+      dest: '/api/index?__path=/$1',
+    },
+    {
+      src: '^/(\\.well-known/openid-configuration)$',
+      dest: '/api/index?__path=/$1',
+    },
     {
       src: '^/version\\.json$',
       headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },

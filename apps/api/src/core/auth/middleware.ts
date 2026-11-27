@@ -18,6 +18,17 @@ export type SessionVerifier = (
   tokenHash: string,
 ) => Promise<AuthenticatedSession | null>;
 
+export const OAUTH_ACCESS_TOKEN_PREFIX = 'bt_at_';
+export const OAUTH_REFRESH_TOKEN_PREFIX = 'bt_rt_';
+export const OAUTH_CODE_TOKEN_PREFIX = 'bt_code_';
+
+export function isNonAccessToken(token: string): boolean {
+  return (
+    token.startsWith(OAUTH_REFRESH_TOKEN_PREFIX) ||
+    token.startsWith(OAUTH_CODE_TOKEN_PREFIX)
+  );
+}
+
 const STATE_CHANGING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
 export function createRequireAuthMiddleware(
@@ -45,6 +56,10 @@ export function createRequireAuthMiddleware(
 
     if (!token) {
       throw new AppError('UNAUTHORIZED', 'Authentication token is required.');
+    }
+
+    if (isNonAccessToken(token)) {
+      throw new AppError('UNAUTHORIZED', 'Invalid access token.');
     }
 
     if (usingCookieAuth && STATE_CHANGING_METHODS.has(c.req.method.toUpperCase())) {

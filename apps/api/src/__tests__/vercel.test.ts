@@ -46,6 +46,20 @@ describe('Vercel adapter helpers', () => {
     it('defaults undefined URLs to /', () => {
       expect(restoreVercelRequestUrl(undefined)).toBe('/');
     });
+
+    it('restores /mcp, /oauth/*, and /.well-known/* forwarded paths with query params', () => {
+      expect(restoreVercelRequestUrl('/api/index?__path=/mcp')).toBe('/mcp');
+      expect(
+        restoreVercelRequestUrl(
+          '/api/index?__path=/oauth/authorize&response_type=code&state=abc',
+        ),
+      ).toBe('/oauth/authorize?response_type=code&state=abc');
+      expect(
+        restoreVercelRequestUrl(
+          '/api/index?__path=/.well-known/oauth-protected-resource',
+        ),
+      ).toBe('/.well-known/oauth-protected-resource');
+    });
   });
 
   describe('Vercel CORS and env defaults', () => {
