@@ -552,11 +552,17 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
     });
     expect(initRes.status).toBe(200);
     expect(initRes.headers.get('mcp-protocol-version')).toBe('2025-06-18');
-    expect(await initRes.json()).toMatchObject({
+    const initJson = (await initRes.json()) as {
+      jsonrpc: string;
+      id: number;
+      result: { protocolVersion: string; instructions: string };
+    };
+    expect(initJson).toMatchObject({
       jsonrpc: '2.0',
       id: 1,
       result: { protocolVersion: '2025-06-18' },
     });
+    expect(initJson.result.instructions).toContain('NEVER guess');
 
     const notifRes = await callMcp({
       jsonrpc: '2.0',
@@ -709,6 +715,112 @@ describe('MCP OAuth 2.1 + StreamableHTTP Server', () => {
     };
     expect(unpayJson.result.structuredContent.obligation.paidInstallments).toBe(1);
     expect(unpayJson.result.structuredContent.obligation.lastPaidPeriod).toBeNull();
+
+    // 10. Missing/empty required fields return structured needsUserInput prompts without mutating state
+    const missingExpenseRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 10,
+      method: 'tools/call',
+      params: {
+        name: 'log_transaction',
+        arguments: { type: 'EXPENSE', amount: 350, account: '', category: '' },
+      },
+    });
+    const missingExpenseJson = (await missingExpenseRes.json()) as {
+      result: {
+        isError: boolean;
+        structuredContent: {
+          needsUserInput: boolean;
+          missingFields: string[];
+          availableAccounts: string[];
+          availableCategories: string[];
+        };
+      };
+    };
+    expect(missingExpenseJson.result.isError).toBe(true);
+    expect(missingExpenseJson.result.structuredContent.needsUserInput).toBe(true);
+    expect(missingExpenseJson.result.structuredContent.missingFields).toEqual([
+      'account',
+      'category',
+    ]);
+    expect(missingExpenseJson.result.structuredContent.availableAccounts).toContain(
+      'Maribank CC',
+    );
+    expect(missingExpenseJson.result.structuredContent.availableCategories).toContain(
+      'Daily Living',
+    );
+
+    const missingTransferRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 11,
+      method: 'tools/call',
+      params: {
+        name: 'log_transaction',
+        arguments: { type: 'TRANSFER', amount: 500, account: 'Main Bank' },
+      },
+    });
+    const missingTransferJson = (await missingTransferRes.json()) as {
+      result: {
+        isError: boolean;
+        structuredContent: { needsUserInput: boolean; missingFields: string[] };
+      };
+    };
+    expect(missingTransferJson.result.isError).toBe(true);
+    expect(missingTransferJson.result.structuredContent.needsUserInput).toBe(true);
+    expect(missingTransferJson.result.structuredContent.missingFields).toEqual([
+      'toAccount',
+    ]);
+
+    const ambiguousAccountRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 12,
+      method: 'tools/call',
+      params: {
+        name: 'log_transaction',
+        arguments: {
+          type: 'EXPENSE',
+          amount: 100,
+          account: 'a',
+          category: 'Daily Living',
+        },
+      },
+    });
+    const ambiguousAccountJson = (await ambiguousAccountRes.json()) as {
+      result: {
+        isError: boolean;
+        structuredContent: { needsUserInput: boolean; availableAccounts: string[] };
+      };
+    };
+    expect(ambiguousAccountJson.result.isError).toBe(true);
+    expect(ambiguousAccountJson.result.structuredContent.needsUserInput).toBe(true);
+    expect(
+      ambiguousAccountJson.result.structuredContent.availableAccounts.length,
+    ).toBeGreaterThan(1);
+
+    const missingObligationRes = await callMcp({
+      jsonrpc: '2.0',
+      id: 13,
+      method: 'tools/call',
+      params: { name: 'pay_obligation', arguments: { obligation: '' } },
+    });
+    const missingObligationJson = (await missingObligationRes.json()) as {
+      result: {
+        isError: boolean;
+        structuredContent: {
+          needsUserInput: boolean;
+          missingFields: string[];
+          availableObligations: string[];
+        };
+      };
+    };
+    expect(missingObligationJson.result.isError).toBe(true);
+    expect(missingObligationJson.result.structuredContent.needsUserInput).toBe(true);
+    expect(missingObligationJson.result.structuredContent.missingFields).toEqual([
+      'obligation',
+    ]);
+    expect(
+      missingObligationJson.result.structuredContent.availableObligations,
+    ).toContain('JBL Partybox');
   });
 
   it('supports static Client ID + Client Secret via HTTP Basic Auth', async () => {

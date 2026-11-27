@@ -66,7 +66,7 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'log_transaction',
     title: 'Log Transaction',
     description:
-      'Log an EXPENSE, INCOME, or TRANSFER transaction in the user budget tracker. Amount is in major currency units (e.g. 350 or 125.50). Account and category can be given by name or ID.',
+      'Log an EXPENSE, INCOME, or TRANSFER transaction in the user budget tracker. Required: type, amount (> 0 in major units), and account; plus category for EXPENSE/INCOME, or toAccount for TRANSFER. NEVER guess missing required fields—if any required field is empty or omitted by the user, ask the user for it first (using get_budget_context to offer valid account/category choices).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -171,7 +171,7 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'delete_transaction',
     title: 'Delete Transaction',
     description:
-      'Delete a transaction by its ID and revert its balance impact. Useful for undoing a mistakenly logged transaction.',
+      'Delete a transaction by its ID and revert its balance impact. Required: transactionId. If transactionId is unknown, call list_recent_transactions first and ask the user which transaction to delete.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -195,7 +195,7 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'pay_obligation',
     title: 'Pay Obligation',
     description:
-      'Record a monthly payment for a loan, recurring bill, or credit card installment (e.g. "JBL Partybox", "House Rent").',
+      'Record a monthly payment for a loan, recurring bill, or credit card installment (e.g. "JBL Partybox", "House Rent"). Required: obligation. Never guess which obligation—ask the user if missing or ambiguous.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -235,7 +235,7 @@ export const MCP_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'unpay_obligation',
     title: 'Undo Obligation Payment',
     description:
-      'Undo the most recent payment status for a loan, recurring bill, or credit card installment.',
+      'Undo the most recent payment status for a loan, recurring bill, or credit card installment. Required: obligation. Never guess which obligation—ask the user if missing or ambiguous.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -512,10 +512,82 @@ export async function executeMcpTool(
     }
 
     case 'log_transaction': {
+      const rawObj =
+        typeof args === 'object' && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : {};
+      const rawType = rawObj.type;
+      const hasValidType =
+        rawType === 'EXPENSE' || rawType === 'INCOME' || rawType === 'TRANSFER';
+      const hasValidAmount =
+        typeof rawObj.amount === 'number' &&
+        Number.isFinite(rawObj.amount) &&
+        rawObj.amount > 0;
+      const hasValidAccount =
+        typeof rawObj.account === 'string' && rawObj.account.trim().length > 0;
+      const hasValidToAccount =
+        typeof rawObj.toAccount === 'string' && rawObj.toAccount.trim().length > 0;
+      const hasValidCategory =
+        typeof rawObj.category === 'string' && rawObj.category.trim().length > 0;
+
+      const missingFields: string[] = [];
+      if (!hasValidType) missingFields.push('type');
+      if (!hasValidAmount) missingFields.push('amount');
+      if (!hasValidAccount) missingFields.push('account');
+      if (rawType === 'TRANSFER' && !hasValidToAccount) {
+        missingFields.push('toAccount');
+      } else if (
+        (rawType === 'EXPENSE' || rawType === 'INCOME') &&
+        !hasValidCategory
+      ) {
+        missingFields.push('category');
+      }
+
+      if (missingFields.length > 0) {
+        const { state } = await requireUserState(deps.syncRepo, deps.userId);
+        const includeAccounts =
+          missingFields.includes('account') || missingFields.includes('toAccount');
+        const includeCategoryType =
+          rawType === 'EXPENSE' || rawType === 'INCOME' ? rawType : null;
+        return toolError(
+          `Missing required field(s): ${missingFields.join(', ')}. Ask the user to provide them instead of guessing.`,
+          {
+            needsUserInput: true,
+            missingFields,
+            promptForUser: `Please ask the user for: ${missingFields.join(', ')}. Do not guess or fill defaults.`,
+            ...(includeAccounts
+              ? { availableAccounts: state.accounts.map((a) => a.name) }
+              : {}),
+            ...(missingFields.includes('category') && includeCategoryType
+              ? {
+                  availableCategories: state.categories
+                    .filter((c) => c.type === includeCategoryType)
+                    .map((c) => c.name),
+                }
+              : !hasValidType
+                ? {
+                    availableCategories: {
+                      expense: state.categories
+                        .filter((c) => c.type === 'EXPENSE')
+                        .map((c) => c.name),
+                      income: state.categories
+                        .filter((c) => c.type === 'INCOME')
+                        .map((c) => c.name),
+                    },
+                  }
+                : {}),
+          },
+        );
+      }
+
       const parsed = logTransactionArgsSchema.safeParse(args);
       if (!parsed.success) {
         return toolError(
           parsed.error.issues[0]?.message ?? 'Invalid transaction arguments.',
+          {
+            needsUserInput: true,
+            promptForUser: 'Ask the user to clarify the invalid field.',
+          },
         );
       }
 
@@ -524,6 +596,11 @@ export async function executeMcpTool(
       if (amountMinor === null) {
         return toolError(
           'Invalid amount: must be greater than 0 with at most 2 decimal places.',
+          {
+            needsUserInput: true,
+            missingFields: ['amount'],
+            promptForUser: 'Ask the user for a valid positive amount (up to 2 decimal places).',
+          },
         );
       }
 
@@ -537,7 +614,11 @@ export async function executeMcpTool(
       const { state } = await requireUserState(deps.syncRepo, deps.userId);
       const sourceMatch = resolveNamedItem(state.accounts, input.account, 'account');
       if ('error' in sourceMatch) {
-        return toolError(sourceMatch.error, { availableAccounts: sourceMatch.candidates });
+        return toolError(sourceMatch.error, {
+          needsUserInput: true,
+          promptForUser: 'Ask the user which account they want to use.',
+          availableAccounts: sourceMatch.candidates,
+        });
       }
       const sourceAccount = sourceMatch.item;
 
@@ -546,7 +627,12 @@ export async function executeMcpTool(
 
       if (input.type === 'TRANSFER') {
         if (!input.toAccount) {
-          return toolError('toAccount is required when type is TRANSFER.');
+          return toolError('toAccount is required when type is TRANSFER.', {
+            needsUserInput: true,
+            missingFields: ['toAccount'],
+            promptForUser: 'Ask the user which destination account to transfer to.',
+            availableAccounts: state.accounts.map((a) => a.name),
+          });
         }
         const destMatch = resolveNamedItem(
           state.accounts,
@@ -555,6 +641,8 @@ export async function executeMcpTool(
         );
         if ('error' in destMatch) {
           return toolError(destMatch.error, {
+            needsUserInput: true,
+            promptForUser: 'Ask the user to clarify the destination account.',
             availableAccounts: destMatch.candidates,
           });
         }
@@ -562,6 +650,13 @@ export async function executeMcpTool(
         if (toAccount.id === sourceAccount.id) {
           return toolError(
             'Destination account must be different from source account.',
+            {
+              needsUserInput: true,
+              promptForUser: 'Ask the user for a different destination account.',
+              availableAccounts: state.accounts
+                .filter((a) => a.id !== sourceAccount.id)
+                .map((a) => a.name),
+            },
           );
         }
         if (toAccount.currency !== sourceAccount.currency) {
@@ -576,7 +671,12 @@ export async function executeMcpTool(
         if (!input.category) {
           return toolError(
             `Category is required for ${input.type}. Available categories: ${eligibleCategories.map((c) => c.name).join(', ')}.`,
-            { availableCategories: eligibleCategories.map((c) => c.name) },
+            {
+              needsUserInput: true,
+              missingFields: ['category'],
+              promptForUser: `Ask the user which ${input.type.toLowerCase()} category to use.`,
+              availableCategories: eligibleCategories.map((c) => c.name),
+            },
           );
         }
         const catMatch = resolveNamedItem(
@@ -586,6 +686,8 @@ export async function executeMcpTool(
         );
         if ('error' in catMatch) {
           return toolError(catMatch.error, {
+            needsUserInput: true,
+            promptForUser: `Ask the user which ${input.type.toLowerCase()} category to use.`,
             availableCategories: catMatch.candidates,
           });
         }
@@ -712,10 +814,32 @@ export async function executeMcpTool(
     }
 
     case 'delete_transaction': {
+      const rawObj =
+        typeof args === 'object' && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : {};
+      if (
+        typeof rawObj.transactionId !== 'string' ||
+        rawObj.transactionId.trim().length === 0
+      ) {
+        return toolError('Missing required field: transactionId.', {
+          needsUserInput: true,
+          missingFields: ['transactionId'],
+          promptForUser:
+            'Call list_recent_transactions first and ask the user to confirm which transaction to delete.',
+        });
+      }
+
       const parsed = deleteTransactionArgsSchema.safeParse(args);
       if (!parsed.success) {
         return toolError(
           parsed.error.issues[0]?.message ?? 'transactionId is required.',
+          {
+            needsUserInput: true,
+            missingFields: ['transactionId'],
+            promptForUser:
+              'Call list_recent_transactions first and ask the user to confirm which transaction to delete.',
+          },
         );
       }
 
@@ -736,10 +860,46 @@ export async function executeMcpTool(
     }
 
     case 'pay_obligation': {
+      const rawObj =
+        typeof args === 'object' && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : {};
+      if (
+        typeof rawObj.obligation !== 'string' ||
+        rawObj.obligation.trim().length === 0
+      ) {
+        const pulled = await requireUserState(deps.syncRepo, deps.userId);
+        const now = new Date();
+        const unpaidNames = pulled.state.recurringCommitments
+          .filter((c) => {
+            const st = getCommitmentDueStatus(c, now);
+            return c.isActive && !st.isPaid && !st.isPaidOff;
+          })
+          .map((c) => c.name);
+        const availableObligations =
+          unpaidNames.length > 0
+            ? unpaidNames
+            : pulled.state.recurringCommitments.map((c) => c.name);
+        return toolError(
+          'Missing required field: obligation. Ask the user which loan, bill, or installment they want to pay.',
+          {
+            needsUserInput: true,
+            missingFields: ['obligation'],
+            promptForUser:
+              'Ask the user which obligation to mark as paid. Do not guess.',
+            availableObligations,
+          },
+        );
+      }
+
       const parsed = payObligationArgsSchema.safeParse(args);
       if (!parsed.success) {
         return toolError(
           parsed.error.issues[0]?.message ?? 'Invalid pay_obligation arguments.',
+          {
+            needsUserInput: true,
+            promptForUser: 'Ask the user to clarify the payment details.',
+          },
         );
       }
 
@@ -757,6 +917,11 @@ export async function executeMcpTool(
         if (converted === null) {
           return toolError(
             'Invalid amount: must be greater than 0 with at most 2 decimal places.',
+            {
+              needsUserInput: true,
+              missingFields: ['amount'],
+              promptForUser: 'Ask the user for a valid positive payment amount.',
+            },
           );
         }
         actualAmountMinor = converted;
@@ -769,7 +934,11 @@ export async function executeMcpTool(
         'obligation',
       );
       if ('error' in match) {
-        return toolError(match.error, { availableObligations: match.candidates });
+        return toolError(match.error, {
+          needsUserInput: true,
+          promptForUser: 'Ask the user to clarify which obligation they want to pay.',
+          availableObligations: match.candidates,
+        });
       }
       const commitment = match.item;
 
@@ -790,7 +959,11 @@ export async function executeMcpTool(
           'account',
         );
         if ('error' in accMatch) {
-          return toolError(accMatch.error, { availableAccounts: accMatch.candidates });
+          return toolError(accMatch.error, {
+            needsUserInput: true,
+            promptForUser: 'Ask the user which account to pay from.',
+            availableAccounts: accMatch.candidates,
+          });
         }
         if (accMatch.item.currency !== commitment.currency) {
           return toolError(
@@ -836,10 +1009,39 @@ export async function executeMcpTool(
     }
 
     case 'unpay_obligation': {
+      const rawObj =
+        typeof args === 'object' && args !== null && !Array.isArray(args)
+          ? (args as Record<string, unknown>)
+          : {};
+      if (
+        typeof rawObj.obligation !== 'string' ||
+        rawObj.obligation.trim().length === 0
+      ) {
+        const pulled = await requireUserState(deps.syncRepo, deps.userId);
+        const paidObligations = pulled.state.recurringCommitments
+          .filter((c) => Boolean(c.lastPaidPeriod || c.lastPaidTransactionId))
+          .map((c) => c.name);
+        return toolError(
+          'Missing required field: obligation. Ask the user which paid obligation they want to undo.',
+          {
+            needsUserInput: true,
+            missingFields: ['obligation'],
+            promptForUser:
+              'Ask the user which paid obligation to mark as unpaid. Do not guess.',
+            paidObligations,
+          },
+        );
+      }
+
       const parsed = unpayObligationArgsSchema.safeParse(args);
       if (!parsed.success) {
         return toolError(
           parsed.error.issues[0]?.message ?? 'obligation is required.',
+          {
+            needsUserInput: true,
+            missingFields: ['obligation'],
+            promptForUser: 'Ask the user which obligation to mark as unpaid.',
+          },
         );
       }
 
@@ -850,7 +1052,11 @@ export async function executeMcpTool(
         'obligation',
       );
       if ('error' in match) {
-        return toolError(match.error, { availableObligations: match.candidates });
+        return toolError(match.error, {
+          needsUserInput: true,
+          promptForUser: 'Ask the user to clarify which obligation they meant.',
+          availableObligations: match.candidates,
+        });
       }
       const commitment = match.item;
 
