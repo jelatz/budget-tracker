@@ -20,7 +20,9 @@ export interface ObligationCardProps {
   account?: Account;
   nextPaydayDate: string | null;
   isDeleting?: boolean;
+  isUnpaying?: boolean;
   onPay: () => void;
+  onUnpay: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -30,14 +32,20 @@ export function ObligationCard({
   account,
   nextPaydayDate,
   isDeleting = false,
+  isUnpaying = false,
   onPay,
+  onUnpay,
   onEdit,
   onDelete,
 }: ObligationCardProps) {
   const theme = useTheme();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmUndo, setConfirmUndo] = useState(false);
 
   const dueStatus = getCommitmentDueStatus(commitment);
+  const canUndoPaid =
+    (dueStatus.isPaid || dueStatus.isPaidOff) &&
+    Boolean(commitment.lastPaidPeriod || commitment.lastPaidTransactionId);
   const dueDate = resolveCommitmentDueDate(commitment);
   const isDueBeforePayday =
     !dueStatus.isPaid &&
@@ -165,8 +173,8 @@ export function ObligationCard({
           </ThemedText>
         </View>
 
-        <View className="flex-row items-center gap-2">
-          {!dueStatus.isPaid && !dueStatus.isPaidOff && !confirmDelete ? (
+        <View className="flex-row flex-wrap items-center gap-2">
+          {!dueStatus.isPaid && !dueStatus.isPaidOff && !confirmDelete && !confirmUndo ? (
             <Pressable
               onPress={onPay}
               accessibilityRole="button"
@@ -179,7 +187,53 @@ export function ObligationCard({
             </Pressable>
           ) : null}
 
-          {!confirmDelete ? (
+          {canUndoPaid && !confirmDelete && !confirmUndo ? (
+            <Pressable
+              onPress={() => {
+                setConfirmDelete(false);
+                setConfirmUndo(true);
+              }}
+              disabled={isUnpaying}
+              accessibilityRole="button"
+              accessibilityLabel={`Undo payment for ${commitment.name}`}
+              className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
+            >
+              <AppIcon name="undo" size={14} color={theme.warning} />
+              <ThemedText className="text-xs font-bold text-ledger-ochre dark:text-ledger-ochre-dark">
+                Undo Paid
+              </ThemedText>
+            </Pressable>
+          ) : null}
+
+          {confirmUndo ? (
+            <>
+              <Pressable
+                onPress={() => setConfirmUndo(false)}
+                disabled={isUnpaying}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel undo payment"
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"
+              >
+                <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                  Cancel
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setConfirmUndo(false);
+                  onUnpay();
+                }}
+                disabled={isUnpaying}
+                accessibilityRole="button"
+                accessibilityLabel={`Confirm undo payment for ${commitment.name}`}
+                className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-ochre dark:bg-ledger-ochre-dark items-center justify-center active:opacity-85"
+              >
+                <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                  Confirm Undo
+                </ThemedText>
+              </Pressable>
+            </>
+          ) : !confirmDelete ? (
             <>
               <Pressable
                 onPress={onEdit}
@@ -193,7 +247,10 @@ export function ObligationCard({
               </Pressable>
 
               <Pressable
-                onPress={() => setConfirmDelete(true)}
+                onPress={() => {
+                  setConfirmUndo(false);
+                  setConfirmDelete(true);
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={`Delete ${commitment.name}`}
                 className="min-h-[44px] min-w-[44px] px-3 py-2 rounded-xl bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark items-center justify-center active:opacity-75"

@@ -256,6 +256,55 @@ export function advanceNextDueDate(
   );
 }
 
+/**
+ * Rewinds a YYYY-MM-DD due date by one billing cycle according to frequency,
+ * clamping month-end days against `anchorDueDay` (e.g. Mar 31 -> Feb 28 -> Jan 31).
+ */
+export function rewindNextDueDate(
+  dateStr: string,
+  frequency: CommitmentFrequency,
+  anchorDueDay?: number,
+): string {
+  const parsed = parseCalendarDate(dateStr);
+  if (!parsed) return dateStr;
+
+  if (frequency === 'WEEKLY' || frequency === 'BIWEEKLY') {
+    const stepDays = frequency === 'WEEKLY' ? 7 : 14;
+    return formatCalendarDateString(
+      new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate() - stepDays, 12, 0, 0, 0),
+    );
+  }
+
+  const monthsToSubtract = frequency === 'YEARLY' ? 12 : frequency === 'QUARTERLY' ? 3 : 1;
+  const targetMonthStart = new Date(
+    parsed.getFullYear(),
+    parsed.getMonth() - monthsToSubtract,
+    1,
+    12,
+    0,
+    0,
+    0,
+  );
+  const daysInTargetMonth = new Date(
+    targetMonthStart.getFullYear(),
+    targetMonthStart.getMonth() + 1,
+    0,
+  ).getDate();
+  const targetDay = Math.min(anchorDueDay ?? parsed.getDate(), daysInTargetMonth);
+
+  return formatCalendarDateString(
+    new Date(
+      targetMonthStart.getFullYear(),
+      targetMonthStart.getMonth(),
+      targetDay,
+      12,
+      0,
+      0,
+      0,
+    ),
+  );
+}
+
 export type NextDueDatePreset = 'TODAY' | 'NEXT_WEEK' | 'NEXT_MONTH';
 
 /**

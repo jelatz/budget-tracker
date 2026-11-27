@@ -5,6 +5,7 @@ import {
   isCommitmentPaidOff,
   normalizeCommitmentKind,
   recurringCommitmentSchema,
+  rewindNextDueDate,
   type RecurringCommitment,
 } from './recurring.schema';
 import {
@@ -787,6 +788,21 @@ export function applySyncMutation(
         ? Math.max(0, commitment.paidInstallments - 1)
         : commitment.paidInstallments;
 
+      let restoredNextDueDate = commitment.nextDueDate;
+      if (commitment.previousNextDueDate) {
+        restoredNextDueDate = commitment.previousNextDueDate;
+      } else if (
+        commitment.nextDueDate &&
+        commitment.lastPaidPeriod &&
+        commitment.nextDueDate.slice(0, 7) > commitment.lastPaidPeriod
+      ) {
+        restoredNextDueDate = rewindNextDueDate(
+          commitment.nextDueDate,
+          commitment.frequency,
+          commitment.dueDay,
+        );
+      }
+
       const updatedCommitment = recurringCommitmentSchema.parse({
         ...commitment,
         kind: resolvedKind,
@@ -794,7 +810,7 @@ export function applySyncMutation(
         lastPaidTransactionId: undefined,
         paidInstallments: nextPaidInstallments,
         isActive: hasTerms ? true : commitment.isActive,
-        nextDueDate: commitment.previousNextDueDate ?? commitment.nextDueDate,
+        nextDueDate: restoredNextDueDate,
         previousNextDueDate: undefined,
       });
 

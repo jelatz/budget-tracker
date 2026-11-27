@@ -35,18 +35,22 @@ import { usePayCreditCardBill } from '@/features/transactions/hooks/use-transact
 export interface CreditCardDebtCardProps {
   summary: CreditCardBillSummary;
   liquidAccounts: readonly Account[];
+  isUnpaying?: boolean;
   onAddInstallment: (cardAccountId: string) => void;
   onEditInstallment: (commitment: RecurringCommitment) => void;
   onDeleteInstallment: (commitmentId: string) => void;
+  onUnpayInstallment: (commitment: RecurringCommitment) => void;
   onBillPaid: (message: string) => void;
 }
 
 export function CreditCardDebtCard({
   summary,
   liquidAccounts,
+  isUnpaying = false,
   onAddInstallment,
   onEditInstallment,
   onDeleteInstallment,
+  onUnpayInstallment,
   onBillPaid,
 }: CreditCardDebtCardProps) {
   const theme = useTheme();
@@ -63,6 +67,8 @@ export function CreditCardDebtCard({
   );
   const [payError, setPayError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [confirmUndoId, setConfirmUndoId] = useState<string | null>(null);
+  const currentPeriod = formatCalendarDateString(new Date()).slice(0, 7);
 
   const { account } = summary;
   const currency = account.currency;
@@ -327,7 +333,12 @@ export function CreditCardDebtCard({
             </ThemedText>
             {summary.installments.map((inst) => {
               const progress = computeInstallmentProgress(inst);
+              const isPaidThisMonth = inst.lastPaidPeriod === currentPeriod;
+              const canUndoPaid =
+                (isPaidThisMonth || progress.isPaidOff) &&
+                Boolean(inst.lastPaidPeriod || inst.lastPaidTransactionId);
               const isConfirming = confirmDeleteId === inst.id;
+              const isConfirmingUndo = confirmUndoId === inst.id;
               return (
                 <View
                   key={inst.id}
@@ -348,7 +359,11 @@ export function CreditCardDebtCard({
                         {progress.totalCount > 0
                           ? `${progress.paidCount}/${progress.totalCount} months paid`
                           : 'Ongoing monthly'}
-                        {progress.isPaidOff ? ' · Paid Off' : ''}
+                        {progress.isPaidOff
+                          ? ' · Paid Off'
+                          : isPaidThisMonth
+                            ? ' · Paid this month'
+                            : ''}
                       </ThemedText>
                     </View>
                     <ThemedText
@@ -360,14 +375,42 @@ export function CreditCardDebtCard({
                     </ThemedText>
                   </View>
 
-                  <View className="flex-row justify-end gap-2">
-                    {isConfirming ? (
+                  <View className="flex-row flex-wrap justify-end gap-2">
+                    {isConfirmingUndo ? (
+                      <>
+                        <Pressable
+                          onPress={() => setConfirmUndoId(null)}
+                          disabled={isUnpaying}
+                          accessibilityRole="button"
+                          accessibilityLabel="Cancel undo installment payment"
+                          className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-center"
+                        >
+                          <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
+                            Cancel
+                          </ThemedText>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => {
+                            setConfirmUndoId(null);
+                            onUnpayInstallment(inst);
+                          }}
+                          disabled={isUnpaying}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Confirm undo payment for ${inst.name}`}
+                          className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-ochre dark:bg-ledger-ochre-dark justify-center"
+                        >
+                          <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
+                            Confirm Undo
+                          </ThemedText>
+                        </Pressable>
+                      </>
+                    ) : isConfirming ? (
                       <>
                         <Pressable
                           onPress={() => setConfirmDeleteId(null)}
                           accessibilityRole="button"
                           accessibilityLabel="Cancel delete installment"
-                          className="min-h-[44px] px-3 py-1.5 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-center"
+                          className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-center"
                         >
                           <ThemedText className="text-xs font-bold text-ledger-ink dark:text-ledger-ink-dark">
                             Cancel
@@ -380,7 +423,7 @@ export function CreditCardDebtCard({
                           }}
                           accessibilityRole="button"
                           accessibilityLabel="Confirm delete installment"
-                          className="min-h-[44px] px-3 py-1.5 rounded-lg bg-ledger-terracotta dark:bg-ledger-terracotta-dark justify-center"
+                          className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-terracotta dark:bg-ledger-terracotta-dark justify-center"
                         >
                           <ThemedText className="text-xs font-bold text-ledger-canvas dark:text-ledger-canvas-dark">
                             Confirm
@@ -389,21 +432,41 @@ export function CreditCardDebtCard({
                       </>
                     ) : (
                       <>
+                        {canUndoPaid ? (
+                          <Pressable
+                            onPress={() => {
+                              setConfirmDeleteId(null);
+                              setConfirmUndoId(inst.id);
+                            }}
+                            disabled={isUnpaying}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Undo payment for ${inst.name}`}
+                            className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-ochre-soft dark:bg-ledger-ochre-dark-soft border border-ledger-border dark:border-ledger-border-dark flex-row items-center justify-center gap-1.5 active:opacity-75"
+                          >
+                            <AppIcon name="undo" size={13} color={theme.warning} />
+                            <ThemedText className="text-xs font-bold text-ledger-ochre dark:text-ledger-ochre-dark">
+                              Undo Paid
+                            </ThemedText>
+                          </Pressable>
+                        ) : null}
                         <Pressable
                           onPress={() => onEditInstallment(inst)}
                           accessibilityRole="button"
                           accessibilityLabel={`Edit ${inst.name}`}
-                          className="min-h-[44px] px-3 py-1.5 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-center"
+                          className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-subtle dark:bg-ledger-subtle-dark border border-ledger-border dark:border-ledger-border-dark justify-center"
                         >
                           <ThemedText className="text-xs font-semibold text-ledger-ink dark:text-ledger-ink-dark">
                             Edit
                           </ThemedText>
                         </Pressable>
                         <Pressable
-                          onPress={() => setConfirmDeleteId(inst.id)}
+                          onPress={() => {
+                            setConfirmUndoId(null);
+                            setConfirmDeleteId(inst.id);
+                          }}
                           accessibilityRole="button"
                           accessibilityLabel={`Delete ${inst.name}`}
-                          className="min-h-[44px] px-3 py-1.5 rounded-lg bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark justify-center"
+                          className="min-h-[44px] min-w-[44px] px-3 py-1.5 rounded-lg bg-ledger-terracotta-soft dark:bg-ledger-terracotta-dark-soft border border-ledger-border dark:border-ledger-border-dark justify-center"
                         >
                           <ThemedText className="text-xs font-semibold text-ledger-terracotta dark:text-ledger-terracotta-dark">
                             Delete

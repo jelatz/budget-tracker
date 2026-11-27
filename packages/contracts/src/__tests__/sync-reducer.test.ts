@@ -5,6 +5,8 @@ import {
   DEFAULT_CURRENCY,
   formatAccountLinkedErrorMessage,
   getAccountLinkedRecords,
+  getCommitmentDueStatus,
+  rewindNextDueDate,
   syncPushRequestSchema,
   type SyncMutation,
 } from '../index';
@@ -200,8 +202,99 @@ describe('Sync State Reducer', () => {
         balanceMinor: 20000,
       },
     ]);
-    expect(afterUnpay.recurringCommitments.find((c) => c.id === 'inst-1')!.paidInstallments).toBe(0);
+    const unpaidInst = afterUnpay.recurringCommitments.find((c) => c.id === 'inst-1')!;
+    expect(unpaidInst.paidInstallments).toBe(0);
+    expect(unpaidInst.lastPaidPeriod).toBeUndefined();
+    expect(unpaidInst.lastPaidTransactionId).toBeUndefined();
+    expect(unpaidInst.nextDueDate).toBe('2026-11-15');
+    expect(afterUnpay.transactions.some((t) => t.id === 'tx-inst-1')).toBe(false);
+    expect(afterUnpay.accounts.find((a) => a.id === 'account-bank')!.balanceMinor).toBe(bank0);
     expect(afterUnpay.accounts.find((a) => a.id === 'account-cash')!.balanceMinor).toBe(20000);
+  });
+
+  it('rewinds nextDueDate on commitment.unpay when previousNextDueDate is absent and preserves final-payoff date', () => {
+    const base = createInitialSyncDataState(new Date('2026-11-27T12:00:00.000Z'));
+
+    const withCommitments = applySyncMutations(base, [
+      {
+        opId: 'op-imported-loan',
+        clientTimestamp: '2026-11-27T12:00:00.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'inst-imported',
+          name: 'JBL Partybox',
+          kind: 'LOAN',
+          amountMinor: 250000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          frequency: 'MONTHLY',
+          dueDay: 25,
+          nextDueDate: '2026-12-25',
+          isAutoPaid: false,
+          isActive: true,
+          totalInstallments: 6,
+          paidInstallments: 2,
+          lastPaidPeriod: '2026-11',
+        },
+      },
+      {
+        opId: 'op-final-loan',
+        clientTimestamp: '2026-11-27T12:00:01.000Z',
+        type: 'commitment.upsert',
+        commitment: {
+          id: 'inst-final',
+          name: 'Final Payoff Loan',
+          kind: 'LOAN',
+          amountMinor: 100000,
+          currency: DEFAULT_CURRENCY,
+          accountId: 'account-bank',
+          categoryId: 'cat-loans',
+          frequency: 'MONTHLY',
+          dueDay: 25,
+          nextDueDate: '2026-11-25',
+          isAutoPaid: false,
+          isActive: false,
+          totalInstallments: 3,
+          paidInstallments: 3,
+          lastPaidPeriod: '2026-11',
+        },
+      },
+    ]);
+
+    const afterUnpay = applySyncMutations(withCommitments, [
+      {
+        opId: 'op-unpay-imported',
+        clientTimestamp: '2026-11-27T12:01:00.000Z',
+        type: 'commitment.unpay',
+        commitmentId: 'inst-imported',
+      },
+      {
+        opId: 'op-unpay-final',
+        clientTimestamp: '2026-11-27T12:01:01.000Z',
+        type: 'commitment.unpay',
+        commitmentId: 'inst-final',
+      },
+    ]);
+
+    const unpaidImported = afterUnpay.recurringCommitments.find((c) => c.id === 'inst-imported')!;
+    expect(unpaidImported.paidInstallments).toBe(1);
+    expect(unpaidImported.lastPaidPeriod).toBeUndefined();
+    expect(unpaidImported.nextDueDate).toBe('2026-11-25');
+
+    const dueStatus = getCommitmentDueStatus(unpaidImported, new Date(2026, 10, 27, 12));
+    expect(dueStatus.isPaid).toBe(false);
+    expect(dueStatus.isDueThisMonth).toBe(true);
+    expect(dueStatus.isOverdue).toBe(true);
+
+    const unpaidFinal = afterUnpay.recurringCommitments.find((c) => c.id === 'inst-final')!;
+    expect(unpaidFinal.isActive).toBe(true);
+    expect(unpaidFinal.paidInstallments).toBe(2);
+    expect(unpaidFinal.lastPaidPeriod).toBeUndefined();
+    expect(unpaidFinal.nextDueDate).toBe('2026-11-25');
+
+    expect(rewindNextDueDate('2026-03-31', 'MONTHLY', 31)).toBe('2026-02-28');
+    expect(rewindNextDueDate('2026-02-28', 'MONTHLY', 31)).toBe('2026-01-31');
   });
 
   it('supports backup overwrite and merge', () => {

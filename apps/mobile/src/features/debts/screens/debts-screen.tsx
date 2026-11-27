@@ -38,6 +38,7 @@ import {
   useAllCategories,
   useDebtOverview,
   useDeleteRecurringCommitment,
+  useUnpayRecurringCommitment,
 } from '@/features/transactions/hooks/use-transactions';
 
 import { CreditCardDebtCard } from '../components/credit-card-debt-card';
@@ -156,6 +157,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
     useDebtOverview();
   const { categories } = useAllCategories();
   const deleteMutation = useDeleteRecurringCommitment();
+  const unpayMutation = useUnpayRecurringCommitment();
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -241,6 +243,15 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
       showSuccess('Obligation removed.');
     } catch (error: unknown) {
       showError(getUserErrorMessage(error, 'Could not delete obligation.'));
+    }
+  };
+
+  const handleUnpayObligation = async (commitment: RecurringCommitment) => {
+    try {
+      await unpayMutation.mutateAsync(commitment.id);
+      showSuccess(`Marked ${commitment.name} as unpaid.`);
+    } catch (error: unknown) {
+      showError(getUserErrorMessage(error, 'Could not undo payment.'));
     }
   };
 
@@ -568,6 +579,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                               <CreditCardDebtCard
                                 summary={summary}
                                 liquidAccounts={liquidAccounts}
+                                isUnpaying={unpayMutation.isPending}
                                 onAddInstallment={(cardId) =>
                                   handleOpenAdd('CREDIT_CARD_INSTALLMENT', cardId)
                                 }
@@ -576,6 +588,7 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                                   setFormVisible(true);
                                 }}
                                 onDeleteInstallment={handleDeleteObligation}
+                                onUnpayInstallment={handleUnpayObligation}
                                 onBillPaid={showSuccess}
                               />
                             </View>
@@ -649,7 +662,9 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                                 account={accountLookup.get(loan.accountId)}
                                 nextPaydayDate={nextPaydayDate}
                                 isDeleting={deleteMutation.isPending}
+                                isUnpaying={unpayMutation.isPending}
                                 onPay={() => setPayingCommitment(loan)}
+                                onUnpay={() => handleUnpayObligation(loan)}
                                 onEdit={() => {
                                   setEditingCommitment(loan);
                                   setFormVisible(true);
@@ -732,7 +747,9 @@ export function DebtsScreen({ initialTab = 'ALL' }: DebtsScreenProps = {}) {
                                 account={accountLookup.get(bill.accountId)}
                                 nextPaydayDate={nextPaydayDate}
                                 isDeleting={deleteMutation.isPending}
+                                isUnpaying={unpayMutation.isPending}
                                 onPay={() => setPayingCommitment(bill)}
+                                onUnpay={() => handleUnpayObligation(bill)}
                                 onEdit={() => {
                                   setEditingCommitment(bill);
                                   setFormVisible(true);
